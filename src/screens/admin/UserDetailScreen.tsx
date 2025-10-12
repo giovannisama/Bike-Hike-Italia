@@ -1,6 +1,6 @@
 // src/screens/admin/UserDetailScreen.tsx
 import React, { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput } from "react-native";
 
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../../firebase";
@@ -299,10 +299,18 @@ export default function UserDetailScreen() {
     setFNickname(user?.nickname ?? "");
   };
 
-  const handleFirstNameChange = (text: string) => setFFirstName(text);
-  const handleLastNameChange = (text: string) => setFLastName(text);
-  const handleDisplayNameChange = (text: string) => setFDisplayName(text);
-  const handleNicknameChange = (text: string) => setFNickname(text);
+  const handleFirstNameChange = (text: string) => {
+    setFFirstName(text);
+  };
+  const handleLastNameChange = (text: string) => {
+    setFLastName(text);
+  };
+  const handleDisplayNameChange = (text: string) => {
+    setFDisplayName(text);
+  };
+  const handleNicknameChange = (text: string) => {
+    setFNickname(text);
+  };
 
   const saveEdit = async () => {
     if (!user) return;
@@ -329,123 +337,111 @@ export default function UserDetailScreen() {
   // RENDER
   // ─────────────────────────────────────────
   return (
-    <Screen useNativeHeader={true} scroll={false}>
+    <Screen useNativeHeader={true} scroll={true} keyboardShouldPersistTaps="handled">
       <Hero title={fullName()} subtitle={`${state.isAdmin ? "Admin" : "Member"} • ${user?.email || "—"}`} />
 
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 32 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.title}>Dettagli</Text>
+      <View style={styles.container}>
+        <Text style={styles.title}>Dettagli</Text>
 
-          <View style={styles.badgeRow}>
-            <View style={[styles.badge, state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
-              <Text style={styles.badgeText}>{state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"}</Text>
+        <View style={styles.badgeRow}>
+          <View style={[styles.badge, state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+            <Text style={styles.badgeText}>{state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"}</Text>
+          </View>
+          {user.disabled ? (
+            <View style={[styles.badge, styles.badgeDanger]}>
+              <Text style={styles.badgeText}>Disattivo</Text>
             </View>
-            {user.disabled ? (
-              <View style={[styles.badge, styles.badgeDanger]}>
-                <Text style={styles.badgeText}>Disattivo</Text>
-              </View>
-            ) : (
-              <View style={[styles.badge, styles.badgeSuccess]}>
-                <Text style={styles.badgeText}>{user.approved ? "Attivo" : "In attesa"}</Text>
-              </View>
-            )}
-          </View>
+          ) : (
+            <View style={[styles.badge, styles.badgeSuccess]}>
+              <Text style={styles.badgeText}>{user.approved ? "Attivo" : "In attesa"}</Text>
+            </View>
+          )}
+        </View>
 
-          <View style={styles.card}>
-            {!editMode ? (
-              <>
-                <InfoRow label="Nome completo" value={`${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"} />
-                <InfoRow label="Display name" value={user.displayName || "—"} />
-                <InfoRow label="Nickname" value={user.nickname || "—"} />
-                <InfoRow label="Email" value={user.email || "—"} />
-                <InfoRow label="Ruolo" value={state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"} />
-                <InfoRow
-                  label="Stato"
-                  value={
-                    user.disabled === true ? "Disattivo" : user.approved === true ? "Attivo" : "In attesa approvazione"
-                  }
-                />
-              </>
-            ) : (
-              <>
-                <LabeledInput
-                  ref={firstNameRef}
-                  label="Nome"
-                  value={fFirstName}
-                  placeholder="Mario"
-                  returnKeyType="next"
-                  onSubmitEditing={() => lastNameRef.current?.focus()}
-                  onChangeText={handleFirstNameChange}
-                />
-                <LabeledInput
-                  ref={lastNameRef}
-                  label="Cognome"
-                  value={fLastName}
-                  placeholder="Rossi"
-                  returnKeyType="next"
-                  onSubmitEditing={() => displayNameRef.current?.focus()}
-                  onChangeText={handleLastNameChange}
-                />
-                <LabeledInput
-                  ref={displayNameRef}
-                  label="Display Name"
-                  value={fDisplayName}
-                  placeholder="Rossi, Mario"
-                  returnKeyType="next"
-                  onSubmitEditing={() => nicknameRef.current?.focus()}
-                  onChangeText={handleDisplayNameChange}
-                />
-                <LabeledInput
-                  ref={nicknameRef}
-                  label="Nickname"
-                  value={fNickname}
-                  placeholder="SuperBiker"
-                  returnKeyType="done"
-                  onChangeText={handleNicknameChange}
-                />
-              </>
-            )}
-          </View>
-
-          <View style={{ height: 16 }} />
-
-          {/* Azioni contestuali con abilitazioni reali */}
-          {!editMode && (user.approved && !user.disabled) && (
+        <View style={styles.card}>
+          {!editMode ? (
             <>
-              <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading || isOwner} />
-              {state.isMember && (
-                <Button title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"} onPress={handlePromote} disabled={!canPromote || !!actionLoading} />
-              )}
-              {state.isAdmin && !isOwner && (
-                <Button title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"} onPress={handleDemote} disabled={!canDemote || !!actionLoading} danger />
-              )}
-              <Button title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"} onPress={handleDeactivate} disabled={!canDeactivate || !!actionLoading} danger />
+              <InfoRow label="Nome completo" value={`${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"} />
+              <InfoRow label="Display name" value={user.displayName || "—"} />
+              <InfoRow label="Nickname" value={user.nickname || "—"} />
+              <InfoRow label="Email" value={user.email || "—"} />
+              <InfoRow label="Stato" value={user.disabled ? "Disattivo" : user.approved ? "Attivo" : "In attesa approvazione"} />
+            </>
+          ) : (
+            <>
+              <LabeledInput
+                ref={firstNameRef}
+                label="Nome"
+                value={fFirstName}
+                placeholder="Mario"
+                returnKeyType="next"
+                onSubmitEditing={() => lastNameRef.current?.focus()}
+                onChangeText={handleFirstNameChange}
+              />
+              <LabeledInput
+                ref={lastNameRef}
+                label="Cognome"
+                value={fLastName}
+                placeholder="Rossi"
+                returnKeyType="next"
+                onSubmitEditing={() => displayNameRef.current?.focus()}
+                onChangeText={handleLastNameChange}
+              />
+              <LabeledInput
+                ref={displayNameRef}
+                label="Display Name"
+                value={fDisplayName}
+                placeholder="Rossi, Mario"
+                returnKeyType="next"
+                onSubmitEditing={() => nicknameRef.current?.focus()}
+                onChangeText={handleDisplayNameChange}
+              />
+              <LabeledInput
+                ref={nicknameRef}
+                label="Nickname"
+                value={fNickname}
+                placeholder="SuperBiker"
+                returnKeyType="done"
+                onChangeText={handleNicknameChange}
+              />
             </>
           )}
+        </View>
 
-          {!editMode && state.isMember && !user.approved && !user.disabled && (
-            <Button title={actionLoading === "approve" ? "Approvazione…" : "Approva"} onPress={handleApprove} disabled={!canApprove || !!actionLoading} />
-          )}
-
-          {!editMode && user.disabled && (
+        <View style={{ gap: 8 }}>
+          {editMode ? (
             <>
-              <Button title={actionLoading === "activate" ? "Attivazione…" : "Attiva"} onPress={handleActivate} disabled={!canActivate || !!actionLoading} />
-              <Button title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"} onPress={handleDelete} disabled={!canDelete || !!actionLoading} danger />
-            </>
-          )}
-
-          {/* Comandi di edit */}
-          {editMode && (
-            <View style={{ gap: 8 }}>
               <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
               <Button title="Annulla" onPress={cancelEdit} />
-            </View>
+            </>
+          ) : (
+            <>
+              {user.approved && !user.disabled && (
+                <>
+                  <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading || isOwner} />
+                  {state.isMember && (
+                    <Button title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"} onPress={handlePromote} disabled={!canPromote || !!actionLoading} />
+                  )}
+                  {state.isAdmin && !isOwner && (
+                    <Button title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"} onPress={handleDemote} disabled={!canDemote || !!actionLoading} danger />
+                  )}
+                  <Button title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"} onPress={handleDeactivate} disabled={!canDeactivate || !!actionLoading} danger />
+                </>
+              )}
+
+              {state.isMember && !user.approved && !user.disabled && (
+                <Button title={actionLoading === "approve" ? "Approvazione…" : "Approva"} onPress={handleApprove} disabled={!canApprove || !!actionLoading} />
+              )}
+
+              {user.disabled && (
+                <>
+                  <Button title={actionLoading === "activate" ? "Attivazione…" : "Attiva"} onPress={handleActivate} disabled={!canActivate || !!actionLoading} />
+                  <Button title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"} onPress={handleDelete} disabled={!canDelete || !!actionLoading} danger />
+                </>
+              )}
+            </>
           )}
-          <View style={{ height: 120 }} />
-        </ScrollView>
+        </View>
       </View>
     </Screen>
   );
@@ -480,6 +476,11 @@ function Button({
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 22, fontWeight: "900", color: "#111", marginBottom: 12 },
+  container: {
+    paddingHorizontal: 4,
+    paddingBottom: 32,
+    gap: 20,
+  },
   btn: {
     backgroundColor: "#111",
     paddingHorizontal: 12,

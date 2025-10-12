@@ -1,6 +1,6 @@
 // src/components/Screen.tsx
 import React from "react";
-import { View, Text, ScrollView, ViewStyle } from "react-native";
+import { View, Text, ScrollView, ViewStyle, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -52,7 +52,8 @@ export function Screen({
   useNativeHeader = false,
   keyboardShouldPersistTaps = "always",
 }: ScreenProps) {
-  const Content = () => (
+  // render tree kept inline so we don't recreate components each render (avoids TextInput blur)
+  const content = (
     <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
       {!useNativeHeader && (
         <LinearGradient
@@ -115,14 +116,20 @@ export function Screen({
       }}
     >
       {scroll ? (
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Content />
-        </ScrollView>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: UI.spacing.lg }}
+            keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          >
+            {content}
+          </ScrollView>
+        </KeyboardAvoidingView>
       ) : (
-        <Content />
+        content
       )}
     </View>
   );

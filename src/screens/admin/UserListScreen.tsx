@@ -12,21 +12,27 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { Screen } from "../../components/Screen";
 import { auth, db } from "../../firebase";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  DocumentData,
-  updateDoc,
-  doc,
-} from "firebase/firestore";
+import { collection, onSnapshot, DocumentData, updateDoc, doc } from "firebase/firestore";
+import { mergeUsersPublic } from "../../utils/usersPublicSync";
 
 // Tema locale (evita dipendenza da UI globale)
 const THEME = {
   colors: { primary: "#1D4ED8", text: "#0f172a" },
 } as const;
+
+type BooleanFirestoreValue =
+  | boolean
+  | string
+  | number
+  | null
+  | undefined
+  | {
+      valueOf?: () => any;
+      booleanValue?: boolean;
+      stringValue?: string;
+      integerValue?: string;
+      doubleValue?: number;
+    };
 
 type UserRow = {
   uid: string;
@@ -36,13 +42,46 @@ type UserRow = {
   displayName?: string | null;
   nickname?: string | null;
   role?: "member" | "admin" | "owner";
-  approved?: boolean;
-  disabled?: boolean;
+  approved?: BooleanFirestoreValue;
+  disabled?: BooleanFirestoreValue;
+  approvedFlag?: boolean | null;
+  disabledFlag?: boolean | null;
 };
 
-type FilterKey = "active" | "disabled" | "pending";
+type FilterKey = "all" | "active" | "disabled" | "pending";
 
 type QuickAction = "approve" | "activate" | "deactivate" | null;
+
+function normalizeBooleanFlag(value: BooleanFirestoreValue): boolean | null {
+  if (value === null || value === undefined) return null;
+  let v: any = value;
+
+  if (typeof v === "object") {
+    if (typeof v.valueOf === "function" && v.valueOf() !== v) {
+      v = v.valueOf();
+    } else {
+      const candidate =
+        (v as any).booleanValue ??
+        (v as any).stringValue ??
+        (v as any).integerValue ??
+        (v as any).doubleValue ??
+        (typeof (v as any).valueOf === "function" ? (v as any).valueOf() : undefined);
+      if (candidate !== undefined && candidate !== v) {
+        v = candidate;
+      }
+    }
+  }
+
+  if (typeof v === "string") {
+    const lower = v.trim().toLowerCase();
+    if (lower === "true" || lower === "1" || lower === "yes") return true;
+    if (lower === "false" || lower === "0" || lower === "no") return false;
+    return null;
+  }
+  if (typeof v === "number") return v === 1;
+  if (typeof v === "boolean") return v;
+  return null;
+}
 
 
 // ─────────────────────────────────────────
@@ -101,14 +140,17 @@ function Row({
 }) {
   const cognome = (user.lastName || "").trim();
   const nome = (user.firstName || "").trim();
-  const ruolo =
-    user.role === "admin" || user.role === "owner" ? "Admin" : "Member";
+  const ruolo = user.role === "admin" || user.role === "owner" ? "Admin" : "Member";
 
-  const stato = user.disabled
-    ? ("Disattivo" as const)
-    : user.approved
-    ? ("Attivo" as const)
-    : ("In attesa" as const);
+  const approvedFlag = user.approvedFlag ?? normalizeBooleanFlag(user.approved);
+  const disabledFlag = user.disabledFlag ?? normalizeBooleanFlag(user.disabled);
+
+  const stato =
+    disabledFlag === true
+      ? ("Disattivo" as const)
+      : approvedFlag === true
+      ? ("Attivo" as const)
+      : ("In attesa" as const);
 
   const badgeColor =
     stato === "Attivo" ? "#16A34A" : stato === "Disattivo" ? "#6B7280" : "#D97706";
@@ -143,8 +185,12 @@ function Row({
 export default function UserListScreen() {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterKey>("active");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [items, setItems] = useState<UserRow[]>([]);
+  const [publicData, setPublicData] = useState<Record<string, DocumentData>>({});
+  const [privateData, setPrivateData] = useState<Record<string, DocumentData>>({});
+  const [publicLoaded, setPublicLoaded] = useState(false);
+  const [privateLoaded, setPrivateLoaded] = useState(false);
   const [actionUid, setActionUid] = useState<string | null>(null);
   const [actionType, setActionType] = useState<QuickAction>(null);
 
@@ -171,62 +217,113 @@ export default function UserListScreen() {
     });
   }, [navigation]);
 
-  // Sorgente Firestore con filtro (realtime)
+  // Sorgenti Firestore (pubblico + privato)
   useEffect(() => {
     setLoading(true);
-
-    const ref = collection(db, "users");
-
-    // Costruiamo la query base solo con ordinamenti; i filtri che dipendono da assenza di campo li faremo client-side
-    let q = query(ref, orderBy("lastName"), orderBy("firstName"));
-
-    if (filter === "disabled") {
-      // Qui il campo deve esistere ed essere true → possiamo filtrare lato server
-      q = query(ref, where("disabled", "==", true), orderBy("lastName"), orderBy("firstName"));
-    } else if (filter === "pending") {
-      // Utenti esplicitamente non approvati; escluderemo lato client i disattivati
-      q = query(ref, where("approved", "==", false), orderBy("lastName"), orderBy("firstName"));
-    }
-
-    const unsub = onSnapshot(
-      q,
+    const unsubPublic = onSnapshot(
+      collection(db, "users_public"),
       (snap) => {
-        console.log("[UserList] snapshot size:", snap.size);
-        const ids: string[] = [];
-        snap.forEach(d => ids.push(d.id));
-        console.log("[UserList] doc ids:", ids);
-        const rows: UserRow[] = [];
-        snap.forEach((d) => {
-          const x = d.data() as DocumentData;
-          rows.push({
-            uid: d.id,
-            email: x?.email ?? null,
-            firstName: x?.firstName ?? null,
-            lastName: x?.lastName ?? null,
-            displayName: x?.displayName ?? null,
-            nickname: x?.nickname ?? null,
-            role: x?.role,
-            approved: x?.approved,
-            disabled: x?.disabled,
-          });
+        const next: Record<string, DocumentData> = {};
+        snap.forEach((docSnap) => {
+          next[docSnap.id] = docSnap.data() as DocumentData;
         });
-        let filtered = rows;
-        if (filter === "active") {
-          // Considera attivi anche i legacy senza campo approved
-          filtered = rows.filter(r => (r.approved !== false) && (r.disabled !== true));
-        } else if (filter === "pending") {
-          filtered = rows.filter(r => r.approved === false && r.disabled !== true);
-        } else if (filter === "disabled") {
-          filtered = rows.filter(r => r.disabled === true);
-        }
-        setItems(filtered);
-        setLoading(false);
+        setPublicData(next);
+        setPublicLoaded(true);
       },
-      () => setLoading(false)
+      (err) => {
+        console.error("[UserList] users_public error:", err);
+        setPublicData({});
+        setPublicLoaded(true);
+      }
     );
 
-    return () => unsub();
-  }, [filter]);
+    const unsubPrivate = onSnapshot(
+      collection(db, "users"),
+      (snap) => {
+        const next: Record<string, DocumentData> = {};
+        snap.forEach((docSnap) => {
+          next[docSnap.id] = docSnap.data() as DocumentData;
+        });
+        setPrivateData(next);
+        setPrivateLoaded(true);
+      },
+      (err) => {
+        console.error("[UserList] users error:", err);
+        setPrivateData({});
+        setPrivateLoaded(true);
+      }
+    );
+
+    return () => {
+      try { unsubPublic(); } catch {}
+      try { unsubPrivate(); } catch {}
+    };
+  }, []);
+
+  // Aggiorna elementi mostrati quando cambiano i dati o il filtro
+  useEffect(() => {
+    if (!publicLoaded || !privateLoaded) {
+      setLoading(true);
+      return;
+    }
+
+    const allIds = new Set([
+      ...Object.keys(publicData),
+      ...Object.keys(privateData),
+    ]);
+
+    const rows: UserRow[] = [];
+    allIds.forEach((uid) => {
+      const pub = publicData[uid] || {};
+      const priv = privateData[uid] || {};
+
+      rows.push({
+        uid,
+        email: (priv as any)?.email ?? (pub as any)?.email ?? null,
+        firstName: (priv as any)?.firstName ?? (pub as any)?.firstName ?? null,
+        lastName: (priv as any)?.lastName ?? (pub as any)?.lastName ?? null,
+        displayName: (priv as any)?.displayName ?? (pub as any)?.displayName ?? null,
+        nickname: (priv as any)?.nickname ?? (pub as any)?.nickname ?? null,
+        role: (priv as any)?.role ?? (pub as any)?.role ?? "member",
+        approved: (priv as any)?.approved ?? (pub as any)?.approved ?? null,
+        disabled: (priv as any)?.disabled ?? (pub as any)?.disabled ?? null,
+      });
+    });
+
+    rows.sort((a, b) => {
+      const lnA = (a.lastName || "").toLowerCase();
+      const lnB = (b.lastName || "").toLowerCase();
+      if (lnA !== lnB) return lnA.localeCompare(lnB);
+      const fnA = (a.firstName || "").toLowerCase();
+      const fnB = (b.firstName || "").toLowerCase();
+      if (fnA !== fnB) return fnA.localeCompare(fnB);
+      const dnA = (a.displayName || "").toLowerCase();
+      const dnB = (b.displayName || "").toLowerCase();
+      return dnA.localeCompare(dnB);
+    });
+
+    const addFlags = rows.map((r) => ({
+      ...r,
+      approvedFlag: normalizeBooleanFlag(r.approved),
+      disabledFlag: normalizeBooleanFlag(r.disabled),
+    }));
+
+    let filtered = addFlags;
+    if (filter === "active") {
+      filtered = addFlags.filter(
+        (r) => r.approvedFlag !== false && r.disabledFlag !== true
+      );
+    } else if (filter === "pending") {
+      filtered = addFlags.filter(
+        (r) => r.approvedFlag === false && r.disabledFlag !== true
+      );
+    } else if (filter === "disabled") {
+      filtered = addFlags.filter((r) => r.disabledFlag === true);
+    }
+
+    setItems(filtered);
+    setLoading(false);
+  }, [filter, publicData, privateData, publicLoaded, privateLoaded]);
 
   const openDetail = useCallback(
     (uid: string) => {
@@ -241,6 +338,7 @@ export default function UserListScreen() {
       setActionUid(uid);
       setActionType("approve");
       await updateDoc(doc(db, "users", uid), { approved: true });
+      await mergeUsersPublic(uid, { approved: true }, "UserList");
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile approvare l'utente.");
     } finally {
@@ -254,6 +352,7 @@ export default function UserListScreen() {
       setActionUid(uid);
       setActionType("activate");
       await updateDoc(doc(db, "users", uid), { disabled: false });
+      await mergeUsersPublic(uid, { disabled: false }, "UserList");
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile attivare l'utente.");
     } finally {
@@ -273,6 +372,7 @@ export default function UserListScreen() {
             setActionUid(uid);
             setActionType("deactivate");
             await updateDoc(doc(db, "users", uid), { disabled: true });
+            await mergeUsersPublic(uid, { disabled: true }, "UserList");
           } catch (e: any) {
             Alert.alert("Errore", e?.message ?? "Impossibile disattivare l'utente.");
           } finally {
@@ -292,9 +392,12 @@ export default function UserListScreen() {
       const isSelf = currentUid === item.uid;
       const isOwner = item.role === "owner";
 
-      const isPending = item.approved !== true && item.disabled !== true;
-      const isActive = item.approved === true && item.disabled !== true;
-      const isDisabled = item.disabled === true;
+      const approvedFlag = item.approvedFlag ?? normalizeBooleanFlag(item.approved);
+      const disabledFlag = item.disabledFlag ?? normalizeBooleanFlag(item.disabled);
+
+      const isPending = approvedFlag !== true && disabledFlag !== true;
+      const isActive = approvedFlag === true && disabledFlag !== true;
+      const isDisabled = disabledFlag === true;
 
       const busy = actionUid === item.uid && !!actionType;
 
@@ -364,6 +467,7 @@ export default function UserListScreen() {
 
     return (
       <View style={styles.tabWrap}>
+        <Tab k="all" label="Tutti" />
         <Tab k="active" label="Attivi" />
         <Tab k="disabled" label="Disattivi" />
         <Tab k="pending" label="In attesa" />

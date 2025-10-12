@@ -1,11 +1,12 @@
 // src/screens/admin/UserDetailScreen.tsx
-import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import React, { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView } from "react-native";
 
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../../firebase";
 import { doc, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
 import { Screen, Hero } from "../../components/Screen";
+import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 
 type Params = { uid: string };
 
@@ -44,6 +45,30 @@ export default function UserDetailScreen() {
   const [fLastName, setFLastName] = useState("");
   const [fDisplayName, setFDisplayName] = useState("");
   const [fNickname, setFNickname] = useState("");
+  const firstNameRef = useRef<TextInput>(null);
+  const lastNameRef = useRef<TextInput>(null);
+  const displayNameRef = useRef<TextInput>(null);
+  const nicknameRef = useRef<TextInput>(null);
+
+  const editModeRef = useRef(editMode);
+  const pendingUserRef = useRef<UserDoc | null>(null);
+
+  const applySnapshot = useCallback((next: UserDoc | null) => {
+    setUser(next);
+    if (!next) return;
+    setFFirstName(next.firstName || "");
+    setFLastName(next.lastName || "");
+    setFDisplayName(next.displayName || "");
+    setFNickname(next.nickname || "");
+  }, []);
+
+  useEffect(() => {
+    editModeRef.current = editMode;
+    if (!editMode && pendingUserRef.current) {
+      applySnapshot(pendingUserRef.current);
+      pendingUserRef.current = null;
+    }
+  }, [editMode, applySnapshot]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -76,15 +101,12 @@ export default function UserDetailScreen() {
           disabled: d.disabled === true,
           createdAt: d.createdAt,
         };
-        setUser(next);
         setLoading(false);
 
-        // Se sono in edit, non sovrascrivo mentre scrive l’utente.
-        if (!editMode) {
-          setFFirstName(next.firstName || "");
-          setFLastName(next.lastName || "");
-          setFDisplayName(next.displayName || "");
-          setFNickname(next.nickname || "");
+        if (editModeRef.current) {
+          pendingUserRef.current = next;
+        } else {
+          applySnapshot(next);
         }
       },
       (err) => {
@@ -118,10 +140,10 @@ export default function UserDetailScreen() {
   }, [user]);
 
   const fullName = () => {
-    const ln = (user?.lastName || "").trim();
-    const fn = (user?.firstName || "").trim();
+    const ln = (user?.lastName ?? "").trim();
+    const fn = (user?.firstName ?? "").trim();
     if (ln || fn) return `${ln}${ln && fn ? ", " : ""}${fn}`;
-    return user?.displayName || user?.email || user?.uid;
+    return user?.displayName || user?.email || user?.uid || "Utente";
   };
 
   if (loading) {
@@ -153,6 +175,7 @@ export default function UserDetailScreen() {
     try {
       setActionLoading("approve");
       await updateDoc(doc(db, "users", user.uid), { approved: true });
+      await mergeUsersPublic(user.uid, { approved: true }, "UserDetail");
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile approvare l'utente.");
     } finally {
@@ -165,6 +188,7 @@ export default function UserDetailScreen() {
     try {
       setActionLoading("activate");
       await updateDoc(doc(db, "users", user.uid), { disabled: false });
+      await mergeUsersPublic(user.uid, { disabled: false }, "UserDetail");
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile attivare l'utente.");
     } finally {
@@ -183,6 +207,7 @@ export default function UserDetailScreen() {
           try {
             setActionLoading("deactivate");
             await updateDoc(doc(db, "users", user.uid), { disabled: true });
+            await mergeUsersPublic(user.uid, { disabled: true }, "UserDetail");
           } catch (e: any) {
             Alert.alert("Errore", e?.message ?? "Impossibile disattivare l'utente.");
           } finally {
@@ -198,6 +223,7 @@ export default function UserDetailScreen() {
     try {
       setActionLoading("promote");
       await updateDoc(doc(db, "users", user.uid), { role: "admin" });
+      await mergeUsersPublic(user.uid, { role: "admin" }, "UserDetail");
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile promuovere l'utente.");
     } finally {
@@ -216,6 +242,7 @@ export default function UserDetailScreen() {
           try {
             setActionLoading("demote");
             await updateDoc(doc(db, "users", user.uid), { role: "member" });
+            await mergeUsersPublic(user.uid, { role: "member" }, "UserDetail");
           } catch (e: any) {
             Alert.alert("Errore", e?.message ?? "Impossibile rimuovere i permessi Admin.");
           } finally {
@@ -240,6 +267,7 @@ export default function UserDetailScreen() {
             try {
               setActionLoading("delete");
               await deleteDoc(doc(db, "users", user.uid));
+              await deleteUsersPublic(user.uid, "UserDetail");
               try { (navigation as any)?.goBack?.(); } catch {}
             } catch (e: any) {
               Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
@@ -256,22 +284,28 @@ export default function UserDetailScreen() {
   // SALVATAGGIO PROFILO (Modifica)
   // ─────────────────────────────────────────
   const startEdit = () => {
-    setFFirstName(user.firstName || "");
-    setFLastName(user.lastName || "");
-    setFDisplayName(user.displayName || "");
-    setFNickname(user.nickname || "");
+    setFFirstName(user?.firstName ?? "");
+    setFLastName(user?.lastName ?? "");
+    setFDisplayName(user?.displayName ?? "");
+    setFNickname(user?.nickname ?? "");
     setEditMode(true);
   };
 
   const cancelEdit = () => {
     setEditMode(false);
-    setFFirstName(user.firstName || "");
-    setFLastName(user.lastName || "");
-    setFDisplayName(user.displayName || "");
-    setFNickname(user.nickname || "");
+    setFFirstName(user?.firstName ?? "");
+    setFLastName(user?.lastName ?? "");
+    setFDisplayName(user?.displayName ?? "");
+    setFNickname(user?.nickname ?? "");
   };
 
+  const handleFirstNameChange = (text: string) => setFFirstName(text);
+  const handleLastNameChange = (text: string) => setFLastName(text);
+  const handleDisplayNameChange = (text: string) => setFDisplayName(text);
+  const handleNicknameChange = (text: string) => setFNickname(text);
+
   const saveEdit = async () => {
+    if (!user) return;
     // valida minimale per i testi
     const patch: any = {
       firstName: fFirstName.trim() || null,
@@ -282,6 +316,7 @@ export default function UserDetailScreen() {
     try {
       setActionLoading("edit");
       await updateDoc(doc(db, "users", user.uid), patch);
+      await mergeUsersPublic(user.uid, patch, "UserDetail");
       setEditMode(false);
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile salvare le modifiche.");
@@ -294,36 +329,86 @@ export default function UserDetailScreen() {
   // RENDER
   // ─────────────────────────────────────────
   return (
-    <Screen useNativeHeader={true} scroll={true}>
+    <Screen useNativeHeader={true} scroll={false}>
       <Hero title={fullName()} subtitle={`${state.isAdmin ? "Admin" : "Member"} • ${user?.email || "—"}`} />
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 24 }}>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 4, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.title}>Dettagli</Text>
 
-          {!editMode ? (
-            <>
-              <View style={styles.row}><Text style={styles.label}>Email: </Text><Text>{user.email || "—"}</Text></View>
-              <View style={styles.row}><Text style={styles.label}>Nome: </Text><Text>{user.firstName || "—"}</Text></View>
-              <View style={styles.row}><Text style={styles.label}>Cognome: </Text><Text>{user.lastName || "—"}</Text></View>
-              <View style={styles.row}><Text style={styles.label}>Display Name: </Text><Text>{user.displayName || "—"}</Text></View>
-              <View style={styles.row}><Text style={styles.label}>Nickname: </Text><Text>{user.nickname || "—"}</Text></View>
-              <View style={styles.row}><Text style={styles.label}>Ruolo: </Text><Text>{state.isAdmin ? "Admin" : "Member"}</Text></View>
-              <View style={styles.row}>
-                <Text style={styles.label}>Stato: </Text>
-                <Text>
-                  {user.disabled === true ? "Disattivo" : user.approved === true ? "Attivo" : "In attesa approvazione"}
-                </Text>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+              <Text style={styles.badgeText}>{state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"}</Text>
+            </View>
+            {user.disabled ? (
+              <View style={[styles.badge, styles.badgeDanger]}>
+                <Text style={styles.badgeText}>Disattivo</Text>
               </View>
-            </>
-          ) : (
-            <>
-              <Field label="Nome" value={fFirstName} onChangeText={setFFirstName} />
-              <Field label="Cognome" value={fLastName} onChangeText={setFLastName} />
-              <Field label="Display Name" value={fDisplayName} onChangeText={setFDisplayName} />
-              <Field label="Nickname" value={fNickname} onChangeText={setFNickname} />
-            </>
-          )}
+            ) : (
+              <View style={[styles.badge, styles.badgeSuccess]}>
+                <Text style={styles.badgeText}>{user.approved ? "Attivo" : "In attesa"}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.card}>
+            {!editMode ? (
+              <>
+                <InfoRow label="Nome completo" value={`${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"} />
+                <InfoRow label="Display name" value={user.displayName || "—"} />
+                <InfoRow label="Nickname" value={user.nickname || "—"} />
+                <InfoRow label="Email" value={user.email || "—"} />
+                <InfoRow label="Ruolo" value={state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"} />
+                <InfoRow
+                  label="Stato"
+                  value={
+                    user.disabled === true ? "Disattivo" : user.approved === true ? "Attivo" : "In attesa approvazione"
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <LabeledInput
+                  ref={firstNameRef}
+                  label="Nome"
+                  value={fFirstName}
+                  placeholder="Mario"
+                  returnKeyType="next"
+                  onSubmitEditing={() => lastNameRef.current?.focus()}
+                  onChangeText={handleFirstNameChange}
+                />
+                <LabeledInput
+                  ref={lastNameRef}
+                  label="Cognome"
+                  value={fLastName}
+                  placeholder="Rossi"
+                  returnKeyType="next"
+                  onSubmitEditing={() => displayNameRef.current?.focus()}
+                  onChangeText={handleLastNameChange}
+                />
+                <LabeledInput
+                  ref={displayNameRef}
+                  label="Display Name"
+                  value={fDisplayName}
+                  placeholder="Rossi, Mario"
+                  returnKeyType="next"
+                  onSubmitEditing={() => nicknameRef.current?.focus()}
+                  onChangeText={handleDisplayNameChange}
+                />
+                <LabeledInput
+                  ref={nicknameRef}
+                  label="Nickname"
+                  value={fNickname}
+                  placeholder="SuperBiker"
+                  returnKeyType="done"
+                  onChangeText={handleNicknameChange}
+                />
+              </>
+            )}
+          </View>
 
           <View style={{ height: 16 }} />
 
@@ -359,34 +444,10 @@ export default function UserDetailScreen() {
               <Button title="Annulla" onPress={cancelEdit} />
             </View>
           )}
+          <View style={{ height: 120 }} />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </Screen>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (t: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontWeight: "700", marginBottom: 6 }}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        style={styles.input}
-        autoCapitalize="words"
-      />
-    </View>
   );
 }
 
@@ -419,8 +480,6 @@ function Button({
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 22, fontWeight: "900", color: "#111", marginBottom: 12 },
-  row: { flexDirection: "row", marginBottom: 6, flexWrap: "wrap" },
-  label: { fontWeight: "700", color: "#222" },
   btn: {
     backgroundColor: "#111",
     paddingHorizontal: 12,
@@ -430,12 +489,116 @@ const styles = StyleSheet.create({
   },
   btnText: { color: "#fff", fontWeight: "700", textAlign: "center" },
 
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  infoRow: {
+    marginBottom: 12,
+  },
+  infoLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  infoValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginTop: 4,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  badge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.4,
+  },
+  badgeAdmin: {
+    backgroundColor: "#1D4ED8",
+  },
+  badgeMember: {
+    backgroundColor: "#64748B",
+  },
+  badgeSuccess: {
+    backgroundColor: "#16A34A",
+  },
+  badgeDanger: {
+    backgroundColor: "#DC2626",
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748b",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
   input: {
     borderWidth: 1,
     borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: "#fff",
+    fontSize: 16,
+    color: "#0f172a",
   },
 });
+
+type LabeledInputProps = {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  returnKeyType?: "done" | "next" | "go" | "search" | "send" | "default";
+  onSubmitEditing?: () => void;
+};
+
+const LabeledInput = React.forwardRef<TextInput, LabeledInputProps>(
+  ({ label, value, onChangeText, placeholder, returnKeyType = "default", onSubmitEditing }, ref) => (
+    <View style={{ marginBottom: 18 }}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TextInput
+        ref={ref}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        style={styles.input}
+        autoCapitalize="words"
+        autoCorrect={false}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        blurOnSubmit={returnKeyType !== "next"}
+      />
+    </View>
+  )
+);
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value || "—"}</Text>
+    </View>
+  );
+}

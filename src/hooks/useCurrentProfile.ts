@@ -14,6 +14,7 @@ export type UserProfile = {
   nickname?: string;
   role?: UserRole;
   approved?: boolean;
+  disabled?: boolean;
   createdAt?: any;
 };
 

@@ -114,6 +114,7 @@ export type RootStackParamList = {
   Create: undefined; // alias compatibilità
   RideDetails: { rideId: string; title?: string };
   Profile: undefined;
+  Attesa: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -179,6 +180,7 @@ type UserProfile = {
   nickname?: string;
   role?: "admin" | "member";
   approved?: boolean;
+  disabled?: boolean;
   createdAt?: any; // Firestore timestamp
 };
 
@@ -409,6 +411,7 @@ function SignupScreen({
         nickname: nickname.trim() || "",
         role: "member",
         approved: false,
+        disabled: false,
         createdAt: serverTimestamp(),
       } as UserProfile);
 
@@ -419,6 +422,10 @@ function SignupScreen({
         firstName: firstName.trim() || null,
         lastName: lastName.trim() || null,
         nickname: nickname.trim() || null,
+        role: "member",
+        approved: false,
+        disabled: false,
+        email: cred.user.email || null,
         createdAt: serverTimestamp(),
       });
 

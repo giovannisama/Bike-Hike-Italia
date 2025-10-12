@@ -105,6 +105,7 @@ export default function ProfileScreen() {
             nickname: cleanNick || null,
             role: "member",
             approved: false,
+            disabled: false,
             createdAt: serverTimestamp(),
           },
           { merge: true }
@@ -131,6 +132,7 @@ export default function ProfileScreen() {
           firstName: cleanFirst || null,
           lastName: cleanLast || null,
           nickname: cleanNick || null,
+          email: email || null,
           createdAt: serverTimestamp(),
         },
         { merge: true }

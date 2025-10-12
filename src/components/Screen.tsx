@@ -13,9 +13,34 @@ export const UI = {
     bg: "#ffffff",
     card: "#ffffff",
     tint: "#ECFEFF",
+    danger: "#DC2626",
   },
   spacing: { xs: 6, sm: 10, md: 16, lg: 20, xl: 24 },
   radius: { sm: 10, md: 14, lg: 18, xl: 24, round: 999 },
+  shadow: {
+    card: {
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    hero: {
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 6,
+    },
+  },
+};
+
+type ScreenProps = {
+  title?: string;
+  subtitle?: string;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+  scroll?: boolean;
+  useNativeHeader?: boolean;
+  keyboardShouldPersistTaps?: "always" | "handled" | "never";
 };
 
 export function Screen({
@@ -25,14 +50,8 @@ export function Screen({
   children,
   scroll = true,
   useNativeHeader = false,
-}: {
-  title?: string;
-  subtitle?: string;
-  headerRight?: React.ReactNode;
-  children: React.ReactNode;
-  scroll?: boolean;
-  useNativeHeader?: boolean;
-}) {
+  keyboardShouldPersistTaps = "always",
+}: ScreenProps) {
   const Content = () => (
     <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
       {!useNativeHeader && (
@@ -96,7 +115,10 @@ export function Screen({
       }}
     >
       {scroll ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        >
           <Content />
         </ScrollView>
       ) : (
@@ -110,10 +132,12 @@ export function Hero({
   title,
   subtitle,
   style,
+  rightSlot,
 }: {
   title: string;
   subtitle?: string;
   style?: ViewStyle;
+  rightSlot?: React.ReactNode;
 }) {
   return (
     <LinearGradient
@@ -130,12 +154,17 @@ export function Hero({
         style,
       ]}
     >
-      <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
-      {!!subtitle && (
-        <Text style={{ fontSize: 16, fontWeight: "600", color: "#F0F9FF", marginTop: 4 }}>
-          {subtitle}
-        </Text>
-      )}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
+          {!!subtitle && (
+            <Text style={{ fontSize: 16, fontWeight: "600", color: "#F0F9FF", marginTop: 4 }}>
+              {subtitle}
+            </Text>
+          )}
+        </View>
+        {!!rightSlot && <View style={{ marginLeft: UI.spacing.sm }}>{rightSlot}</View>}
+      </View>
     </LinearGradient>
   );
 }

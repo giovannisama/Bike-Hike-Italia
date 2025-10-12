@@ -1,7 +1,7 @@
 // src/screens/CalendarScreen.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Modal } from "react-native";
-import { Calendar, DateObject, MarkedDates } from "react-native-calendars";
+import { Calendar, DateData } from "react-native-calendars";
 import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import { format } from "date-fns";
@@ -20,6 +20,16 @@ type Ride = {
   status?: "active" | "cancelled";
   archived?: boolean;
 };
+
+type CalendarMarkedDate = {
+  marked?: boolean;
+  dots?: Array<{ color: string }>;
+  selected?: boolean;
+  selectedColor?: string;
+  selectedTextColor?: string;
+};
+
+type CalendarMarkedDates = Record<string, CalendarMarkedDate>;
 
 
 function startOfMonthISO(yyyymm: string) {
@@ -188,8 +198,8 @@ export default function CalendarScreen() {
     }, [currentMonth]);
 
   // 🎯 markers per giorno (filtra per ricerca testuale e range date se attivi)
-  const marked: MarkedDates = useMemo(() => {
-    const out: MarkedDates = {};
+  const marked: CalendarMarkedDates = useMemo(() => {
+    const out: CalendarMarkedDates = {};
 
     // Filtri attivi
     const qText = searchText.trim().toLowerCase();
@@ -233,7 +243,7 @@ export default function CalendarScreen() {
         selected: day === selectedDay,
         selectedColor: "#111",
         selectedTextColor: "#fff",
-      } as any;
+      };
     });
 
     if (!out[selectedDay]) {
@@ -241,7 +251,7 @@ export default function CalendarScreen() {
         selected: true,
         selectedColor: "#111",
         selectedTextColor: "#fff",
-      } as any;
+      };
     }
 
     return out;
@@ -299,7 +309,7 @@ export default function CalendarScreen() {
     return base;
   }, [rides, searchText, dateFromInput, dateToInput]);
 
-  const onDayPress = useCallback((d: DateObject) => {
+  const onDayPress = useCallback((d: DateData) => {
     // ✅ Quando l'utente seleziona una data dal calendario, azzeriamo QUALSIASI filtro attivo
     clearSearch();
     // azzero anche gli stati locali del modal, così alla prossima apertura risultano vuoti
@@ -323,7 +333,7 @@ export default function CalendarScreen() {
     }
   }, [visibleMonth, currentMonth, clearSearch]);
 
-  const onMonthChange = useCallback((d: DateObject) => {
+  const onMonthChange = useCallback((d: DateData) => {
     // d.dateString è YYYY-MM-DD → ricaviamo YYYY-MM
     const yyyymm = d.dateString.slice(0, 7);
 
@@ -379,13 +389,13 @@ export default function CalendarScreen() {
             const isDisabled = state === 'disabled';
 
             const handlePress = () => {
-              const payload = {
+              const payload: DateData = {
                 dateString: key,
                 day: (date as any).day,
                 month: (date as any).month,
                 year: (date as any).year,
                 timestamp: (date as any).timestamp,
-              } as any;
+              };
               // usa onDayPress del calendario se fornito al dayComponent, altrimenti fallback al nostro handler in closure
               if (typeof dayOnPress === 'function') {
                 dayOnPress(payload);

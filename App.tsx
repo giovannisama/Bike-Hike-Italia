@@ -863,21 +863,22 @@ function HomeScreen({ navigation }: HomeProps) {
           style={{ marginBottom: UI.spacing.md }}
         />
 
-        <ShortcutCard
-          label="Nuova uscita"
-          caption="Solo Admin"
-          icon={
-            <MaterialCommunityIcons
-              name={isAdmin ? "plus-circle-outline" : "lock-outline"}
-              size={32}
-              color={isAdmin ? UI.colors.accent : UI.colors.muted}
-            />
-          }
-          onPress={() => navigation.navigate("CreateRide")}
-          disabled={!isAdmin}
-          iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
-          style={{ marginBottom: UI.spacing.md }}
-        />
+        {isAdmin && (
+          <ShortcutCard
+            label="Nuova uscita"
+            caption="Solo Admin"
+            icon={
+              <MaterialCommunityIcons
+                name="plus-circle-outline"
+                size={32}
+                color={UI.colors.accent}
+              />
+            }
+            onPress={() => navigation.navigate("CreateRide")}
+            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+            style={{ marginBottom: UI.spacing.md }}
+          />
+        )}
 
         <ShortcutCard
           label="Calendario"
@@ -894,21 +895,22 @@ function HomeScreen({ navigation }: HomeProps) {
           style={{ marginBottom: UI.spacing.md }}
         />
 
-        <ShortcutCard
-          label="Amministrazione"
-          caption="Solo Admin"
-          icon={
-            <MaterialCommunityIcons
-              name="shield-lock-outline"
-              size={32}
-              color={isAdmin ? UI.colors.accent : UI.colors.muted}
-            />
-          }
-          onPress={() => navigation.navigate("Amministrazione")}
-          disabled={!isAdmin}
-          iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
-          style={{ marginBottom: UI.spacing.md }}
-        />
+        {isAdmin && (
+          <ShortcutCard
+            label="Amministrazione"
+            caption="Solo Admin"
+            icon={
+              <MaterialCommunityIcons
+                name="shield-lock-outline"
+                size={32}
+                color={UI.colors.accent}
+              />
+            }
+            onPress={() => navigation.navigate("Amministrazione")}
+            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+            style={{ marginBottom: UI.spacing.md }}
+          />
+        )}
 
         <ShortcutCard
           label="Profilo"

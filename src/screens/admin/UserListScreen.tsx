@@ -10,15 +10,10 @@ import {
   Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { Screen } from "../../components/Screen";
+import { Screen, UI } from "../../components/Screen";
 import { auth, db } from "../../firebase";
 import { collection, onSnapshot, DocumentData, updateDoc, doc } from "firebase/firestore";
 import { mergeUsersPublic } from "../../utils/usersPublicSync";
-
-// Tema locale (evita dipendenza da UI globale)
-const THEME = {
-  colors: { primary: "#1D4ED8", text: "#0f172a" },
-} as const;
 
 type BooleanFirestoreValue =
   | boolean
@@ -113,7 +108,7 @@ function SmallBtn({
   disabled?: boolean;
   kind?: "primary" | "warning";
 }) {
-  const bg = kind === "warning" ? "#B91C1C" : THEME.colors.primary;
+  const bg = kind === "warning" ? UI.colors.danger : UI.colors.primary;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -153,7 +148,11 @@ function Row({
       : ("In attesa" as const);
 
   const badgeColor =
-    stato === "Attivo" ? "#16A34A" : stato === "Disattivo" ? "#6B7280" : "#D97706";
+    stato === "Attivo"
+      ? UI.colors.secondary
+      : stato === "Disattivo"
+      ? UI.colors.muted
+      : UI.colors.accentWarm;
 
   return (
     <TouchableOpacity
@@ -450,13 +449,13 @@ export default function UserListScreen() {
           onPress={() => setFilter(k)}
           style={[
             styles.tabBtn,
-            { backgroundColor: active ? THEME.colors.primary : "#fff" },
+            { backgroundColor: active ? UI.colors.primary : UI.colors.card },
           ]}
         >
           <Text
             style={[
               styles.tabBtnText,
-              { color: active ? "#fff" : THEME.colors.text },
+              { color: active ? "#fff" : UI.colors.text },
             ]}
           >
             {label}
@@ -477,9 +476,9 @@ export default function UserListScreen() {
 
   return (
     <Screen useNativeHeader={true} scroll={false}>
-      <View style={{ padding: 16, flex: 1 }}>
+      <View style={{ padding: UI.spacing.lg, flex: 1, gap: UI.spacing.md }}>
         <FilterTab />
-        <Text style={{ color: "#64748b", marginTop: 6 }}>
+        <Text style={{ color: UI.colors.muted }}>
           Ruolo corrente: {meRole || "(sconosciuto)"}
         </Text>
 
@@ -497,8 +496,8 @@ export default function UserListScreen() {
             data={items}
             keyExtractor={(item) => item.uid}
             renderItem={renderItem}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            contentContainerStyle={{ paddingTop: 10, paddingBottom: 20 }}
+            ItemSeparatorComponent={() => <View style={{ height: UI.spacing.sm }} />}
+            contentContainerStyle={{ paddingTop: UI.spacing.sm, paddingBottom: UI.spacing.lg }}
           />
         )}
       </View>
@@ -511,32 +510,32 @@ const styles = StyleSheet.create({
 
   row: {
     width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: UI.colors.card,
+    borderRadius: UI.radius.lg,
+    padding: UI.spacing.md,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: UI.spacing.sm,
   },
-  rowTitle: { fontSize: 16, fontWeight: "800", color: "#0f172a" },
-  rowSub: { color: "#374151", marginTop: 2 },
+  rowTitle: { fontSize: 16, fontWeight: "800", color: UI.colors.text },
+  rowSub: { color: UI.colors.muted, marginTop: 2 },
 
   smallBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: UI.spacing.sm,
+    paddingVertical: UI.spacing.xs,
     borderRadius: 999,
   },
   smallBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
 
   tabWrap: {
     flexDirection: "row",
-    gap: 8,
+    gap: UI.spacing.sm,
   },
   tabBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: UI.spacing.md,
+    paddingVertical: UI.spacing.xs,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#e5e7eb",

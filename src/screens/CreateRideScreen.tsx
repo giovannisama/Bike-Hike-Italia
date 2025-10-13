@@ -4,11 +4,10 @@ import {
   View,
   Text,
   TextInput,
-  Button,
-  ScrollView,
   StyleSheet,
   Alert,
   Pressable,
+  TouchableOpacity,
 } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -22,8 +21,7 @@ import {
   setDoc,
   collection,
 } from "firebase/firestore";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { Screen, UI } from "../components/Screen";
 
 const BIKE_TYPES = ["BDC", "Gravel", "MTB", "Enduro"] as const;
 const DIFFICULTY_OPTIONS = [
@@ -33,114 +31,10 @@ const DIFFICULTY_OPTIONS = [
   "Estremo",
 ] as const;
 
-// ---- UI THEME (coerente con App.tsx) ----
-const UI = {
-  colors: {
-    primary: "#06b6d4",
-    secondary: "#0ea5e9",
-    text: "#0f172a",
-    muted: "#64748b",
-    bg: "#ffffff",
-    card: "#ffffff",
-    tint: "#ECFEFF",
-    danger: "#DC2626",
-    warningBg: "#FFF7ED",
-    warningBorder: "#FED7AA",
-  },
-  spacing: { xs: 6, sm: 10, md: 16, lg: 20, xl: 24 },
-  radius: { sm: 10, md: 14, lg: 18, xl: 24, round: 999 },
-  shadow: {
-    card: {
-      shadowColor: "#000",
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      elevation: 3,
-    },
-    hero: {
-      shadowColor: "#000",
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 6,
-    },
-  },
-  text: {
-    h1Light: { fontSize: 22, fontWeight: "900", color: "#fff" } as const,
-    h2Light: { fontSize: 16, fontWeight: "600", color: "#F0F9FF" } as const,
-  },
-};
-
 // Spaziatore verticale
 const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
   <View style={{ height: UI.spacing[size] }} />
 );
-
-// ---- COMPONENTE: Screen (template grafico riusabile) ----
-function Screen({
-  title,
-  subtitle,
-  headerRight,
-  children,
-  scroll = true,
-}: {
-  title?: string;
-  subtitle?: string;
-  headerRight?: React.ReactNode;
-  children: React.ReactNode;
-  scroll?: boolean;
-}) {
-  return (
-    <View style={{ flex: 1, backgroundColor: UI.colors.primary }}>
-      {/* Header gradient */}
-      <LinearGradient
-        colors={[UI.colors.primary, UI.colors.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ paddingHorizontal: UI.spacing.lg, paddingTop: UI.spacing.lg, paddingBottom: UI.spacing.lg + 4 }}
-      >
-        <SafeAreaView edges={["top"]}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
-              {!!title && <Text style={UI.text.h1Light}>{title}</Text>}
-              {!!subtitle && <Text style={[UI.text.h2Light, { marginTop: 4 }]}>{subtitle}</Text>}
-            </View>
-            {!!headerRight && <View style={{ marginLeft: UI.spacing.sm }}>{headerRight}</View>}
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-
-      {/* Body container (rounded) */}
-      {scroll ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-          <View
-            style={{
-              flex: 1,
-              marginTop: -UI.radius.xl,
-              backgroundColor: UI.colors.bg,
-              borderTopLeftRadius: UI.radius.xl,
-              borderTopRightRadius: UI.radius.xl,
-              padding: UI.spacing.lg,
-            }}
-          >
-            {children}
-          </View>
-        </ScrollView>
-      ) : (
-        <View
-          style={{
-            flex: 1,
-            marginTop: -UI.radius.xl,
-            backgroundColor: UI.colors.bg,
-            borderTopLeftRadius: UI.radius.xl,
-            borderTopRightRadius: UI.radius.xl,
-            padding: UI.spacing.lg,
-          }}
-        >
-          {children}
-        </View>
-      )}
-    </View>
-  );
-}
 
 // Tipi route (adatta se il tuo RootStack ha nomi diversi)
 type RootStackParamList = {
@@ -445,200 +339,284 @@ export default function CreateRideScreen() {
   // ---------- UI ----------
   const titleScreen = isEdit ? "Modifica Uscita" : "Crea Uscita";
 
-    return (
-      <Screen
-        title={titleScreen}
-        subtitle={isAdmin ? "Solo gli amministratori possono salvare" : "Compila i dettagli dell'uscita"}
-        scroll={true}
-      >
-        {!isAdmin && (
-          <Text style={{ color: "#b91c1c", marginBottom: 8 }}>
-            Solo l’amministratore può salvare o modificare un’uscita.
-          </Text>
+  const adminWarning = !isAdmin ? "Solo l’amministratore può salvare o modificare un’uscita." : null;
+
+  return (
+    <Screen
+      title={titleScreen}
+      subtitle={isAdmin ? "Solo gli amministratori possono salvare" : "Compila i dettagli dell'uscita"}
+      scroll={true}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={{ gap: UI.spacing.md }}>
+        {!!adminWarning && (
+          <View style={styles.alertBox}>
+            <Text style={styles.alertText}>{adminWarning}</Text>
+          </View>
         )}
 
-        {/* Titolo */}
-        <Text style={styles.label}>Titolo</Text>
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Uscita Gravel ai Colli Euganei"
-          style={styles.input}
-          autoCorrect
-          autoCapitalize="sentences"
-          returnKeyType="next"
-          blurOnSubmit={false}
-        />
-
-        {/* Guida */}
-        <Text style={styles.label}>Guida (testo libero)</Text>
-        <TextInput
-          value={guidaText}
-          onChangeText={setGuidaText}
-          placeholder="Es. Mario Rossi, Anna Verdi"
-          style={styles.input}
-        />
-        <Text style={{ color: "#666", fontSize: 12, marginTop: 4 }}>
-          Puoi inserire più nomi separati da virgola. Il primo sarà mostrato come “guida principale”.
-        </Text>
-
-        {/* Tipo di bici */}
-        <Text style={styles.label}>Tipo di bici</Text>
-        <View style={styles.chipsWrap}>
-          {BIKE_TYPES.map((b) => {
-            const active = bikes.includes(b);
-            return (
-              <Pressable
-                key={b}
-                onPress={() => toggleBike(b)}
-                style={[styles.chip, active && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Titolo</Text>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Uscita Gravel ai Colli Euganei"
+            style={styles.input}
+            autoCorrect
+            autoCapitalize="sentences"
+            returnKeyType="next"
+            blurOnSubmit={false}
+          />
         </View>
 
-        {/* Difficoltà */}
-        <Text style={styles.label}>Difficoltà</Text>
-        <View style={styles.chipsWrap}>
-          {DIFFICULTY_OPTIONS.map((opt) => {
-            const active = difficulty === opt;
-            return (
-              <Pressable
-                key={opt}
-                onPress={() => setDifficulty(active ? "" : opt)}
-                style={[styles.chip, active && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Guida (testo libero)</Text>
+          <TextInput
+            value={guidaText}
+            onChangeText={setGuidaText}
+            placeholder="Es. Mario Rossi, Anna Verdi"
+            style={styles.input}
+          />
+          <Text style={styles.helperText}>
+            Puoi inserire più nomi separati da virgola. Il primo sarà mostrato come “guida principale”.
+          </Text>
         </View>
 
-        {/* Data/Ora */}
-        <Text style={styles.label}>Data (YYYY-MM-DD)</Text>
-        <TextInput
-          value={date}
-          onChangeText={setDate}
-          placeholder="2025-10-10"
-          keyboardType="default"
-          autoCapitalize="none"
-          style={styles.input}
-        />
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Tipo di bici</Text>
+          <View style={styles.chipsWrap}>
+            {BIKE_TYPES.map((b) => {
+              const active = bikes.includes(b);
+              return (
+                <Pressable
+                  key={b}
+                  onPress={() => toggleBike(b)}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
 
-        <Text style={styles.label}>Ora (HH:MM)</Text>
-        <TextInput
-          value={time}
-          onChangeText={setTime}
-          placeholder="08:30"
-          keyboardType="default"
-          autoCapitalize="none"
-          style={styles.input}
-        />
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Difficoltà</Text>
+          <View style={styles.chipsWrap}>
+            {DIFFICULTY_OPTIONS.map((opt) => {
+              const active = difficulty === opt;
+              return (
+                <Pressable
+                  key={opt}
+                  onPress={() => setDifficulty(active ? "" : opt)}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
 
-        {/* Luogo + Link */}
-        <Text style={styles.label}>Luogo di ritrovo</Text>
-        <TextInput
-          value={meetingPoint}
-          onChangeText={setMeetingPoint}
-          placeholder="Piazzale Roma"
-          style={styles.input}
-        />
-        <Text style={styles.label}>Link posizione (opzionale)</Text>
-        <TextInput
-          value={link}
-          onChangeText={setLink}
-          placeholder="Incolla link Google Maps / Apple Maps / geo:"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Data (YYYY-MM-DD)</Text>
+          <TextInput
+            value={date}
+            onChangeText={setDate}
+            placeholder="2025-10-10"
+            keyboardType="default"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+        </View>
 
-        {/* Descrizione */}
-        <Text style={styles.label}>Descrizione</Text>
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Percorso gravel panoramico…"
-          style={[styles.input, { height: 100, textAlignVertical: "top" }]}
-          multiline
-        />
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Ora (HH:MM)</Text>
+          <TextInput
+            value={time}
+            onChangeText={setTime}
+            placeholder="08:30"
+            keyboardType="default"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+        </View>
 
-        {/* Max partecipanti (opzionale) */}
-        <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
-        <TextInput
-          value={maxParticipants}
-          onChangeText={setMaxParticipants}
-          placeholder="es. 12 (lascia vuoto per nessun limite)"
-          keyboardType="number-pad"
-          style={styles.input}
-        />
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Luogo di ritrovo</Text>
+          <TextInput
+            value={meetingPoint}
+            onChangeText={setMeetingPoint}
+            placeholder="Piazzale Roma"
+            style={styles.input}
+          />
+        </View>
 
-        {/* Sezione amministrativa (solo in edit) */}
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Link posizione (opzionale)</Text>
+          <TextInput
+            value={link}
+            onChangeText={setLink}
+            placeholder="Incolla link Google Maps / Apple Maps / geo:"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Descrizione</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Percorso gravel panoramico…"
+            style={[styles.input, styles.textArea]}
+            multiline
+          />
+        </View>
+
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
+          <TextInput
+            value={maxParticipants}
+            onChangeText={setMaxParticipants}
+            placeholder="es. 12 (lascia vuoto per nessun limite)"
+            keyboardType="number-pad"
+            style={styles.input}
+          />
+        </View>
+
         {isEdit && isAdmin && (
-          <View style={{ marginTop: 16, gap: 8 }}>
-            <Text style={[styles.label, { marginBottom: 0 }]}>Azioni amministrative</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <Pressable onPress={toggleCancelled} style={[styles.adminBtn, status === "cancelled" && { backgroundColor: "#DC2626" }]}>
+          <View style={[styles.formBlock, { gap: UI.spacing.sm }]}>
+            <Text style={styles.label}>Azioni amministrative</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm }}>
+              <Pressable
+                onPress={toggleCancelled}
+                style={[
+                  styles.adminBtn,
+                  status === "cancelled" && { backgroundColor: UI.colors.danger },
+                ]}
+              >
                 <Text style={styles.adminBtnText}>
                   {status === "cancelled" ? "Riapri" : "Annulla"}
                 </Text>
               </Pressable>
-              <Pressable onPress={toggleArchived} style={[styles.adminBtn, archived && { backgroundColor: "#6B7280" }]}>
+              <Pressable
+                onPress={toggleArchived}
+                style={[
+                  styles.adminBtn,
+                  archived && { backgroundColor: UI.colors.muted },
+                ]}
+              >
                 <Text style={styles.adminBtnText}>
                   {archived ? "Ripristina" : "Archivia"}
                 </Text>
               </Pressable>
             </View>
-            <Text style={{ color: "#666" }}>
-              Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}{archived ? " • ARCHIVIATA" : ""}
+            <Text style={styles.helperText}>
+              Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
+              {archived ? " • ARCHIVIATA" : ""}
             </Text>
           </View>
         )}
 
-        <View style={{ height: 12 }} />
-        <Button
-          title={saving ? (isEdit ? "Aggiorno…" : "Salvataggio…") : (isEdit ? "💾 Salva modifiche" : "💾 Crea uscita")}
-          onPress={onSave}
-          disabled={saving || !isAdmin || loadingPrefill}
-        />
+        <View style={{ marginTop: UI.spacing.lg }}>
+          <TouchableOpacity
+            onPress={onSave}
+            disabled={saving || !isAdmin || loadingPrefill}
+            style={[
+              styles.saveBtn,
+              (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
+            ]}
+          >
+            <Text style={styles.saveBtnText}>
+              {saving
+                ? isEdit
+                  ? "Aggiorno…"
+                  : "Salvataggio…"
+                : isEdit
+                ? "💾 Salva modifiche"
+                : "💾 Crea uscita"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <VSpace size="xl" />
-      </Screen>
-    );
+      </View>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  title: { fontSize: 20, fontWeight: "700", marginBottom: 8 },
-  label: { marginTop: 12, marginBottom: 6, fontWeight: "600" },
+  formBlock: { gap: UI.spacing.xs },
+  label: {
+    fontWeight: "700",
+    color: UI.colors.text,
+  },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
+    borderColor: "#d1d5db",
+    borderRadius: UI.radius.md,
+    paddingHorizontal: UI.spacing.sm,
+    paddingVertical: 12,
     backgroundColor: "#fff",
+    fontSize: 16,
+    color: UI.colors.text,
   },
-  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  textArea: {
+    minHeight: 120,
+    textAlignVertical: "top",
+  },
+  helperText: {
+    fontSize: 12,
+    color: UI.colors.muted,
+  },
+  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm },
   chip: {
     borderWidth: 1,
-    borderColor: "#999",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
+    borderColor: "#d1d5db",
+    borderRadius: UI.radius.round,
+    paddingHorizontal: UI.spacing.md,
+    paddingVertical: UI.spacing.xs,
     backgroundColor: "#fff",
   },
-  chipActive: { backgroundColor: "#222", borderColor: "#222" },
-  chipText: { color: "#222" },
+  chipActive: {
+    backgroundColor: UI.colors.primary,
+    borderColor: UI.colors.primary,
+  },
+  chipText: { color: UI.colors.text, fontWeight: "600" },
   chipTextActive: { color: "#fff" },
 
   adminBtn: {
-    backgroundColor: "#111827",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    backgroundColor: UI.colors.primary,
+    paddingHorizontal: UI.spacing.md,
+    paddingVertical: UI.spacing.xs,
+    borderRadius: UI.radius.md,
   },
   adminBtnText: { color: "#fff", fontWeight: "700" },
+  alertBox: {
+    backgroundColor: UI.colors.warningBg,
+    borderColor: UI.colors.warningBorder,
+    borderWidth: 1,
+    borderRadius: UI.radius.md,
+    padding: UI.spacing.sm,
+  },
+  alertText: {
+    color: "#7C2D12",
+    fontWeight: "600",
+  },
+  saveBtn: {
+    backgroundColor: UI.colors.accent,
+    borderRadius: UI.radius.lg,
+    paddingVertical: UI.spacing.sm,
+    alignItems: "center",
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
 });

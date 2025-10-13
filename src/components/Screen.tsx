@@ -4,19 +4,23 @@ import { View, Text, ScrollView, ViewStyle, KeyboardAvoidingView, Platform } fro
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
+const COLORS = {
+  primary: "#0B3D2E",
+  secondary: "#1FA36B",
+  accent: "#C1275A",
+  accentWarm: "#F7B32B",
+  text: "#102A43",
+  muted: "#5B6B7F",
+  bg: "#ffffff",
+  card: "#ffffff",
+  tint: "#E6F4ED",
+  danger: "#DC2626",
+  warningBg: "#FFF7ED",
+  warningBorder: "#FED7AA",
+};
+
 export const UI = {
-  colors: {
-    primary: "#0B3D2E",
-    secondary: "#1FA36B",
-    accent: "#C1275A",
-    accentWarm: "#F7B32B",
-    text: "#102A43",
-    muted: "#5B6B7F",
-    bg: "#ffffff",
-    card: "#ffffff",
-    tint: "#E6F4ED",
-    danger: "#DC2626",
-  },
+  colors: COLORS,
   spacing: { xs: 6, sm: 10, md: 16, lg: 20, xl: 24 },
   radius: { sm: 10, md: 14, lg: 18, xl: 24, round: 999 },
   shadow: {
@@ -32,6 +36,10 @@ export const UI = {
       shadowRadius: 12,
       elevation: 6,
     },
+  },
+  text: {
+    h1Light: { fontSize: 22, fontWeight: "900", color: "#fff" } as const,
+    h2Light: { fontSize: 16, fontWeight: "700", color: COLORS.accentWarm, letterSpacing: 0.4 } as const,
   },
 };
 
@@ -59,7 +67,7 @@ export function Screen({
     <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
       {!useNativeHeader && (
         <LinearGradient
-          colors={[UI.colors.primary, UI.colors.secondary]}
+          colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
@@ -72,17 +80,16 @@ export function Screen({
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
                 {!!title && (
-                  <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>
-                    {title}
-                  </Text>
+                  <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
                 )}
                 {!!subtitle && (
                   <Text
                     style={{
                       fontSize: 16,
-                      fontWeight: "600",
-                      color: "#F0F9FF",
+                      fontWeight: "700",
+                      color: UI.colors.accentWarm,
                       marginTop: 4,
+                      letterSpacing: 0.4,
                     }}
                   >
                     {subtitle}
@@ -150,7 +157,7 @@ export function Hero({
 }) {
   return (
     <LinearGradient
-      colors={[UI.colors.primary, UI.colors.secondary]}
+      colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[
@@ -167,7 +174,15 @@ export function Hero({
         <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
           <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
           {!!subtitle && (
-            <Text style={{ fontSize: 16, fontWeight: "600", color: "#F0F9FF", marginTop: 4 }}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "700",
+                color: UI.colors.accentWarm,
+                marginTop: 4,
+                letterSpacing: 0.4,
+              }}
+            >
               {subtitle}
             </Text>
           )}

@@ -27,11 +27,15 @@ import {
   getDoc,
   updateDoc,
   getDocs,
+  arrayUnion,
+  arrayRemove,
+  increment,
 } from "firebase/firestore";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
-import { Screen } from "../components/Screen";
+import { Screen, UI } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
+import { Ionicons } from "@expo/vector-icons";
 
 // Tipi parametri di navigazione (adatta se usi un RootStack diverso)
 type RootStackParamList = {
@@ -57,13 +61,28 @@ type Ride = {
   archived?: boolean;
   archiveYear?: number | null;
   archiveMonth?: number | null;
+  manualParticipants?: ManualParticipant[] | null;
+};
+
+type ManualParticipant = {
+  id: string;
+  name: string;
+  note?: string | null;
+  addedBy?: string | null;
+  createdAt?: Timestamp | null;
+  manual?: boolean;
+  raw?: any;
 };
 
 type Participant = {
-  uid: string;
+  id: string;
+  uid?: string | null;
   name: string;
   note?: string | null;
   createdAt?: Timestamp | null;
+  manual?: boolean;
+  manualRaw?: ManualParticipant;
+  addedBy?: string | null;
 };
 
 // Mini profilo pubblico per rendering elenco
@@ -114,6 +133,11 @@ export default function RideDetails() {
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [joinSaving, setJoinSaving] = useState(false);
+
+  const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
 
   const currentUid = auth.currentUser?.uid || "";
 
@@ -205,6 +229,31 @@ export default function RideDetails() {
         }
 
         const d = snap.data() as any;
+        const rawManual = Array.isArray(d?.manualParticipants) ? d.manualParticipants : [];
+        const manualParticipants: ManualParticipant[] = rawManual
+          .map((mp: any): ManualParticipant | null => {
+            const name = (mp?.name ?? "").toString().trim();
+            if (!name) return null;
+            return {
+              id:
+                typeof mp?.id === "string" && mp.id
+                  ? mp.id
+                  : `manual_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+              name,
+              note: mp?.note ?? null,
+              addedBy: mp?.addedBy ?? null,
+              createdAt: mp?.createdAt ?? null,
+              manual: true,
+              raw: mp,
+            };
+          })
+          .filter(Boolean) as ManualParticipant[];
+
+        const updatedCount =
+          typeof d?.participantsCount === "number"
+            ? d.participantsCount
+            : participants.length + manualParticipants.length;
+
         setRide({
           title: d?.title ?? "",
           meetingPoint: d?.meetingPoint ?? "",
@@ -215,7 +264,7 @@ export default function RideDetails() {
           date: d?.date ?? null,
           dateTime: d?.dateTime ?? null,
           maxParticipants: d?.maxParticipants ?? null,
-          participantsCount: d?.participantsCount ?? 0,
+          participantsCount: updatedCount,
           guidaName: d?.guidaName ?? null,
           createdBy: d?.createdBy,
           createdAt: d?.createdAt ?? null,
@@ -224,6 +273,7 @@ export default function RideDetails() {
           archived: !!d?.archived,
           archiveYear: d?.archiveYear ?? null,
           archiveMonth: d?.archiveMonth ?? null,
+          manualParticipants,
         });
         setLoadingRide(false);
       },
@@ -253,10 +303,13 @@ export default function RideDetails() {
         snap.forEach((d) => {
           const x = d.data() as any;
           rows.push({
+            id: d.id,
             uid: x?.uid,
             name: x?.name ?? "",
             note: x?.note ?? null,
             createdAt: x?.createdAt ?? null,
+            manual: x?.manual === true,
+            addedBy: x?.addedBy ?? null,
           });
         });
         setParticipants(rows);
@@ -276,7 +329,7 @@ export default function RideDetails() {
   useEffect(() => {
     const missing = participants
       .map((p) => p.uid)
-      .filter((uid) => uid && !publicIndex[uid]);
+      .filter((uid): uid is string => typeof uid === "string" && !!uid && !publicIndex[uid]);
 
     if (missing.length === 0) return;
 
@@ -319,17 +372,44 @@ export default function RideDetails() {
     return ride.bikes.join(", ");
   }, [ride]);
 
-  const participantsCountLive = participants.length;
+  const manualParticipantsList = useMemo<Participant[]>(() => {
+    if (!ride?.manualParticipants || ride.manualParticipants.length === 0) return [];
+    return ride.manualParticipants.map((mp) => ({
+      id: mp.id,
+      uid: null,
+      name: mp.name,
+      note: mp.note ?? null,
+      createdAt: mp.createdAt ?? null,
+      manual: true,
+      manualRaw: (mp.raw ?? mp) as ManualParticipant,
+      addedBy: mp.addedBy ?? null,
+    }));
+  }, [ride?.manualParticipants]);
+
+  const combinedParticipants = useMemo(() => {
+    const merged = [...participants, ...manualParticipantsList];
+    return merged.sort((a, b) => {
+      const aTs = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
+      const bTs = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
+      if (aTs === bTs) return a.name.localeCompare(b.name);
+      return aTs - bTs;
+    });
+  }, [participants, manualParticipantsList]);
+
+  const participantsCountLive = combinedParticipants.length;
   const maxText =
     ride?.maxParticipants == null ? "Nessun limite" : String(ride.maxParticipants);
 
   const myParticipant = useMemo(
-    () => participants.find((p) => p.uid === currentUid) || null,
-    [participants, currentUid]
+    () => combinedParticipants.find((p) => p.uid === currentUid) || null,
+    [combinedParticipants, currentUid]
   );
 
   const formatCognomeNome = useCallback(
-    (uid: string, fallback?: string) => {
+    (uid?: string | null, fallback?: string) => {
+      if (!uid) {
+        return fallback?.trim() || "Ospite";
+      }
       const p = publicIndex[uid];
       if (p) {
         const ln = (p.lastName || "").trim();
@@ -551,6 +631,35 @@ export default function RideDetails() {
     setNoteModalVisible(false);
   }, [joinSaving]);
 
+  const openManualModal = useCallback(() => {
+    setManualName("");
+    setManualNote("");
+    setManualModalVisible(true);
+  }, []);
+
+  const closeManualModal = useCallback(() => {
+    if (manualSaving) return;
+    setManualModalVisible(false);
+    setManualName("");
+    setManualNote("");
+  }, [manualSaving]);
+
+  const adjustParticipantsCount = useCallback(
+    async (delta: number) => {
+      if (!rideId || delta === 0) return;
+      try {
+        const rideRef = doc(db, "rides", rideId);
+        const snap = await getDoc(rideRef);
+        const current = snap.exists() ? (snap.data()?.participantsCount ?? 0) : 0;
+        const next = Math.max(current + delta, 0);
+        await updateDoc(rideRef, { participantsCount: next });
+      } catch (e) {
+        console.warn("adjustParticipantsCount", e);
+      }
+    },
+    [rideId]
+  );
+
   const confirmJoin = useCallback(async () => {
     if (joinSaving) return;
     const u = auth.currentUser;
@@ -570,7 +679,7 @@ export default function RideDetails() {
     }
     if (
       typeof ride?.maxParticipants === "number" &&
-      participants.length >= (ride?.maxParticipants ?? 0)
+      combinedParticipants.length >= (ride?.maxParticipants ?? 0)
     ) {
       Alert.alert("Posti esauriti", "Non è più possibile iscriversi a questa uscita.");
       return;
@@ -588,13 +697,20 @@ export default function RideDetails() {
       const publicName = buildPublicName(publicMini).trim();
       const safeName = publicName.slice(0, 80);
 
+      const participantRef = doc(db, "rides", rideId, "participants", u.uid);
+      const prev = await getDoc(participantRef);
+
       // ✍️ Scrivi SEMPRE il documento completo (compatibile con le regole di update)
-      await setDoc(doc(db, "rides", rideId, "participants", u.uid), {
+      await setDoc(participantRef, {
         uid: u.uid,
         name: safeName,
         note: noteText.trim() || null,
-        createdAt: serverTimestamp(),
+        createdAt: prev.exists() ? prev.data()?.createdAt ?? serverTimestamp() : serverTimestamp(),
       });
+
+      if (!prev.exists()) {
+        await adjustParticipantsCount(1);
+      }
 
       setNoteModalVisible(false);
       setNoteText("");
@@ -604,7 +720,43 @@ export default function RideDetails() {
     } finally {
       setJoinSaving(false);
     }
-  }, [rideId, noteText, joinSaving, ride, participants.length, publicIndex, fetchPublicMini, buildPublicName]);
+  }, [rideId, noteText, joinSaving, ride, combinedParticipants.length, publicIndex, fetchPublicMini, buildPublicName, adjustParticipantsCount]);
+
+  const confirmManualAdd = useCallback(async () => {
+    if (!isAdmin || manualSaving) return;
+    const label = manualName.trim().replace(/\s+/g, " ");
+    if (!label) {
+      Alert.alert("Attenzione", "Inserisci un nome valido.");
+      return;
+    }
+    if (!rideId) return;
+
+    try {
+      setManualSaving(true);
+      const entryId = `manual_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+      const entry = {
+        id: entryId,
+        name: label.slice(0, 80),
+        note: manualNote.trim() ? manualNote.trim() : null,
+        manual: true,
+        addedBy: currentUid || null,
+        createdAt: Timestamp.now(),
+      } as ManualParticipant;
+
+      await updateDoc(doc(db, "rides", rideId), {
+        manualParticipants: arrayUnion(entry),
+      });
+      await adjustParticipantsCount(1);
+      setManualModalVisible(false);
+      setManualName("");
+      setManualNote("");
+    } catch (e: any) {
+      console.error("manual add error:", e);
+      Alert.alert("Errore", e?.message ?? "Impossibile aggiungere il partecipante.");
+    } finally {
+      setManualSaving(false);
+    }
+  }, [isAdmin, manualSaving, manualName, manualNote, rideId, currentUid, adjustParticipantsCount]);
 
   const leave = useCallback(async () => {
     const u = auth.currentUser;
@@ -612,20 +764,58 @@ export default function RideDetails() {
 
     Alert.alert("Conferma", "Vuoi cancellare la prenotazione?", [
       { text: "Annulla", style: "cancel" },
-      {
-        text: "Sì, cancella",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, "rides", rideId, "participants", u.uid));
-          } catch (e: any) {
-            console.error("leave error:", e);
-            Alert.alert("Errore", e?.message ?? "Impossibile cancellare la prenotazione.");
-          }
-        },
+          {
+            text: "Sì, cancella",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteDoc(doc(db, "rides", rideId, "participants", u.uid));
+                await adjustParticipantsCount(-1);
+              } catch (e: any) {
+                console.error("leave error:", e);
+                Alert.alert("Errore", e?.message ?? "Impossibile cancellare la prenotazione.");
+              }
+            },
       },
     ]);
-  }, [rideId]);
+  }, [rideId, adjustParticipantsCount]);
+
+  const handleAdminRemove = useCallback(
+    (participant: Participant) => {
+      if (!isAdmin || !rideId) return;
+      const label = formatCognomeNome(participant.uid ?? "", participant.name);
+
+      Alert.alert(
+        "Rimuovere partecipante?",
+        label,
+        [
+          { text: "Annulla", style: "cancel" },
+          {
+            text: "Rimuovi",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                if (participant.manual) {
+                  if (!participant.manualRaw) return;
+                  await updateDoc(doc(db, "rides", rideId), {
+                    manualParticipants: arrayRemove(participant.manualRaw),
+                  });
+                  await adjustParticipantsCount(-1);
+                } else {
+                  await deleteDoc(doc(db, "rides", rideId, "participants", participant.id));
+                  await adjustParticipantsCount(-1);
+                }
+              } catch (e: any) {
+                console.error("admin remove participant", e);
+                Alert.alert("Errore", e?.message ?? "Impossibile rimuovere il partecipante.");
+              }
+            },
+          },
+        ]
+      );
+    },
+    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount]
+  );
 
   // ─────────────────────────────────────────
   // Flag derivati
@@ -638,8 +828,10 @@ export default function RideDetails() {
     !isArchived &&
     !(
       typeof ride.maxParticipants === "number" &&
-      participants.length >= (ride.maxParticipants ?? 0)
+      combinedParticipants.length >= (ride.maxParticipants ?? 0)
     );
+
+  const canSubmitManual = manualName.trim().length > 0;
 
   // ─────────────────────────────────────────
   // Rendering
@@ -662,9 +854,10 @@ export default function RideDetails() {
   }
 
   return (
-    <Screen title={ride.title || "Uscita"} subtitle={whenText} scroll>
-      {/* HEADER + TOOLBAR ADMIN */}
-      <View style={{ gap: 8, paddingHorizontal: 16 }}>
+    <>
+      <Screen title={ride.title || "Uscita"} subtitle={whenText} scroll>
+        {/* HEADER + TOOLBAR ADMIN */}
+        <View style={{ gap: 8, paddingHorizontal: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           {isCancelled && <Badge color="#DC2626" text="ANNULLATA" />}
           {isArchived && <Badge color="#6B7280" text="ARCHIVIATA" />}
@@ -689,8 +882,8 @@ export default function RideDetails() {
         )}
       </View>
 
-      {/* SCHEDA DETTAGLIO */}
-      <View style={[styles.card, { marginHorizontal: 16 }]}>
+        {/* SCHEDA DETTAGLIO */}
+        <View style={[styles.card, { marginHorizontal: 16 }]}>
         <Row label="Quando" value={whenText} />
         <Row label="Ritrovo" value={ride.meetingPoint || "—"} />
 
@@ -715,8 +908,8 @@ export default function RideDetails() {
         <Row label="Descrizione" value={ride.description?.trim() ? ride.description : "—"} multiline />
       </View>
 
-      {/* Prenotazione */}
-      <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>
+        {/* Prenotazione */}
+        <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>
         <Text style={styles.sectionTitle}>Prenotazione</Text>
 
         <Text>
@@ -754,27 +947,46 @@ export default function RideDetails() {
         )}
       </View>
 
-      {/* Elenco partecipanti */}
-      <View style={[styles.card, { marginHorizontal: 16 }]}>
+        {/* Elenco partecipanti */}
+        <View style={[styles.card, { marginHorizontal: 16 }]}>
         <Text style={styles.sectionTitle}>Elenco partecipanti</Text>
+        {isAdmin && (
+          <View style={{ marginBottom: 12 }}>
+            <PrimaryButton label="Aggiungi manualmente" onPress={openManualModal} />
+          </View>
+        )}
         {loadingParts ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <ActivityIndicator />
             <Text>Carico partecipanti…</Text>
           </View>
-        ) : participants.length === 0 ? (
+        ) : combinedParticipants.length === 0 ? (
           <Text style={{ color: "#666" }}>Ancora nessun partecipante.</Text>
         ) : (
           <FlatList
-            data={participants}
-            keyExtractor={(item) => item.uid}
+            data={combinedParticipants}
+            keyExtractor={(item) => item.id}
             ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
             renderItem={({ item, index }) => (
               <View style={styles.participantRow}>
-                <Text style={{ fontWeight: "600" }}>
-                  {index + 1}. {formatCognomeNome(item.uid, item.name)}
-                </Text>
-                {item.note ? <Text style={{ color: "#444" }}>Nota: {item.note}</Text> : null}
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ fontWeight: "600" }}>
+                    {index + 1}. {formatCognomeNome(item.uid, item.name)}
+                  </Text>
+                  {item.manual && (
+                    <Text style={styles.participantManualTag}>Inserito manualmente</Text>
+                  )}
+                  {item.note ? <Text style={styles.participantNote}>Nota: {item.note}</Text> : null}
+                </View>
+                {isAdmin && (
+                  <TouchableOpacity
+                    onPress={() => handleAdminRemove(item)}
+                    style={styles.participantAdminBtn}
+                    accessibilityLabel="Rimuovi partecipante"
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
               </View>
             )}
             scrollEnabled={false}
@@ -782,8 +994,101 @@ export default function RideDetails() {
         )}
       </View>
 
-      <View style={{ height: 24 }} />
-    </Screen>
+        <View style={{ height: 24 }} />
+      </Screen>
+
+      <Modal
+        visible={noteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeNoteModal}
+      >
+        <View style={styles.modalWrap}>
+          <View style={[styles.modalCard, { gap: 12 }]}>
+            <Text style={styles.modalTitle}>Conferma partecipazione</Text>
+            <Text style={{ color: "#475569" }}>
+              Puoi aggiungere una nota per l'organizzatore (opzionale).
+            </Text>
+            <TextInput
+              value={noteText}
+              onChangeText={setNoteText}
+              style={styles.modalInput}
+              placeholder="Nota (opzionale)"
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={closeNoteModal}
+                style={styles.modalActionSecondary}
+                disabled={joinSaving}
+              >
+                <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmJoin}
+                style={[
+                  styles.modalActionPrimary,
+                  (joinSaving) && { opacity: 0.6 },
+                ]}
+                disabled={joinSaving}
+              >
+                <Text style={styles.modalActionPrimaryText}>
+                  {joinSaving ? "Salvo…" : "Conferma"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={manualModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeManualModal}
+      >
+        <View style={styles.modalWrap}>
+          <View style={[styles.modalCard, { gap: 12 }]}>
+            <Text style={styles.modalTitle}>Aggiungi partecipante manuale</Text>
+            <TextInput
+              value={manualName}
+              onChangeText={setManualName}
+              style={styles.modalField}
+              placeholder="Nome e cognome"
+              autoCapitalize="words"
+            />
+            <TextInput
+              value={manualNote}
+              onChangeText={setManualNote}
+              style={styles.modalInput}
+              placeholder="Nota (opzionale)"
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={closeManualModal}
+                style={styles.modalActionSecondary}
+                disabled={manualSaving}
+              >
+                <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmManualAdd}
+                style={[
+                  styles.modalActionPrimary,
+                  (!canSubmitManual || manualSaving) && { opacity: 0.6 },
+                ]}
+                disabled={!canSubmitManual || manualSaving}
+              >
+                <Text style={styles.modalActionPrimaryText}>
+                  {manualSaving ? "Salvo…" : "Aggiungi"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -832,6 +1137,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     backgroundColor: "#fafafa",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  participantManualTag: {
+    color: UI.colors.accentWarm,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  participantNote: {
+    color: "#444",
+  },
+  participantAdminBtn: {
+    backgroundColor: UI.colors.danger,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   modalWrap: {
     flex: 1,
@@ -847,6 +1169,16 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
+  modalField: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    fontSize: 16,
+    color: UI.colors.text,
+  },
   modalInput: {
     borderWidth: 1,
     borderColor: "#ccc",
@@ -856,6 +1188,26 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
     backgroundColor: "#fff",
   },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 4,
+  },
+  modalActionSecondary: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#e2e8f0",
+  },
+  modalActionSecondaryText: { color: "#1f2937", fontWeight: "700" },
+  modalActionPrimary: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: UI.colors.primary,
+  },
+  modalActionPrimaryText: { color: "#fff", fontWeight: "800" },
   mapLinkBtn: {
     backgroundColor: "#111",
     paddingHorizontal: 12,

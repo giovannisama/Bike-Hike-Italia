@@ -45,6 +45,7 @@ type Ride = {
   status?: "active" | "cancelled";
   difficulty?: string | null;
   archived?: boolean;
+  manualCount?: number;
 };
 
 // ---- Badge partecipanti ----
@@ -76,6 +77,7 @@ export default function UsciteList() {
   const canReadRides = isAdmin || (approvedOk && !disabledOn);
 
   const [rides, setRides] = useState<Ride[]>([]);
+  const ridesRef = useRef<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -90,7 +92,9 @@ export default function UsciteList() {
     try {
       const colRef = collection(db, "rides", rideId, "participants");
       const snapshot = await getCountFromServer(query(colRef));
-      const cnt = snapshot.data().count as number;
+      const base = snapshot.data().count as number;
+      const manual = ridesRef.current.find((r) => r.id === rideId)?.manualCount ?? 0;
+      const cnt = base + manual;
       setCounts((prev) => {
         if (prev[rideId] === cnt) return prev;
         return { ...prev, [rideId]: cnt };
@@ -116,9 +120,11 @@ export default function UsciteList() {
     const unsub = onSnapshot(
       colRef,
       (snap) => {
+        const manual = ridesRef.current.find((r) => r.id === rideId)?.manualCount ?? 0;
         setCounts((prev) => {
-          if (prev[rideId] === snap.size) return prev;
-          return { ...prev, [rideId]: snap.size };
+          const nextValue = snap.size + manual;
+          if (prev[rideId] === nextValue) return prev;
+          return { ...prev, [rideId]: nextValue };
         });
       },
       (_err) => {
@@ -181,6 +187,7 @@ export default function UsciteList() {
           const d = docSnap.data() as any;
           const archived = !!d?.archived;
           if (archived !== showArchived) return;
+          const manualCount = Array.isArray(d?.manualParticipants) ? d.manualParticipants.length : 0;
 
           rows.push({
             id: docSnap.id,
@@ -197,6 +204,7 @@ export default function UsciteList() {
             status: d?.status ?? "active",
             difficulty: d?.difficulty ?? null,
             archived,
+            manualCount,
           });
           ids.push(docSnap.id);
         });
@@ -204,11 +212,15 @@ export default function UsciteList() {
         // Initialize counts from doc (fallback 0) so badges show a number immediately
         const initial: Record<string, number> = {};
         rows.forEach((r) => {
-          initial[r.id] =
-            typeof r.participantsCount === "number" ? r.participantsCount! : 0;
+          const fallbackTotal =
+            typeof r.participantsCount === "number"
+              ? r.participantsCount!
+              : r.manualCount ?? 0;
+          initial[r.id] = fallbackTotal;
         });
         setCounts((prev) => ({ ...prev, ...initial }));
 
+        ridesRef.current = rows;
         setRides(rows);
 
         // Pre-carica i conteggi (fallback) per i primi elementi
@@ -387,7 +399,9 @@ export default function UsciteList() {
         </View>
 
         {/* Badge partecipanti (Aggregate → fallback a participantsCount del doc) */}
-        <ParticipantsBadge count={counts[item.id] ?? item.participantsCount} />
+        <ParticipantsBadge
+          count={counts[item.id] ?? (item.participantsCount ?? item.manualCount ?? 0)}
+        />
       </TouchableOpacity>
     );
   };

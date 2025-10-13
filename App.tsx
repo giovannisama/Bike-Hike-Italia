@@ -23,6 +23,7 @@ import {
   KeyboardAvoidingView,
   Image,
   Alert,
+  ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
@@ -122,21 +123,25 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export const navRef = createNavigationContainerRef<RootStackParamList>();
 
 // ---- COLORI ----
-const COLOR_PRIMARY = "#1D4ED8";
-const COLOR_SECONDARY = "#16A34A";
-const COLOR_TEXT = "#0f172a";
-const COLOR_MUTED = "#64748b";
+const COLOR_PRIMARY = "#0B3D2E";     // verde scuro logo
+const COLOR_SECONDARY = "#1FA36B";   // verde brillante logo
+const COLOR_ACCENT = "#C1275A";      // magenta logo
+const COLOR_ACCENT_WARM = "#F7B32B"; // giallo logo
+const COLOR_TEXT = "#102A43";
+const COLOR_MUTED = "#5B6B7F";
 
 // ---- UI THEME (riusabile ovunque) ----
 const UI = {
   colors: {
     primary: COLOR_PRIMARY,
     secondary: COLOR_SECONDARY,
-    text: "#0f172a",
-    muted: "#64748b",
+    accent: COLOR_ACCENT,
+    accentWarm: COLOR_ACCENT_WARM,
+    text: COLOR_TEXT,
+    muted: COLOR_MUTED,
     bg: "#ffffff",
     card: "#ffffff",
-    tint: "#ECFEFF",
+    tint: "#E6F4ED",
     danger: "#DC2626",
     warningBg: "#FFF7ED",
     warningBorder: "#FED7AA",
@@ -529,54 +534,86 @@ function Screen({
   headerRight,
   children,
   scroll = true,
+  useNativeHeader = false,
+  keyboardShouldPersistTaps = "handled",
 }: {
   title?: string;
   subtitle?: string;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
   scroll?: boolean;
+  useNativeHeader?: boolean;
+  keyboardShouldPersistTaps?: "always" | "handled" | "never";
 }) {
   const Content = () => (
     <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
       {/* Header */}
-      <LinearGradient
-        colors={[UI.colors.primary, UI.colors.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ paddingHorizontal: UI.spacing.lg, paddingTop: UI.spacing.lg, paddingBottom: UI.spacing.lg + 4 }}
-      >
-        <SafeAreaView edges={["top"]}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
-              {!!title && <Text style={UI.text.h1Light}>{title}</Text>}
-              {!!subtitle && <Text style={[UI.text.h2Light, { marginTop: 4 }]}>{subtitle}</Text>}
+      {!useNativeHeader && (
+        <LinearGradient
+          colors={[UI.colors.primary, UI.colors.secondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            paddingHorizontal: UI.spacing.lg,
+            paddingTop: UI.spacing.lg,
+            paddingBottom: UI.spacing.lg + 4,
+          }}
+        >
+          <SafeAreaView edges={["top"]}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
+                {!!title && <Text style={UI.text.h1Light}>{title}</Text>}
+                {!!subtitle && <Text style={[UI.text.h2Light, { marginTop: 4 }]}>{subtitle}</Text>}
+              </View>
+              {!!headerRight && <View style={{ marginLeft: UI.spacing.sm }}>{headerRight}</View>}
             </View>
-            {!!headerRight && <View style={{ marginLeft: UI.spacing.sm }}>{headerRight}</View>}
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+          </SafeAreaView>
+        </LinearGradient>
+      )}
 
       {/* Corpo con angoli arrotondati */}
-      <View
-        style={{
-          flex: 1,
-          marginTop: -UI.radius.xl,
-          backgroundColor: UI.colors.bg,
-          borderTopLeftRadius: UI.radius.xl,
-          borderTopRightRadius: UI.radius.xl,
-          padding: UI.spacing.lg,
-        }}
-      >
-        {children}
-      </View>
+      {useNativeHeader ? (
+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+          <View
+            style={{
+              flex: 1,
+              padding: UI.spacing.lg,
+              backgroundColor: UI.colors.bg,
+            }}
+          >
+            {children}
+          </View>
+        </SafeAreaView>
+      ) : (
+        <View
+          style={{
+            flex: 1,
+            marginTop: -UI.radius.xl,
+            backgroundColor: UI.colors.bg,
+            borderTopLeftRadius: UI.radius.xl,
+            borderTopRightRadius: UI.radius.xl,
+            padding: UI.spacing.lg,
+          }}
+        >
+          {children}
+        </View>
+      )}
     </View>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: UI.colors.primary }}>
-      <StatusBar barStyle="light-content" />
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: useNativeHeader ? UI.colors.bg : UI.colors.primary,
+      }}
+    >
+      <StatusBar barStyle={useNativeHeader ? "dark-content" : "light-content"} />
       {scroll ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        >
           <Content />
         </ScrollView>
       ) : (
@@ -586,79 +623,100 @@ function Screen({
   );
 }
 
-// ---- COMPONENTE: Tile (card/menu standard) ----
-function Tile({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  badgeCount,
-  danger = false,
-}: {
-  title: string;
-  subtitle?: string;
+type ShortcutCardProps = {
+  label: string;
+  caption?: string;
   icon: React.ReactNode;
   onPress: () => void;
+  disabled?: boolean;
   badgeCount?: number | null;
   danger?: boolean;
-}) {
+  style?: ViewStyle;
+  iconContainerStyle?: ViewStyle;
+};
+
+function ShortcutCard({
+  label,
+  caption,
+  icon,
+  onPress,
+  disabled = false,
+  badgeCount,
+  danger = false,
+  style,
+  iconContainerStyle,
+}: ShortcutCardProps) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        if (!disabled) onPress();
+      }}
       style={({ pressed }) => [
         {
-          width: "100%",
+          width: "48%",
           backgroundColor: UI.colors.card,
-          borderRadius: UI.radius.lg,
-          padding: UI.spacing.md,
-          flexDirection: "row",
+          borderRadius: UI.radius.xl,
+          paddingVertical: UI.spacing.md,
+          paddingHorizontal: UI.spacing.sm,
           alignItems: "center",
+          justifyContent: "center",
           gap: UI.spacing.sm,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          opacity: disabled ? 0.5 : 1,
+          transform: [{ scale: pressed && !disabled ? 0.96 : 1 }],
+          minHeight: 140,
         },
+        style,
         UI.shadow.card,
       ]}
     >
       <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: UI.radius.md,
-          backgroundColor: UI.colors.tint,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+        style={[
+          {
+            width: 62,
+            height: 62,
+            borderRadius: UI.radius.md,
+            backgroundColor: UI.colors.tint,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          iconContainerStyle,
+        ]}
       >
         {icon}
       </View>
-
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: danger ? UI.colors.danger : UI.colors.text }}>
-            {title}
+      <Text
+        style={{
+          fontSize: 16,
+          fontWeight: "800",
+          color: danger ? UI.colors.danger : UI.colors.text,
+          textAlign: "center",
+        }}
+      >
+        {label}
+      </Text>
+      {!!caption && (
+        <Text style={{ fontSize: 12, fontWeight: "600", color: UI.colors.muted, textAlign: "center" }}>
+          {caption}
+        </Text>
+      )}
+      {typeof badgeCount === "number" && (
+        <View
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 16,
+            minWidth: 24,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 999,
+            backgroundColor: UI.colors.accent,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12, textAlign: "center" }}>
+            {badgeCount}
           </Text>
-          {typeof badgeCount === "number" && (
-            <View
-              style={{
-                minWidth: 22,
-                height: 22,
-                paddingHorizontal: 6,
-                borderRadius: 11,
-                backgroundColor: UI.colors.primary,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12, lineHeight: 12 }}>
-                {badgeCount}
-              </Text>
-            </View>
-          )}
         </View>
-        {!!subtitle && <Text style={{ marginTop: 2, color: UI.colors.muted }}>{subtitle}</Text>}
-      </View>
-
-      <Ionicons name="chevron-forward" size={22} />
+      )}
     </Pressable>
   );
 }
@@ -678,73 +736,91 @@ function HomeScreen({ navigation }: HomeProps) {
     (user?.email ? user.email.split("@")[0] : "") ||
     "Ciclista";
 
-  const saluto = fullName || fallbackDisplay;
-  const nickPart = nickname ? ` (${nickname})` : "";
-  const headerSubtitle = loading ? "Caricamento profilo..." : `Ciao, ${saluto}${nickPart}`;
-
+  const formattedName =
+    firstName && lastName ? `${lastName}, ${firstName}` : fullName || fallbackDisplay;
+  const secondaryLine = nickname || user?.email || "";
 
   return (
-    <Screen
-      title="Bike & Hike Italia"
-      subtitle={headerSubtitle}
-      headerRight={
-        isAdmin ? (
-          <View
-            style={{
-              backgroundColor: "#FDE68A",
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: UI.radius.round,
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: "800", color: "#92400E" }}>ADMIN</Text>
-          </View>
-        ) : undefined
-      }
-    >
-      {/* Hero compatto (logo + icona) */}
-      <View
-        style={[
-          {
-            flexDirection: "row",
-            alignItems: "center",
-            gap: UI.spacing.md,
-            backgroundColor: UI.colors.card,
-            padding: UI.spacing.md,
-            borderRadius: UI.radius.xl,
-          },
-          UI.shadow.hero,
-        ]}
+    <Screen useNativeHeader scroll keyboardShouldPersistTaps="handled">
+      <LinearGradient
+        colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          borderRadius: UI.radius.xl,
+          padding: UI.spacing.lg,
+          paddingBottom: UI.spacing.lg + 4,
+          marginBottom: UI.spacing.lg,
+        }}
       >
-        <Image
-          source={logo}
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: UI.radius.md,
-            resizeMode: "contain",
-            backgroundColor: "#fff",
-          }}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: "900", color: "#0f172a" }}>Benvenuto!</Text>
-          <Text style={{ marginTop: 4, color: "#475569" }}>Pronto per la prossima uscita?</Text>
-        </View>
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: UI.radius.round,
-            padding: 10,
-            ...UI.shadow.card,
-          }}
-        >
-          <MaterialCommunityIcons name="bike-fast" size={28} color={UI.colors.primary} />
-        </View>
-      </View>
+        <View style={{ gap: UI.spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: UI.spacing.md }}>
+            <View
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 24,
+                backgroundColor: "#fff",
+                alignItems: "center",
+                justifyContent: "center",
+                shadowColor: "rgba(0,0,0,0.25)",
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                elevation: 3,
+              }}
+            >
+              <Image
+                source={logo}
+                style={{ width: 48, height: 48, resizeMode: "contain" }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>Bike and Hike</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  letterSpacing: 2,
+                  fontWeight: "700",
+                  color: UI.colors.accentWarm,
+                }}
+              >
+                ITALIA
+              </Text>
+            </View>
+          </View>
 
-      <VSpace size="lg" />
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: "900", color: "#fff" }}>{formattedName}</Text>
+              {!!secondaryLine && (
+                <Text
+                  style={{
+                    marginTop: 4,
+                    fontSize: 16,
+                    fontWeight: "600",
+                    color: "#EAF7F0",
+                  }}
+                >
+                  {secondaryLine}
+                </Text>
+              )}
+            </View>
+            {isAdmin && (
+              <View
+                style={{
+                  backgroundColor: UI.colors.accent,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: UI.radius.round,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>ADMIN</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </LinearGradient>
 
-      {/* Suggerimento profilo incompleto */}
       {!loading && !(firstName || lastName || nickname) && (
         <Pressable
           onPress={() => navigation.navigate("Profile")}
@@ -766,60 +842,99 @@ function HomeScreen({ navigation }: HomeProps) {
         </Pressable>
       )}
 
-      <VSpace size="md" />
+      <VSpace size="lg" />
 
-      {/* GRID MENU */}
-      <View style={{ gap: UI.spacing.sm }}>
-        <Tile
-          title="Uscite"
-          subtitle={isAdmin ? "Crea, gestisci e partecipa" : "Elenco uscite e prenotazioni"}
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+        }}
+      >
+        <ShortcutCard
+          label="Uscite"
+          caption="Calendario eventi"
           badgeCount={activeCount ?? undefined}
+          icon={
+            <MaterialCommunityIcons name="bike" size={32} color={UI.colors.primary} />
+          }
           onPress={() => navigation.navigate("UsciteList")}
-          icon={<Ionicons name="calendar-outline" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#E2F2E8" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
 
-        {isAdmin && (
-          <Tile
-            title="Crea nuova uscita"
-            subtitle="Solo per amministratori"
-            onPress={() => navigation.navigate("CreateRide")}
-            icon={<Ionicons name="add-circle-outline" size={28} color={UI.colors.primary} />}
-          />
-        )}
+        <ShortcutCard
+          label="Nuova uscita"
+          caption="Solo Admin"
+          icon={
+            <MaterialCommunityIcons
+              name={isAdmin ? "plus-circle-outline" : "lock-outline"}
+              size={32}
+              color={isAdmin ? UI.colors.accent : UI.colors.muted}
+            />
+          }
+          onPress={() => navigation.navigate("CreateRide")}
+          disabled={!isAdmin}
+          iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+          style={{ marginBottom: UI.spacing.md }}
+        />
 
-        {isAdmin && (
-          <Tile
-            title="Amministrazione"
-            subtitle="Gestisci utenti e permessi"
-            onPress={() => navigation.navigate("Amministrazione")}
-            icon={<Ionicons name="shield-checkmark-outline" size={28} color={UI.colors.primary} />}
-          />
-        )}
-
-        <Tile
-          title="Calendario"
-          subtitle="Visualizza uscite per giorno"
+        <ShortcutCard
+          label="Calendario"
+          caption="Vista mensile"
+          icon={
+            <MaterialCommunityIcons
+              name="calendar-month"
+              size={32}
+              color={UI.colors.accentWarm}
+            />
+          }
           onPress={() => navigation.navigate("Calendar")}
-          icon={<Ionicons name="calendar" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#FFF4DC" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
 
-        <Tile
-          title="Profilo"
-          subtitle="Gestisci i tuoi dati"
+        <ShortcutCard
+          label="Amministrazione"
+          caption="Solo Admin"
+          icon={
+            <MaterialCommunityIcons
+              name="shield-lock-outline"
+              size={32}
+              color={isAdmin ? UI.colors.accent : UI.colors.muted}
+            />
+          }
+          onPress={() => navigation.navigate("Amministrazione")}
+          disabled={!isAdmin}
+          iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+          style={{ marginBottom: UI.spacing.md }}
+        />
+
+        <ShortcutCard
+          label="Profilo"
+          caption="I tuoi dati"
+          icon={
+            <MaterialCommunityIcons
+              name="account"
+              size={32}
+              color={UI.colors.primary}
+            />
+          }
           onPress={() => navigation.navigate("Profile")}
-          icon={<Ionicons name="person-circle-outline" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#E6F0FA" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
 
-        <Tile
-          title="Esci"
-          subtitle="Chiudi la sessione"
+        <ShortcutCard
+          label="Esci"
+          caption="Chiudi la sessione"
+          icon={<MaterialCommunityIcons name="logout" size={32} color={UI.colors.danger} />}
           onPress={() => signOut(auth)}
-          icon={<Ionicons name="exit-outline" size={28} color={UI.colors.danger} />}
           danger
+          iconContainerStyle={{ backgroundColor: "#FDE8E8" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
       </View>
-
-      <VSpace size="xl" />
     </Screen>
   );
 }

@@ -6,13 +6,15 @@ import { LinearGradient } from "expo-linear-gradient";
 
 export const UI = {
   colors: {
-    primary: "#06b6d4",
-    secondary: "#0ea5e9",
-    text: "#0f172a",
-    muted: "#64748b",
+    primary: "#0B3D2E",
+    secondary: "#1FA36B",
+    accent: "#C1275A",
+    accentWarm: "#F7B32B",
+    text: "#102A43",
+    muted: "#5B6B7F",
     bg: "#ffffff",
     card: "#ffffff",
-    tint: "#ECFEFF",
+    tint: "#E6F4ED",
     danger: "#DC2626",
   },
   spacing: { xs: 6, sm: 10, md: 16, lg: 20, xl: 24 },

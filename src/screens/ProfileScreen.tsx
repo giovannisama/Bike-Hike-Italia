@@ -9,19 +9,30 @@ import {
   Image,
   Switch,
   StyleSheet,
+  Modal,
+  Pressable,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { auth, db } from "../firebase";
 import { doc, setDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { updateProfile as fbUpdateProfile } from "firebase/auth";
 import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
+import { CardCropperModal } from "../components/CardCropperModal";
 import {
   deviceSupportsBiometrics,
   loadCredsSecurely,
   clearCredsSecurely,
 } from "../utils/biometricHelpers";
+import { mergeUsersPublic } from "../utils/usersPublicSync";
 
 const logo = require("../../assets/images/logo.jpg");
+
+type LocalCard = {
+  uri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+};
 
 export default function ProfileScreen() {
   const user = auth.currentUser;
@@ -32,6 +43,12 @@ export default function ProfileScreen() {
 
   const [bioAvailable, setBioAvailable] = useState(false);
   const [bioEnabled, setBioEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [cardImageRemote, setCardImageRemote] = useState<string | null>(null);
+  const [cardImageLocal, setCardImageLocal] = useState<LocalCard | null>(null);
+  const [cardModalVisible, setCardModalVisible] = useState(false);
+  const [cropSource, setCropSource] = useState<LocalCard | null>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -42,6 +59,15 @@ export default function ProfileScreen() {
       setFirstName(data.firstName || "");
       setLastName(data.lastName || "");
       setNickname(data.nickname || "");
+
+      if (data.membershipCard && typeof data.membershipCard === "object") {
+        const base64 = data.membershipCard.base64;
+        setCardImageRemote(typeof base64 === "string" ? base64 : null);
+      } else if (typeof data.membershipCard === "string") {
+        setCardImageRemote(data.membershipCard);
+      } else {
+        setCardImageRemote(null);
+      }
     });
     return () => unsub();
   }, [user?.uid]);
@@ -54,7 +80,6 @@ export default function ProfileScreen() {
       setBioEnabled(!!stored);
     })();
   }, []);
-
   const onToggleBiometrics = async (next: boolean) => {
     if (!bioAvailable) {
       Alert.alert("Non supportato", "Questo dispositivo non supporta Face ID / Touch ID.");
@@ -79,12 +104,71 @@ export default function ProfileScreen() {
     }
   };
 
+  const ensureCameraPermission = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permesso necessario",
+        "Per scansionare la tessera devi consentire l'accesso alla fotocamera."
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const ensureLibraryPermission = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Permesso necessario",
+        "Per selezionare una foto devi consentire l'accesso alla libreria immagini."
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const handleCaptureCard = async () => {
+    const allowed = await ensureCameraPermission();
+    if (!allowed) return;
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      setCropSource({ uri: asset.uri, mimeType: asset.mimeType });
+    }
+  };
+
+  const handlePickCard = async () => {
+    const allowed = await ensureLibraryPermission();
+    if (!allowed) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      setCropSource({ uri: asset.uri, mimeType: asset.mimeType });
+    }
+  };
+
   const handleSave = async () => {
+    if (saving) return;
+
     try {
       if (!user) {
         Alert.alert("Non sei loggato", "Effettua il login per salvare il profilo.");
         return;
       }
+      setSaving(true);
       const uid = user.uid;
       const email = user.email || "";
       const cleanFirst = firstName.trim();
@@ -124,26 +208,45 @@ export default function ProfileScreen() {
         );
       }
 
-      // PUBBLICO: includi SEMPRE createdAt (le regole lo accettano anche in update)
-      await setDoc(
-        doc(db, "users_public", uid),
-        {
-          displayName: displayName || null,
-          firstName: cleanFirst || null,
-          lastName: cleanLast || null,
-          nickname: cleanNick || null,
-          email: email || null,
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      // PUBBLICO: aggiorna l'indice (mergeUsersPublic ignora permission-denied lato client)
+      const publicPayload: Record<string, unknown> = {
+        displayName: displayName || null,
+        firstName: cleanFirst || null,
+        lastName: cleanLast || null,
+        nickname: cleanNick || null,
+        email: email || null,
+      };
+      if (!hasProfile) {
+        publicPayload.createdAt = serverTimestamp();
+      }
+      await mergeUsersPublic(uid, publicPayload, "ProfileScreen.saveProfile");
 
       await fbUpdateProfile(user, { displayName });
+
+      if (cardImageLocal?.base64) {
+        await setDoc(
+          doc(db, "users", uid),
+          {
+            membershipCard: {
+              base64: cardImageLocal.base64,
+              updatedAt: serverTimestamp(),
+            },
+          },
+          { merge: true }
+        );
+        setCardImageRemote(cardImageLocal.base64);
+        setCardImageLocal(null);
+      }
+
       Alert.alert("Fatto!", "Profilo aggiornato correttamente.");
     } catch (e: any) {
       Alert.alert("Errore salvataggio", e?.message ?? "Operazione non riuscita.");
+    } finally {
+      setSaving(false);
     }
   };
+  const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
+  const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
 
   return (
     <Screen title="Profilo" subtitle="Gestisci i tuoi dati">
@@ -179,13 +282,93 @@ export default function ProfileScreen() {
         placeholder="SuperBiker"
       />
 
+      <View style={styles.cardSection}>
+        <Text style={styles.label}>Tessera associato</Text>
+        <Text style={styles.helperText}>
+          Centra la tessera e poi utilizza l’editor per ritagliarla con precisione lungo i bordi.
+        </Text>
+        <Pressable
+          style={styles.cardPreviewWrapper}
+          onPress={() => {
+            if (cardUri) setCardModalVisible(true);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Anteprima tessera associato"
+        >
+          {cardUri ? (
+            <Image source={{ uri: cardUri }} style={styles.cardPreview} />
+          ) : (
+            <View style={styles.cardPlaceholder}>
+              <Text style={styles.placeholderText}>Nessuna tessera caricata</Text>
+              <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
+            </View>
+          )}
+        </Pressable>
+        {cardUri && (
+          <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
+        )}
+        {cardImageLocal && (
+          <Text style={styles.helperTextSmall}>Nuova tessera pronta: ricordati di premere "Salva".</Text>
+        )}
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={handleCaptureCard}
+            style={[styles.secondaryButton, { marginRight: 10 }]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>Scansiona tessera</Text>
+          </Pressable>
+          <Pressable
+            onPress={handlePickCard}
+            style={[styles.secondaryButton, { marginLeft: 10 }]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>Carica da galleria</Text>
+          </Pressable>
+        </View>
+      </View>
+
       <View style={{ marginTop: 24 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={styles.label}>Face ID / Touch ID</Text>
           <Switch value={bioEnabled} onValueChange={onToggleBiometrics} disabled={!bioAvailable} />
         </View>
       </View>
-      <PrimaryButton label="Salva" onPress={handleSave} />
+      <PrimaryButton label="Salva" onPress={handleSave} loading={saving} style={{ marginTop: 24, marginBottom: 48 }} />
+
+      <Modal
+        visible={cardModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCardModalVisible(false)}
+      >
+        <Pressable
+          style={styles.cardModalBackdrop}
+          onPress={() => setCardModalVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Chiudi anteprima tessera"
+        >
+          {cardUri && (
+            <Image source={{ uri: cardUri }} style={styles.cardModalImage} resizeMode="contain" />
+          )}
+        </Pressable>
+      </Modal>
+
+      <CardCropperModal
+        visible={!!cropSource}
+        imageUri={cropSource?.uri}
+        onCancel={() => setCropSource(null)}
+        onConfirm={(result) => {
+          if (result?.uri) {
+            setCardImageLocal({
+              uri: result.uri,
+              mimeType: cropSource?.mimeType ?? "image/jpeg",
+              base64: result.base64 ?? null,
+            });
+          }
+          setCropSource(null);
+        }}
+      />
     </Screen>
   );
 }
@@ -204,4 +387,53 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.select({ ios: 12, android: 10 }),
     backgroundColor: "#fff",
   },
+  cardSection: { marginTop: 24 },
+  cardPreviewWrapper: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#f8fafc",
+    height: 180,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardPreview: { width: "100%", height: "100%" },
+  cardPlaceholder: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  placeholderText: { fontWeight: "600", color: "#475569" },
+  placeholderHint: { fontSize: 12, color: "#94a3b8", marginTop: 4, textAlign: "center" },
+  cardHint: { marginTop: 8, fontSize: 12, color: "#64748b" },
+  helperText: { marginTop: 4, fontSize: 13, color: "#6b7280" },
+  helperTextSmall: { marginTop: 6, fontSize: 12, color: "#64748b" },
+  cardActions: {
+    flexDirection: "row",
+    marginTop: 12,
+  },
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#0B3D2E",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  secondaryButtonText: { color: "#0B3D2E", fontWeight: "700" },
+  cardModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  cardModalImage: { width: "100%", height: "80%" },
 });

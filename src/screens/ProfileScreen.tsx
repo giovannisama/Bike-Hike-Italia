@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { auth, db } from "../firebase";
-import { doc, setDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, onSnapshot, deleteField } from "firebase/firestore";
 import { updateProfile as fbUpdateProfile } from "firebase/auth";
 import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
@@ -49,6 +49,7 @@ export default function ProfileScreen() {
   const [cardImageLocal, setCardImageLocal] = useState<LocalCard | null>(null);
   const [cardModalVisible, setCardModalVisible] = useState(false);
   const [cropSource, setCropSource] = useState<LocalCard | null>(null);
+  const [removingCard, setRemovingCard] = useState(false);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -158,6 +159,64 @@ export default function ProfileScreen() {
       const asset = result.assets[0];
       setCropSource({ uri: asset.uri, mimeType: asset.mimeType });
     }
+  };
+
+  const handleRemoveCard = () => {
+    const hasLocal = !!cardImageLocal;
+    const hasRemote = !!cardImageRemote;
+    if (!hasLocal && !hasRemote) return;
+
+    if (hasLocal) {
+      Alert.alert(
+        "Scartare la nuova tessera?",
+        "La foto selezionata ma non ancora salvata verrà rimossa.",
+        [
+          { text: "Annulla", style: "cancel" },
+          {
+            text: "Scarta",
+            style: "destructive",
+            onPress: () => {
+              setCardModalVisible(false);
+              setCardImageLocal(null);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Rimuovere la tessera salvata?",
+      "La tessera salvata sul tuo profilo sarà eliminata.",
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Rimuovi",
+          style: "destructive",
+          onPress: async () => {
+            if (!user?.uid) {
+              Alert.alert("Non sei loggato", "Effettua il login per gestire la tessera.");
+              return;
+            }
+            try {
+              setRemovingCard(true);
+              setCardModalVisible(false);
+              await setDoc(
+                doc(db, "users", user.uid),
+                { membershipCard: deleteField() },
+                { merge: true }
+              );
+              setCardImageRemote(null);
+              Alert.alert("Tessera rimossa", "La tessera è stata eliminata dal profilo.");
+            } catch (err: any) {
+              Alert.alert("Errore rimozione", err?.message ?? "Impossibile rimuovere la tessera.");
+            } finally {
+              setRemovingCard(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSave = async () => {
@@ -326,6 +385,25 @@ export default function ProfileScreen() {
             <Text style={styles.secondaryButtonText}>Carica da galleria</Text>
           </Pressable>
         </View>
+        {cardUri && (
+          <Pressable
+            onPress={handleRemoveCard}
+            style={[
+              styles.removeButton,
+              (saving || removingCard) && { opacity: 0.6 },
+            ]}
+            disabled={saving || removingCard}
+            accessibilityRole="button"
+          >
+            <Text style={styles.removeButtonText}>
+              {removingCard
+                ? "Rimozione in corso..."
+                : cardImageLocal
+                ? "Scarta nuova tessera"
+                : "Rimuovi tessera"}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={{ marginTop: 24 }}>
@@ -399,7 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  cardPreview: { width: "100%", height: "100%" },
+  cardPreview: { width: "100%", height: "100%", resizeMode: "contain" },
   cardPlaceholder: {
     flex: 1,
     width: "100%",
@@ -428,6 +506,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   secondaryButtonText: { color: "#0B3D2E", fontWeight: "700" },
+  removeButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  removeButtonText: { color: "#dc2626", fontWeight: "700" },
   cardModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.9)",

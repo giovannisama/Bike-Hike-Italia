@@ -15,8 +15,11 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Userò Face ID per accedere più velocemente all'app."
-      }
+        "NSFaceIDUsageDescription": "Userò Face ID per accedere più velocemente all'app.",
+        "NSCameraUsageDescription": "Uso la fotocamera per scansionare la tessera socio.",
+        "NSPhotoLibraryUsageDescription": "Uso la libreria foto per caricare l'immagine della tessera."
+      },
+      "bundleIdentifier": "com.giovanni.sama.bikehikeitalia"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +27,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.giovanni.sama.bikehikeitalia"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -34,8 +34,8 @@
     "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
+    "@react-native-community/cli": "^20.0.2",
+    "@react-native/metro-config": "^0.82.0"
   },
   "private": true
 }

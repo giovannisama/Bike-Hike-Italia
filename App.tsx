@@ -42,6 +42,7 @@ import {
   updateProfile as fbUpdateProfile,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   sendPasswordResetEmail,
 } from "firebase/auth";
 import {
@@ -108,7 +109,7 @@ export type RootStackParamList = {
   Home: undefined;
   Amministrazione: undefined;
   UserList: undefined;
-  UserDetail: { uid: string };
+  UserDetail: { uid: string; meRole?: string | null };
   UsciteList: undefined;
   Calendar: undefined;
   CreateRide: undefined;
@@ -362,9 +363,6 @@ function LoginScreen({
               <Pressable onPress={loginWithBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
                 <Text style={styles.btnSecondaryText}>Accedi con Face ID / Touch ID</Text>
               </Pressable>
-              <Pressable onPress={disableBiometrics} style={{ marginTop: 8, alignItems: "center" }}>
-                <Text style={{ color: "#64748b" }}>Disattiva accesso rapido</Text>
-              </Pressable>
             </>
           )}
 
@@ -391,6 +389,7 @@ function SignupScreen({
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   const doSignup = async () => {
@@ -398,6 +397,8 @@ function SignupScreen({
     if (!lastName.trim()) return Alert.alert("Campo mancante", "Inserisci il Cognome.");
     if (!email.trim()) return Alert.alert("Campo mancante", "Inserisci l'Email.");
     if (!password) return Alert.alert("Campo mancante", "Inserisci la Password.");
+    if (!confirmPassword) return Alert.alert("Campo mancante", "Conferma la Password.");
+    if (password !== confirmPassword) return Alert.alert("Password diverse", "Le password non coincidono. Riprova.");
 
     try {
       setBusy(true);
@@ -421,22 +422,48 @@ function SignupScreen({
       } as UserProfile);
 
       // profilo PUBBLICO (users_public/{uid}) — solo campi non sensibili
-      await setDoc(doc(db, "users_public", cred.user.uid), {
-        displayName:
-          fullName || (cred.user.email ? cred.user.email.split("@")[0] : ""),
-        firstName: firstName.trim() || null,
-        lastName: lastName.trim() || null,
-        nickname: nickname.trim() || null,
-        role: "member",
-        approved: false,
-        disabled: false,
-        email: cred.user.email || null,
-        createdAt: serverTimestamp(),
-      });
+      try {
+        await setDoc(doc(db, "users_public", cred.user.uid), {
+          displayName:
+            fullName || (cred.user.email ? cred.user.email.split("@")[0] : ""),
+          firstName: firstName.trim() || null,
+          lastName: lastName.trim() || null,
+          nickname: nickname.trim() || null,
+          role: "member",
+          approved: false,
+          disabled: false,
+          email: cred.user.email || null,
+          createdAt: serverTimestamp(),
+        });
+      } catch (pubErr: any) {
+        if (__DEV__) {
+          console.warn("Signup: unable to write users_public document", pubErr);
+        }
+      }
 
       Alert.alert("Registrazione completata", "Account creato. Puoi accedere.");
     } catch (e: any) {
-      Alert.alert("Errore registrazione", e?.message ?? "Impossibile creare l'account");
+      let message = e?.message ?? "Impossibile creare l'account";
+      if (e?.code === "auth/email-already-in-use") {
+        try {
+          const existingMethods = await fetchSignInMethodsForEmail(auth, email.trim().toLowerCase());
+          const providerHint =
+            existingMethods.length === 0
+              ? ""
+              : existingMethods.includes("password")
+              ? " con email e password"
+              : ` con ${existingMethods.join(", ")}`;
+          message = `Esiste già un account registrato per ${email.trim().toLowerCase()}${providerHint}. Se non ricordi la password, usa la funzione di reset oppure accedi con il metodo già collegato.`;
+        } catch {
+          message =
+            "Esiste già un account associato a questa email. Se non ricordi la password, usa la funzione di reset o accedi con le credenziali esistenti.";
+        }
+      } else if (e?.code === "auth/weak-password") {
+        message = "La password scelta è troppo debole. Inserisci almeno 6 caratteri o scegli una password più complessa.";
+      } else if (e?.code === "auth/invalid-email") {
+        message = "Formato email non valido. Controlla l'indirizzo e riprova.";
+      }
+      Alert.alert("Errore registrazione", message);
     } finally {
       setBusy(false);
     }
@@ -478,6 +505,15 @@ function SignupScreen({
             secureTextEntry
             value={password}
             onChangeText={setPassword}
+          />
+
+          <Text style={styles.inputLabel}>Conferma Password *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ripeti la password"
+            secureTextEntry
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
           />
 
           <Pressable onPress={doSignup} style={[styles.btnPrimary, { marginTop: 16 }]}>
@@ -685,7 +721,11 @@ function ShortcutCard({
         {icon}
       </View>
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
         style={{
+          width: "100%",
           fontSize: 16,
           fontWeight: "800",
           color: danger ? UI.colors.danger : UI.colors.text,

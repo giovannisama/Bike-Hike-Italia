@@ -326,9 +326,9 @@ export default function UserListScreen() {
 
   const openDetail = useCallback(
     (uid: string) => {
-      navigation.navigate("UserDetail", { uid });
+      navigation.navigate("UserDetail", { uid, meRole });
     },
-    [navigation]
+    [navigation, meRole]
   );
 
   // Azioni rapide
@@ -444,15 +444,18 @@ export default function UserListScreen() {
       label: string;
     }) => {
       const active = filter === k;
+      const isAll = k === "all";
       return (
         <TouchableOpacity
           onPress={() => setFilter(k)}
           style={[
             styles.tabBtn,
+            isAll ? styles.tabBtnWide : styles.tabBtnCompact,
             { backgroundColor: active ? UI.colors.primary : UI.colors.card },
           ]}
         >
           <Text
+            numberOfLines={1}
             style={[
               styles.tabBtnText,
               { color: active ? "#fff" : UI.colors.text },
@@ -465,11 +468,15 @@ export default function UserListScreen() {
     };
 
     return (
-      <View style={styles.tabWrap}>
-        <Tab k="all" label="Tutti" />
-        <Tab k="active" label="Attivi" />
-        <Tab k="disabled" label="Disattivi" />
-        <Tab k="pending" label="In attesa" />
+      <View style={styles.tabContainer}>
+        <View style={styles.tabRow}>
+          <Tab k="all" label="Tutti" />
+        </View>
+        <View style={[styles.tabRow, styles.tabRowMulti]}>
+          <Tab k="active" label="Attivi" />
+          <Tab k="disabled" label="Disattivi" />
+          <Tab k="pending" label="In attesa" />
+        </View>
       </View>
     );
   };
@@ -529,16 +536,36 @@ const styles = StyleSheet.create({
   },
   smallBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
 
-  tabWrap: {
+  tabContainer: {
+    gap: UI.spacing.xs,
+  },
+  tabRow: {
     flexDirection: "row",
-    gap: UI.spacing.sm,
+    alignItems: "center",
+    gap: UI.spacing.xs,
+  },
+  tabRowMulti: {
+    flexWrap: "nowrap",
+    justifyContent: "space-between",
   },
   tabBtn: {
-    paddingHorizontal: UI.spacing.md,
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: UI.spacing.sm,
     paddingVertical: UI.spacing.xs,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+  },
+  tabBtnWide: {
+    flexBasis: "100%",
+  },
+  tabBtnCompact: {
+    flexBasis: "32%",
+    maxWidth: "32%",
+    flexGrow: 0,
+    flexShrink: 0,
   },
   tabBtnText: {
     fontWeight: "800",

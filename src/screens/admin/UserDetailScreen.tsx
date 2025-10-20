@@ -8,7 +8,7 @@ import { doc, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
 import { Screen, Hero } from "../../components/Screen";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 
-type Params = { uid: string };
+type Params = { uid: string; meRole?: string | null };
 
 type UserDoc = {
   uid: string;
@@ -26,7 +26,7 @@ type UserDoc = {
 export default function UserDetailScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { uid } = route.params as Params;
+  const { uid, meRole: initialMeRole } = route.params as Params;
 
   // Safety guard: Handle missing/invalid UID
   useEffect(() => {
@@ -38,6 +38,7 @@ export default function UserDetailScreen() {
   const [user, setUser] = useState<UserDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<string | null>(initialMeRole ?? null);
 
   // MODIFICA PROFILO (inline)
   const [editMode, setEditMode] = useState(false);
@@ -118,9 +119,33 @@ export default function UserDetailScreen() {
   }, [uid, editMode]);
 
   const currentUid = auth.currentUser?.uid || null;
+  useEffect(() => {
+    if (!currentUid) {
+      setMyRole(null);
+      return;
+    }
+    const selfRef = doc(db, "users", currentUid);
+    const unsubSelf = onSnapshot(
+      selfRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setMyRole(null);
+          return;
+        }
+        const role = (snap.data() as any)?.role;
+        setMyRole(typeof role === "string" ? role : null);
+      },
+      () => setMyRole(null)
+    );
+    return () => {
+      try { unsubSelf(); } catch {}
+    };
+  }, [currentUid]);
 
   const isOwner = user?.role === "owner";
   const isSelf  = !!currentUid && user?.uid === currentUid;
+  const isCurrentOwner = myRole === "owner";
+  const isCurrentAdmin = myRole === "admin" || isCurrentOwner;
 
   // Abilitazioni azioni
   const canApprove   = !isOwner && !isSelf && user?.role === "member" && user?.approved === false && user?.disabled !== true;
@@ -128,7 +153,7 @@ export default function UserDetailScreen() {
   const canDeactivate= !isOwner && !isSelf && user?.approved === true && user?.disabled !== true;
   const canPromote   = !isOwner && !isSelf && user?.role === "member" && user?.approved === true && user?.disabled !== true;
   const canDemote    = !isOwner && !isSelf && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
-  const canDelete    = !isOwner && !isSelf && user?.disabled === true; // eliminiamo solo utenti disattivi
+  const canDelete    = isCurrentAdmin && !isOwner && !isSelf && user?.disabled === true; // admin/owner possono eliminare
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
@@ -257,7 +282,7 @@ export default function UserDetailScreen() {
     if (!user || !canDelete) return;
     Alert.alert(
       "Conferma",
-      "Eliminare il documento utente da Firestore? (Non elimina l'account di autenticazione)",
+      "Eliminare l'utente selezionato? (Non sarà possibile tornare indietro)",
       [
         { text: "Annulla", style: "cancel" },
         {
@@ -270,7 +295,14 @@ export default function UserDetailScreen() {
               await deleteUsersPublic(user.uid, "UserDetail");
               try { (navigation as any)?.goBack?.(); } catch {}
             } catch (e: any) {
-              Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
+              if (e?.code === "permission-denied") {
+                Alert.alert(
+                  "Permessi insufficienti",
+                  "Non hai i permessi necessari per eliminare questo utente. Contatta un Admin per abilitare l'operazione."
+                );
+              } else {
+                Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
+              }
             } finally {
               setActionLoading(null);
             }

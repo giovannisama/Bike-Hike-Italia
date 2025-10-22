@@ -15,11 +15,13 @@ export async function mergeUsersPublic(
   }
 }
 
-export async function deleteUsersPublic(uid: string, context: string) {
+export async function deleteUsersPublic(uid: string, context: string): Promise<boolean> {
   try {
     await deleteDoc(doc(db, "users_public", uid));
+    return true;
   } catch (err: any) {
-    if (err?.code === "permission-denied") return;
+    if (err?.code === "permission-denied") return false;
     console.warn(`[${context}] delete users_public/${uid} fallita:`, err);
+    return false;
   }
 }

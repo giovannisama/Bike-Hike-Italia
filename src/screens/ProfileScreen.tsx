@@ -1,5 +1,5 @@
 // src/screens/ProfileScreen.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -14,8 +14,8 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { auth, db } from "../firebase";
-import { doc, setDoc, serverTimestamp, onSnapshot, deleteField } from "firebase/firestore";
-import { updateProfile as fbUpdateProfile } from "firebase/auth";
+import { doc, setDoc, serverTimestamp, onSnapshot, deleteField, deleteDoc } from "firebase/firestore";
+import { updateProfile as fbUpdateProfile, deleteUser } from "firebase/auth";
 import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { CardCropperModal } from "../components/CardCropperModal";
@@ -24,9 +24,10 @@ import {
   loadCredsSecurely,
   clearCredsSecurely,
 } from "../utils/biometricHelpers";
-import { mergeUsersPublic } from "../utils/usersPublicSync";
+import { mergeUsersPublic, deleteUsersPublic } from "../utils/usersPublicSync";
 
 const logo = require("../../assets/images/logo.jpg");
+const SELF_DELETED_SENTINEL = "__self_deleted__";
 
 type LocalCard = {
   uri: string;
@@ -36,6 +37,7 @@ type LocalCard = {
 
 export default function ProfileScreen() {
   const user = auth.currentUser;
+  const isMounted = useRef(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [nickname, setNickname] = useState("");
@@ -44,12 +46,19 @@ export default function ProfileScreen() {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [bioEnabled, setBioEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [cardImageRemote, setCardImageRemote] = useState<string | null>(null);
   const [cardImageLocal, setCardImageLocal] = useState<LocalCard | null>(null);
   const [cardModalVisible, setCardModalVisible] = useState(false);
   const [cropSource, setCropSource] = useState<LocalCard | null>(null);
   const [removingCard, setRemovingCard] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -304,6 +313,123 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
+  const handleDeleteAccount = () => {
+    if (!user?.uid) {
+      Alert.alert("Non sei loggato", "Effettua il login per gestire l'account.");
+      return;
+    }
+    Alert.alert(
+      "Eliminare l'account?",
+      "Questa operazione eliminerà definitivamente il tuo profilo e non potrà essere annullata.",
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Elimina",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              const uid = user.uid;
+              const userRef = doc(db, "users", uid);
+
+              try {
+                await deleteDoc(userRef);
+              } catch (fireErr: any) {
+                if (fireErr?.code === "permission-denied") {
+                  const fullCleanup = {
+                    displayName: SELF_DELETED_SENTINEL,
+                    firstName: null,
+                    lastName: null,
+                    nickname: null,
+                    membershipCard: deleteField(),
+                    approved: false,
+                    disabled: true,
+                    selfDeleted: true,
+                    selfDeletedAt: serverTimestamp(),
+                  } as const;
+
+                  try {
+                    await setDoc(userRef, fullCleanup, { merge: true });
+                  } catch (fallbackErr: any) {
+                    if (fallbackErr?.code === "permission-denied") {
+                      try {
+                        await setDoc(
+                          userRef,
+                          {
+                            displayName: SELF_DELETED_SENTINEL,
+                            firstName: null,
+                            lastName: null,
+                            nickname: null,
+                            membershipCard: deleteField(),
+                          },
+                          { merge: true }
+                        );
+                      } catch (innerErr: any) {
+                        if (innerErr?.code !== "permission-denied") {
+                          throw innerErr;
+                        }
+                      }
+                    } else {
+                      throw fallbackErr;
+                    }
+                  }
+                } else if (fireErr?.code !== "not-found") {
+                  throw fireErr;
+                }
+              }
+
+              const publicDeleted = await deleteUsersPublic(uid, "ProfileScreen.deleteAccount");
+              if (!publicDeleted) {
+                await mergeUsersPublic(
+                  uid,
+                  {
+                    displayName: SELF_DELETED_SENTINEL,
+                    firstName: null,
+                    lastName: null,
+                    nickname: null,
+                    email: user.email ?? null,
+                    disabled: true,
+                    approved: false,
+                    selfDeleted: true,
+                    selfDeletedAt: serverTimestamp(),
+                  },
+                  "ProfileScreen.deleteAccountFallback"
+                );
+              }
+              await clearCredsSecurely();
+
+              try {
+                await deleteUser(user);
+              } catch (authErr: any) {
+                if (authErr?.code === "auth/requires-recent-login") {
+                  Alert.alert(
+                    "Conferma richiesta",
+                    "Per motivi di sicurezza effettua di nuovo l'accesso e riprova a cancellare l'account."
+                  );
+                  return;
+                }
+                throw authErr;
+              }
+
+              Alert.alert(
+                "Account eliminato",
+                "Il tuo account è stato cancellato. Tornerai alla schermata di login."
+              );
+            } catch (err: any) {
+              Alert.alert(
+                "Errore eliminazione",
+                err?.message ?? "Impossibile eliminare l'account in questo momento."
+              );
+            } finally {
+              if (isMounted.current) {
+                setDeleting(false);
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
   const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
   const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
 
@@ -412,7 +538,29 @@ export default function ProfileScreen() {
           <Switch value={bioEnabled} onValueChange={onToggleBiometrics} disabled={!bioAvailable} />
         </View>
       </View>
-      <PrimaryButton label="Salva" onPress={handleSave} loading={saving} style={{ marginTop: 24, marginBottom: 48 }} />
+      <PrimaryButton
+        label="Salva"
+        onPress={handleSave}
+        loading={saving}
+        disabled={deleting}
+        style={{ marginTop: 24, marginBottom: 16 }}
+      />
+      <Pressable
+        onPress={handleDeleteAccount}
+        style={[
+          styles.deleteAccountButton,
+          (saving || deleting) && { opacity: 0.6 },
+        ]}
+        disabled={saving || deleting}
+        accessibilityRole="button"
+      >
+        <Text style={styles.deleteAccountText}>
+          {deleting ? "Eliminazione in corso..." : "Elimina account"}
+        </Text>
+      </Pressable>
+      <Text style={styles.deleteAccountHint}>
+        Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
+      </Text>
 
       <Modal
         visible={cardModalVisible}
@@ -525,4 +673,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   cardModalImage: { width: "100%", height: "80%" },
+  deleteAccountButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#b91c1c",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  deleteAccountText: { color: "#b91c1c", fontWeight: "700" },
+  deleteAccountHint: { marginTop: 8, fontSize: 12, color: "#64748b", textAlign: "center" },
 });

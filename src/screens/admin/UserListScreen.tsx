@@ -15,6 +15,8 @@ import { auth, db } from "../../firebase";
 import { collection, onSnapshot, DocumentData, updateDoc, doc } from "firebase/firestore";
 import { mergeUsersPublic } from "../../utils/usersPublicSync";
 
+const SELF_DELETED_SENTINEL = "__self_deleted__";
+
 type BooleanFirestoreValue =
   | boolean
   | string
@@ -41,6 +43,8 @@ type UserRow = {
   disabled?: BooleanFirestoreValue;
   approvedFlag?: boolean | null;
   disabledFlag?: boolean | null;
+  selfDeleted?: BooleanFirestoreValue;
+  selfDeletedFlag?: boolean | null;
 };
 
 type FilterKey = "all" | "active" | "disabled" | "pending";
@@ -139,20 +143,30 @@ function Row({
 
   const approvedFlag = user.approvedFlag ?? normalizeBooleanFlag(user.approved);
   const disabledFlag = user.disabledFlag ?? normalizeBooleanFlag(user.disabled);
+  const selfDeletedFlag = user.selfDeletedFlag ?? normalizeBooleanFlag(user.selfDeleted);
 
-  const stato =
-    disabledFlag === true
-      ? ("Disattivo" as const)
-      : approvedFlag === true
-      ? ("Attivo" as const)
-      : ("In attesa" as const);
+  const isSelfDeleted = selfDeletedFlag === true;
 
-  const badgeColor =
-    stato === "Attivo"
-      ? UI.colors.secondary
-      : stato === "Disattivo"
-      ? UI.colors.muted
-      : UI.colors.accentWarm;
+  const stato = isSelfDeleted
+    ? ("Eliminato" as const)
+    : disabledFlag === true
+    ? ("Disattivo" as const)
+    : approvedFlag === true
+    ? ("Attivo" as const)
+    : ("In attesa" as const);
+
+  const badgeColor = (() => {
+    if (stato === "Attivo") return UI.colors.secondary;
+    if (stato === "Disattivo") return UI.colors.muted;
+    if (stato === "Eliminato") return UI.colors.danger;
+    return UI.colors.accentWarm;
+  })();
+
+  const title = isSelfDeleted
+    ? "Account eliminato"
+    : cognome || nome
+    ? `${cognome}${cognome && nome ? ", " : ""}${nome}`
+    : user.displayName || user.email || "Utente";
 
   return (
     <TouchableOpacity
@@ -161,11 +175,7 @@ function Row({
       accessibilityRole="button"
     >
       <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>
-          {cognome || nome
-            ? `${cognome}${cognome && nome ? ", " : ""}${nome}`
-            : user.displayName || user.email || "Utente"}
-        </Text>
+        <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSub}>
           Ruolo: <Text style={{ fontWeight: "700" }}>{ruolo}</Text>
         </Text>
@@ -276,6 +286,20 @@ export default function UserListScreen() {
       const pub = publicData[uid] || {};
       const priv = privateData[uid] || {};
 
+      const selfDeletedCandidates = [
+        (priv as any)?.selfDeleted,
+        (pub as any)?.selfDeleted,
+      ];
+      const displayNameCandidates = [
+        (priv as any)?.displayName,
+        (pub as any)?.displayName,
+      ];
+      const sentinelHit = displayNameCandidates.some((v) => v === SELF_DELETED_SENTINEL);
+      if (sentinelHit) {
+        selfDeletedCandidates.push(true);
+      }
+      const selfDeleted = selfDeletedCandidates.find((v) => v !== undefined);
+
       rows.push({
         uid,
         email: (priv as any)?.email ?? (pub as any)?.email ?? null,
@@ -286,6 +310,7 @@ export default function UserListScreen() {
         role: (priv as any)?.role ?? (pub as any)?.role ?? "member",
         approved: (priv as any)?.approved ?? (pub as any)?.approved ?? null,
         disabled: (priv as any)?.disabled ?? (pub as any)?.disabled ?? null,
+        selfDeleted,
       });
     });
 
@@ -301,23 +326,35 @@ export default function UserListScreen() {
       return dnA.localeCompare(dnB);
     });
 
-    const addFlags = rows.map((r) => ({
-      ...r,
-      approvedFlag: normalizeBooleanFlag(r.approved),
-      disabledFlag: normalizeBooleanFlag(r.disabled),
-    }));
+    const addFlags = rows.map((r) => {
+      const selfDeletedFlag = normalizeBooleanFlag(r.selfDeleted);
+      const disabledFlag = normalizeBooleanFlag(r.disabled);
+      const approvedFlag = normalizeBooleanFlag(r.approved);
 
-    let filtered = addFlags;
+      const effectiveDisabled = selfDeletedFlag === true ? true : disabledFlag;
+      const effectiveApproved = selfDeletedFlag === true ? false : approvedFlag;
+
+      return {
+        ...r,
+        selfDeletedFlag,
+        disabledFlag: effectiveDisabled,
+        approvedFlag: effectiveApproved,
+      };
+    });
+
+    const withoutSelfDeleted = addFlags.filter((r) => r.selfDeletedFlag !== true);
+
+    let filtered = withoutSelfDeleted;
     if (filter === "active") {
-      filtered = addFlags.filter(
+      filtered = withoutSelfDeleted.filter(
         (r) => r.approvedFlag !== false && r.disabledFlag !== true
       );
     } else if (filter === "pending") {
-      filtered = addFlags.filter(
+      filtered = withoutSelfDeleted.filter(
         (r) => r.approvedFlag === false && r.disabledFlag !== true
       );
     } else if (filter === "disabled") {
-      filtered = addFlags.filter((r) => r.disabledFlag === true);
+      filtered = withoutSelfDeleted.filter((r) => r.disabledFlag === true);
     }
 
     setItems(filtered);
@@ -393,14 +430,16 @@ export default function UserListScreen() {
 
       const approvedFlag = item.approvedFlag ?? normalizeBooleanFlag(item.approved);
       const disabledFlag = item.disabledFlag ?? normalizeBooleanFlag(item.disabled);
+      const selfDeletedFlag = item.selfDeletedFlag ?? normalizeBooleanFlag(item.selfDeleted);
 
-      const isPending = approvedFlag !== true && disabledFlag !== true;
-      const isActive = approvedFlag === true && disabledFlag !== true;
-      const isDisabled = disabledFlag === true;
+      const isSelfDeleted = selfDeletedFlag === true;
+      const isPending = !isSelfDeleted && approvedFlag !== true && disabledFlag !== true;
+      const isActive = !isSelfDeleted && approvedFlag === true && disabledFlag !== true;
+      const isDisabled = !isSelfDeleted && disabledFlag === true;
 
       const busy = actionUid === item.uid && !!actionType;
 
-      if (!isSelf && !isOwner) {
+      if (!isSelf && !isOwner && !isSelfDeleted) {
         if (isPending) {
           actionNode = (
             <SmallBtn

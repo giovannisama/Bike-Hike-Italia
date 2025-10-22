@@ -4,9 +4,17 @@ import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, Tex
 
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../../firebase";
-import { doc, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  deleteDoc,
+  deleteField,
+} from "firebase/firestore";
 import { Screen, Hero } from "../../components/Screen";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
+
+const SELF_DELETED_SENTINEL = "__self_deleted__";
 
 type Params = { uid: string; meRole?: string | null };
 
@@ -21,6 +29,8 @@ type UserDoc = {
   approved?: boolean;
   disabled?: boolean;
   createdAt?: any;
+  selfDeleted?: boolean;
+  selfDeletedAt?: any;
 };
 
 export default function UserDetailScreen() {
@@ -90,17 +100,21 @@ export default function UserDetailScreen() {
           return;
         }
         const d = snap.data() || {};
+        const displayNameRaw = typeof d.displayName === "string" ? d.displayName : "";
+        const isSelfDeleted = d.selfDeleted === true || displayNameRaw === SELF_DELETED_SENTINEL;
         const next: UserDoc = {
           uid: snap.id,
           email: d.email ?? "",
-          firstName: d.firstName ?? "",
-          lastName: d.lastName ?? "",
-          displayName: d.displayName ?? "",
-          nickname: d.nickname ?? "",
+          firstName: isSelfDeleted ? "" : d.firstName ?? "",
+          lastName: isSelfDeleted ? "" : d.lastName ?? "",
+          displayName: isSelfDeleted ? "" : displayNameRaw,
+          nickname: isSelfDeleted ? "" : d.nickname ?? "",
           role: d.role ?? "member",
           approved: d.approved === true,
           disabled: d.disabled === true,
           createdAt: d.createdAt,
+          selfDeleted: isSelfDeleted,
+          selfDeletedAt: d.selfDeletedAt,
         };
         setLoading(false);
 
@@ -146,25 +160,28 @@ export default function UserDetailScreen() {
   const isSelf  = !!currentUid && user?.uid === currentUid;
   const isCurrentOwner = myRole === "owner";
   const isCurrentAdmin = myRole === "admin" || isCurrentOwner;
+  const isSelfDeleted = user?.selfDeleted === true;
 
   // Abilitazioni azioni
-  const canApprove   = !isOwner && !isSelf && user?.role === "member" && user?.approved === false && user?.disabled !== true;
-  const canActivate  = !isOwner && !isSelf && user?.disabled === true;
-  const canDeactivate= !isOwner && !isSelf && user?.approved === true && user?.disabled !== true;
-  const canPromote   = !isOwner && !isSelf && user?.role === "member" && user?.approved === true && user?.disabled !== true;
-  const canDemote    = !isOwner && !isSelf && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
-  const canDelete    = isCurrentAdmin && !isOwner && !isSelf && user?.disabled === true; // admin/owner possono eliminare
+  const canApprove   = !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === false && user?.disabled !== true;
+  const canActivate  = !isOwner && !isSelf && !isSelfDeleted && user?.disabled === true;
+  const canDeactivate= !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
+  const canPromote   = !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === true && user?.disabled !== true;
+  const canDemote    = !isOwner && !isSelf && !isSelfDeleted && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
+  const canDelete    = isCurrentAdmin && !isOwner && !isSelf && (user?.disabled === true || isSelfDeleted); // admin/owner possono eliminare
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
     const isMember = user?.role === "member";
     const isApproved = user?.approved === true;
     const isDisabled = user?.disabled === true;
+    const wasSelfDeleted = user?.selfDeleted === true;
 
-    return { isAdmin, isMember, isApproved, isDisabled };
+    return { isAdmin, isMember, isApproved, isDisabled, wasSelfDeleted };
   }, [user]);
 
   const fullName = () => {
+    if (user?.selfDeleted) return "Account eliminato";
     const ln = (user?.lastName ?? "").trim();
     const fn = (user?.firstName ?? "").trim();
     if (ln || fn) return `${ln}${ln && fn ? ", " : ""}${fn}`;
@@ -289,20 +306,68 @@ export default function UserDetailScreen() {
           text: "Elimina",
           style: "destructive",
           onPress: async () => {
+            const userRef = doc(db, "users", user.uid);
             try {
               setActionLoading("delete");
-              await deleteDoc(doc(db, "users", user.uid));
-              await deleteUsersPublic(user.uid, "UserDetail");
+              let removed = false;
+              try {
+                await deleteDoc(userRef);
+                removed = true;
+              } catch (fireErr: any) {
+                if (fireErr?.code === "permission-denied") {
+                  try {
+                    await updateDoc(userRef, {
+                      displayName: SELF_DELETED_SENTINEL,
+                      firstName: null,
+                      lastName: null,
+                      nickname: null,
+                      approved: false,
+                      disabled: true,
+                      membershipCard: deleteField(),
+                    });
+                    removed = true;
+                  } catch (fallbackErr: any) {
+                    if (fallbackErr?.code === "permission-denied") {
+                      Alert.alert(
+                        "Permessi insufficienti",
+                        "Non hai i permessi necessari per eliminare questo utente. Contatta un amministratore superiore."
+                      );
+                      return;
+                    }
+                    throw fallbackErr;
+                  }
+                } else if (fireErr?.code !== "not-found") {
+                  throw fireErr;
+                }
+              }
+
+              const publicDeleted = await deleteUsersPublic(user.uid, "UserDetail");
+              if (!publicDeleted) {
+                await mergeUsersPublic(
+                  user.uid,
+                  {
+                    displayName: SELF_DELETED_SENTINEL,
+                    firstName: null,
+                    lastName: null,
+                    nickname: null,
+                    email: user.email ?? null,
+                    disabled: true,
+                    approved: false,
+                  },
+                  "UserDetail.deleteFallback"
+                );
+              }
+
+              if (!removed) {
+                Alert.alert(
+                  "Eliminato parzialmente",
+                  "Il profilo è stato oscurato ma non è stato possibile rimuoverlo completamente per via delle regole di sicurezza."
+                );
+              }
+
               try { (navigation as any)?.goBack?.(); } catch {}
             } catch (e: any) {
-              if (e?.code === "permission-denied") {
-                Alert.alert(
-                  "Permessi insufficienti",
-                  "Non hai i permessi necessari per eliminare questo utente. Contatta un Admin per abilitare l'operazione."
-                );
-              } else {
-                Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
-              }
+              Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
             } finally {
               setActionLoading(null);
             }
@@ -368,36 +433,64 @@ export default function UserDetailScreen() {
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
+  const roleLabel = user?.role === "owner" ? "Owner" : state.isAdmin ? "Admin" : "Member";
+  const statusLabel = isSelfDeleted
+    ? "Eliminato"
+    : user?.disabled
+    ? "Disattivo"
+    : user?.approved
+    ? "Attivo"
+    : "In attesa";
+  const heroSubtitle = `${roleLabel} • ${statusLabel} • ${user?.email || "—"}`;
+
   return (
     <Screen useNativeHeader={true} scroll={true} keyboardShouldPersistTaps="handled">
-      <Hero title={fullName()} subtitle={`${state.isAdmin ? "Admin" : "Member"} • ${user?.email || "—"}`} />
+      <Hero title={fullName()} subtitle={heroSubtitle} />
 
       <View style={styles.container}>
         <Text style={styles.title}>Dettagli</Text>
 
         <View style={styles.badgeRow}>
-          <View style={[styles.badge, state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
-            <Text style={styles.badgeText}>{state.isAdmin ? "Admin" : state.isMember ? "Member" : "Owner"}</Text>
+          <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+            <Text style={styles.badgeText}>{roleLabel}</Text>
           </View>
-          {user.disabled ? (
-            <View style={[styles.badge, styles.badgeDanger]}>
-              <Text style={styles.badgeText}>Disattivo</Text>
-            </View>
-          ) : (
-            <View style={[styles.badge, styles.badgeSuccess]}>
-              <Text style={styles.badgeText}>{user.approved ? "Attivo" : "In attesa"}</Text>
-            </View>
-          )}
+          <View
+            style={[
+              styles.badge,
+              isSelfDeleted
+                ? styles.badgeDanger
+                : user.disabled
+                ? styles.badgeMuted
+                : user.approved
+                ? styles.badgeSuccess
+                : styles.badgePending,
+            ]}
+          >
+            <Text style={styles.badgeText}>{statusLabel}</Text>
+          </View>
         </View>
 
         <View style={styles.card}>
           {!editMode ? (
             <>
-              <InfoRow label="Nome completo" value={`${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"} />
-              <InfoRow label="Display name" value={user.displayName || "—"} />
-              <InfoRow label="Nickname" value={user.nickname || "—"} />
+              <InfoRow
+                label="Nome completo"
+                value={
+                  isSelfDeleted
+                    ? "—"
+                    : `${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"
+                }
+              />
+              <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
+              <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
               <InfoRow label="Email" value={user.email || "—"} />
-              <InfoRow label="Stato" value={user.disabled ? "Disattivo" : user.approved ? "Attivo" : "In attesa approvazione"} />
+              <InfoRow label="Stato" value={statusLabel} />
+              {isSelfDeleted && (
+                <InfoRow
+                  label="Eliminato il"
+                  value={user.selfDeletedAt?.toDate?.() ? user.selfDeletedAt.toDate().toLocaleString() : "—"}
+                />
+              )}
             </>
           ) : (
             <>
@@ -448,28 +541,37 @@ export default function UserDetailScreen() {
             </>
           ) : (
             <>
-              {user.approved && !user.disabled && (
+              {isSelfDeleted ? (
+                <Text style={{ color: "#b91c1c", fontWeight: "600" }}>
+                  Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
+                </Text>
+              ) : (
                 <>
-                  <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading || isOwner} />
-                  {state.isMember && (
-                    <Button title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"} onPress={handlePromote} disabled={!canPromote || !!actionLoading} />
+                  {user.approved && !user.disabled && (
+                    <>
+                      <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading || isOwner} />
+                      {state.isMember && (
+                        <Button title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"} onPress={handlePromote} disabled={!canPromote || !!actionLoading} />
+                      )}
+                      {state.isAdmin && !isOwner && (
+                        <Button title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"} onPress={handleDemote} disabled={!canDemote || !!actionLoading} danger />
+                      )}
+                      <Button title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"} onPress={handleDeactivate} disabled={!canDeactivate || !!actionLoading} danger />
+                    </>
                   )}
-                  {state.isAdmin && !isOwner && (
-                    <Button title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"} onPress={handleDemote} disabled={!canDemote || !!actionLoading} danger />
+
+                  {state.isMember && !user.approved && !user.disabled && (
+                    <Button title={actionLoading === "approve" ? "Approvazione…" : "Approva"} onPress={handleApprove} disabled={!canApprove || !!actionLoading} />
                   )}
-                  <Button title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"} onPress={handleDeactivate} disabled={!canDeactivate || !!actionLoading} danger />
+
+                  {user.disabled && (
+                    <Button title={actionLoading === "activate" ? "Attivazione…" : "Attiva"} onPress={handleActivate} disabled={!canActivate || !!actionLoading} />
+                  )}
                 </>
               )}
 
-              {state.isMember && !user.approved && !user.disabled && (
-                <Button title={actionLoading === "approve" ? "Approvazione…" : "Approva"} onPress={handleApprove} disabled={!canApprove || !!actionLoading} />
-              )}
-
-              {user.disabled && (
-                <>
-                  <Button title={actionLoading === "activate" ? "Attivazione…" : "Attiva"} onPress={handleActivate} disabled={!canActivate || !!actionLoading} />
-                  <Button title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"} onPress={handleDelete} disabled={!canDelete || !!actionLoading} danger />
-                </>
+              {(user.disabled || isSelfDeleted) && (
+                <Button title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"} onPress={handleDelete} disabled={!canDelete || !!actionLoading} danger />
               )}
             </>
           )}
@@ -573,11 +675,20 @@ const styles = StyleSheet.create({
   badgeMember: {
     backgroundColor: "#64748B",
   },
+  badgeOwner: {
+    backgroundColor: "#0f172a",
+  },
   badgeSuccess: {
     backgroundColor: "#16A34A",
   },
   badgeDanger: {
     backgroundColor: "#DC2626",
+  },
+  badgeMuted: {
+    backgroundColor: "#6B7280",
+  },
+  badgePending: {
+    backgroundColor: "#F59E0B",
   },
   inputLabel: {
     fontSize: 12,

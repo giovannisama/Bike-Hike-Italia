@@ -270,7 +270,16 @@ function LoginScreen({
         );
       }
     } catch (e: any) {
-      Alert.alert("Errore login", e?.message ?? "Impossibile effettuare il login");
+      let message = e?.message ?? "Impossibile effettuare il login";
+      if (
+        e?.code === "auth/invalid-credential" ||
+        e?.code === "auth/user-not-found" ||
+        e?.code === "auth/wrong-password"
+      ) {
+        message =
+          "Credenziali non valide. Se hai cancellato l'account, registrati nuovamente per accedere.";
+      }
+      Alert.alert("Errore login", message);
     } finally {
       setBusy(false);
     }
@@ -297,7 +306,16 @@ function LoginScreen({
 
       await signInWithEmailAndPassword(auth, saved.email, saved.password);
     } catch (e: any) {
-      Alert.alert("Errore Face ID", e?.message ?? "Impossibile usare l'accesso rapido.");
+      let message = e?.message ?? "Impossibile usare l'accesso rapido.";
+      if (
+        e?.code === "auth/invalid-credential" ||
+        e?.code === "auth/user-not-found" ||
+        e?.code === "auth/wrong-password"
+      ) {
+        message =
+          "Credenziali non valide. Se hai cancellato l'account, registrati nuovamente per accedere.";
+      }
+      Alert.alert("Errore Face ID", message);
     }
   };
 

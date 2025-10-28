@@ -32,13 +32,22 @@ type CropResult = {
 type CardCropperModalProps = {
   visible: boolean;
   imageUri: string | undefined;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
   onCancel: () => void;
   onConfirm: (result: CropResult) => void;
 };
 
 const MIN_RECT_SIZE = 80;
 
-export function CardCropperModal({ visible, imageUri, onCancel, onConfirm }: CardCropperModalProps) {
+export function CardCropperModal({
+  visible,
+  imageUri,
+  imageWidth,
+  imageHeight,
+  onCancel,
+  onConfirm,
+}: CardCropperModalProps) {
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
@@ -49,16 +58,31 @@ export function CardCropperModal({ visible, imageUri, onCancel, onConfirm }: Car
   useEffect(() => {
     if (!visible || !imageUri) return;
     setLoading(false);
+
+    if (imageWidth && imageHeight) {
+      setImageSize({ width: imageWidth, height: imageHeight });
+      return;
+    }
+
+    let cancelled = false;
     Image.getSize(
       imageUri,
       (width, height) => {
-        setImageSize({ width, height });
+        if (!cancelled) {
+          setImageSize({ width, height });
+        }
       },
       () => {
-        setImageSize(null);
+        if (!cancelled) {
+          setImageSize(null);
+        }
       }
     );
-  }, [visible, imageUri]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, imageUri, imageWidth, imageHeight]);
 
   useEffect(() => {
     if (!imageSize) return;

@@ -19,7 +19,7 @@
         "NSCameraUsageDescription": "Uso la fotocamera per scansionare la tessera socio.",
         "NSPhotoLibraryUsageDescription": "Uso la libreria foto per caricare l'immagine della tessera."
       },
-      "bundleIdentifier": "com.giovanni.sama.bikehikeitalia"
+      "bundleIdentifier": "com.giovanni.sama.bikehikeitalia",
     },
     "android": {
       "adaptiveIcon": {

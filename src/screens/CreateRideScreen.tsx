@@ -356,7 +356,7 @@ export default function CreateRideScreen() {
         )}
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Titolo</Text>
+          <Text style={styles.label}>Titolo *</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
@@ -419,7 +419,7 @@ export default function CreateRideScreen() {
         </View>
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Data (YYYY-MM-DD)</Text>
+          <Text style={styles.label}>Data (YYYY-MM-DD) *</Text>
           <TextInput
             value={date}
             onChangeText={setDate}
@@ -431,7 +431,7 @@ export default function CreateRideScreen() {
         </View>
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Ora (HH:MM)</Text>
+          <Text style={styles.label}>Ora (HH:MM) *</Text>
           <TextInput
             value={time}
             onChangeText={setTime}
@@ -443,7 +443,7 @@ export default function CreateRideScreen() {
         </View>
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Luogo di ritrovo</Text>
+          <Text style={styles.label}>Luogo di ritrovo *</Text>
           <TextInput
             value={meetingPoint}
             onChangeText={setMeetingPoint}
@@ -541,6 +541,8 @@ export default function CreateRideScreen() {
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
+
         <VSpace size="xl" />
       </View>
     </Screen>
@@ -618,5 +620,10 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 16,
+  },
+  mandatoryNote: {
+    fontSize: 12,
+    color: UI.colors.muted,
+    textAlign: "right",
   },
 });

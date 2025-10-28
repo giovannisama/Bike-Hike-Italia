@@ -32,7 +32,6 @@ import {
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Notifications from "expo-notifications";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
@@ -53,7 +52,6 @@ import {
   collection,
 } from "firebase/firestore";
 import { auth, db } from "./src/firebase";
-import { registerPushToken } from "./src/notifications/registerPushToken";
 
 // 🔐 Face ID / Touch ID
 import * as LocalAuthentication from "expo-local-authentication";
@@ -120,7 +118,7 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-// Navigation ref per navigare dal tap su notifica
+// Navigation ref per future esigenze (es. deep link)
 export const navRef = createNavigationContainerRef<RootStackParamList>();
 
 // ---- COLORI ----
@@ -325,6 +323,8 @@ function LoginScreen({
     Alert.alert("Disattivato", "Accesso rapido disabilitato.");
   };
 
+  const [passwordVisible, setPasswordVisible] = useState(false);
+
   const doResetPassword = async () => {
     const mail = email.trim();
     if (!mail) {
@@ -342,7 +342,8 @@ function LoginScreen({
   return (
     <SafeAreaView style={styles.authContainer}>
       <KeyboardAvoidingView
-        behavior={Platform.select({ ios: "padding", android: undefined })}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
@@ -360,13 +361,29 @@ function LoginScreen({
           />
 
           <Text style={styles.inputLabel}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="••••••••"
+              secureTextEntry={!passwordVisible}
+              value={password}
+              onChangeText={setPassword}
+              textContentType="password"
+              autoCapitalize="none"
+            />
+            <Pressable
+              onPress={() => setPasswordVisible((prev) => !prev)}
+              style={styles.passwordToggle}
+              accessibilityLabel={passwordVisible ? "Nascondi password" : "Mostra password"}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#475569"
+              />
+            </Pressable>
+          </View>
 
           <Pressable onPress={doResetPassword} style={{ marginTop: 8, alignItems: "flex-start" }}>
             <Text style={{ color: COLOR_PRIMARY, fontWeight: "600" }}>Password dimenticata?</Text>
@@ -381,15 +398,21 @@ function LoginScreen({
               <Pressable onPress={loginWithBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
                 <Text style={styles.btnSecondaryText}>Accedi con Face ID / Touch ID</Text>
               </Pressable>
+
+              <Pressable onPress={disableBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
+                <Text style={styles.btnSecondaryText}>Disattiva accesso rapido</Text>
+              </Pressable>
             </>
           )}
 
-          <Pressable
-            onPress={() => navigation.replace("Signup")}
-            style={[styles.btnSecondary, { marginTop: 12 }]}
-          >
-            <Text style={styles.btnSecondaryText}>Registrati</Text>
-          </Pressable>
+          {!bioReady && (
+            <Pressable
+              onPress={() => navigation.replace("Signup")}
+              style={[styles.btnSecondary, { marginTop: 12 }]}
+            >
+              <Text style={styles.btnSecondaryText}>Registrati</Text>
+            </Pressable>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -490,7 +513,8 @@ function SignupScreen({
   return (
     <SafeAreaView style={styles.authContainer}>
       <KeyboardAvoidingView
-        behavior={Platform.select({ ios: "padding", android: undefined })}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
@@ -1017,6 +1041,7 @@ function AttesaApprovazioneScreen() {
     </SafeAreaView>
   );
 }
+
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const { profile, loading: profileLoading } = useCurrentProfile();
@@ -1059,29 +1084,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // 2) Registra/aggiorna il token push quando l'utente è autenticato
-  useEffect(() => {
-    if (user) {
-      registerPushToken();
-    }
-  }, [user]);
-
-  // 3) Tap su notifica → apri Dettagli Uscita
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      try {
-        const data: any = response.notification.request.content.data;
-        if (data?.type === "ride_created" && data?.rideId && navRef.isReady()) {
-          navRef.navigate("RideDetails", { rideId: data.rideId });
-        }
-      } catch {
-        // ignora
-      }
-    });
-    return () => sub.remove();
-  }, []);
-
-  // 4) Schermata di caricamento mentre verifichiamo auth o profilo
+  // 2) Schermata di caricamento mentre verifichiamo auth o profilo
   if (user === undefined || (user && profileLoading)) {
     return (
       <SafeAreaView style={styles.loading}>
@@ -1091,7 +1094,7 @@ export default function App() {
     );
   }
 
-  // 5) Navigator
+  // 3) Navigator
   return (
     <NavigationContainer theme={AppTheme} ref={navRef}>
       {user === null ? (
@@ -1248,6 +1251,24 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     paddingBottom: 60,
+  },
+  passwordField: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  passwordToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    marginBottom: 0,
+    borderWidth: 0,
+    paddingVertical: Platform.select({ ios: 12, android: 10 }),
   },
   authLogo: {
     width: 120,

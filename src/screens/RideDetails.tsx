@@ -26,7 +26,6 @@ import {
   Timestamp,
   getDoc,
   updateDoc,
-  getDocs,
   arrayUnion,
   arrayRemove,
   increment,
@@ -93,27 +92,6 @@ type PublicMini = {
   nickname?: string | null;
 };
 
-// Util: costruisci "Cognome, Nome" da profilo pubblico + fallback
-function buildCognomeNomeFromPublic(
-  p: { firstName?: string | null; lastName?: string | null; displayName?: string | null; nickname?: string | null },
-  fallback?: string
-): string {
-  const fn = (p.firstName || "").trim();
-  const ln = (p.lastName || "").trim();
-  if (ln || fn) return `${ln}${ln && fn ? ", " : ""}${fn}`.trim();
-  const dn = (p.displayName || "").trim();
-  if (dn) {
-    const parts = dn.split(/\s+/);
-    if (parts.length >= 2) {
-      const last = parts.pop() as string;
-      const first = parts.join(" ");
-      return `${last}, ${first}`;
-    }
-    return dn;
-  }
-  return (fallback || "Utente").trim();
-}
-
 export default function RideDetails() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, "RideDetails">>();
@@ -131,6 +109,7 @@ export default function RideDetails() {
   const [publicIndex, setPublicIndex] = useState<Record<string, PublicMini>>({});
 
   const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [joinSaving, setJoinSaving] = useState(false);
 
@@ -539,63 +518,6 @@ export default function RideDetails() {
     }
   }, [rideId]);
 
-  const cleanUpParticipants = useCallback(async () => {
-    if (!rideId) return;
-    Alert.alert(
-      "Conferma",
-      "Pulire i nomi dei partecipanti in questa uscita e aggiornare l'elenco?",
-      [
-        { text: "Annulla", style: "cancel" },
-        {
-          text: "Pulisci",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // 1) Leggi tutti i partecipanti
-              const partsSnap = await getDocs(collection(db, "rides", rideId, "participants"));
-              const names: string[] = [];
-
-              for (const docSnap of partsSnap.docs) {
-                const data = docSnap.data() as any;
-                const uid = data?.uid as string | undefined;
-
-                // 2) Recupera mini profilo pubblico (riutilizza fetchPublicMini)
-                let mini = uid ? publicIndex[uid] : undefined;
-                if (!mini && uid) {
-                  mini = await fetchPublicMini(uid);
-                  setPublicIndex((prev) => ({ ...prev, [uid]: mini! }));
-                }
-
-                // 3) Calcola nome formattato
-                const formatted = buildCognomeNomeFromPublic(mini || {}, data?.name)
-                  .slice(0, 80);
-
-                names.push(formatted);
-
-                // 4) Aggiorna il documento participant (name + displayName)
-                await updateDoc(doc(db, "rides", rideId, "participants", docSnap.id), {
-                  name: formatted,
-                  displayName: formatted,
-                });
-              }
-
-              // 5) Aggiorna il documento ride con gli array per la UI legacy
-              await updateDoc(doc(db, "rides", rideId), {
-                participantsNames: names,
-                participants: names,
-              });
-
-              Alert.alert("Fatto", "Elenco e partecipanti ripuliti.");
-            } catch (e: any) {
-              console.error("cleanup error:", e);
-              Alert.alert("Errore", e?.message ?? "Impossibile completare la pulizia.");
-            }
-          },
-        },
-      ]
-    );
-  }, [rideId, publicIndex, fetchPublicMini]);
-
   const deleteRideForever = useCallback(async () => {
     if (!rideId) return;
     Alert.alert("Conferma", "Cancellare definitivamente l'uscita?", [
@@ -632,10 +554,15 @@ export default function RideDetails() {
   }, [joinSaving]);
 
   const openManualModal = useCallback(() => {
+    if (!isAdmin) return;
+    if (ride?.archived) {
+      Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
+      return;
+    }
     setManualName("");
     setManualNote("");
     setManualModalVisible(true);
-  }, []);
+  }, [isAdmin, ride?.archived]);
 
   const closeManualModal = useCallback(() => {
     if (manualSaving) return;
@@ -722,8 +649,16 @@ export default function RideDetails() {
     }
   }, [rideId, noteText, joinSaving, ride, combinedParticipants.length, publicIndex, fetchPublicMini, buildPublicName, adjustParticipantsCount]);
 
+  useEffect(() => {
+    setShowFullDescription(false);
+  }, [rideId]);
+
   const confirmManualAdd = useCallback(async () => {
     if (!isAdmin || manualSaving) return;
+    if (ride?.archived) {
+      Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
+      return;
+    }
     const label = manualName.trim().replace(/\s+/g, " ");
     if (!label) {
       Alert.alert("Attenzione", "Inserisci un nome valido.");
@@ -756,33 +691,42 @@ export default function RideDetails() {
     } finally {
       setManualSaving(false);
     }
-  }, [isAdmin, manualSaving, manualName, manualNote, rideId, currentUid, adjustParticipantsCount]);
+  }, [isAdmin, manualSaving, manualName, manualNote, rideId, currentUid, adjustParticipantsCount, ride?.archived]);
 
   const leave = useCallback(async () => {
     const u = auth.currentUser;
     if (!u || !rideId) return;
 
+    if (ride?.archived) {
+      Alert.alert("Non disponibile", "Uscita archiviata: non puoi modificare la prenotazione.");
+      return;
+    }
+
     Alert.alert("Conferma", "Vuoi cancellare la prenotazione?", [
       { text: "Annulla", style: "cancel" },
-          {
-            text: "Sì, cancella",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deleteDoc(doc(db, "rides", rideId, "participants", u.uid));
-                await adjustParticipantsCount(-1);
-              } catch (e: any) {
-                console.error("leave error:", e);
-                Alert.alert("Errore", e?.message ?? "Impossibile cancellare la prenotazione.");
-              }
-            },
+      {
+        text: "Sì, cancella",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "rides", rideId, "participants", u.uid));
+            await adjustParticipantsCount(-1);
+          } catch (e: any) {
+            console.error("leave error:", e);
+            Alert.alert("Errore", e?.message ?? "Impossibile cancellare la prenotazione.");
+          }
+        },
       },
     ]);
-  }, [rideId, adjustParticipantsCount]);
+  }, [rideId, adjustParticipantsCount, ride?.archived]);
 
   const handleAdminRemove = useCallback(
     (participant: Participant) => {
       if (!isAdmin || !rideId) return;
+      if (ride?.archived) {
+        Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
+        return;
+      }
       const label = formatCognomeNome(participant.uid ?? "", participant.name);
 
       Alert.alert(
@@ -814,7 +758,7 @@ export default function RideDetails() {
         ]
       );
     },
-    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount]
+    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount, ride?.archived]
   );
 
   // ─────────────────────────────────────────
@@ -877,7 +821,6 @@ export default function RideDetails() {
               <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
             )}
             <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
-            <PrimaryButton label="Pulisci" onPress={cleanUpParticipants} style={{ backgroundColor: "#0F766E" }} />
           </View>
         )}
       </View>
@@ -905,7 +848,38 @@ export default function RideDetails() {
         <Row label="Bici" value={bikesText} />
         <Row label="Difficoltà" value={ride.difficulty || "—"} />
         <Row label="Max partecipanti" value={maxText} />
-        <Row label="Descrizione" value={ride.description?.trim() ? ride.description : "—"} multiline />
+        <Row
+          label="Descrizione"
+          value={ride.description?.trim() ? ride.description : "—"}
+          multiline
+          renderValue={() => {
+            const descriptionText = ride.description?.trim();
+            if (!descriptionText) return <Text style={{ color: "#666" }}>—</Text>;
+
+            const approxLines = descriptionText.split(/\r?\n/).length;
+            const shouldShowToggle =
+              descriptionText.length > 400 || approxLines > 5;
+
+            return (
+              <View>
+                <Text style={{ color: "#222" }} numberOfLines={showFullDescription || !shouldShowToggle ? undefined : 5}>
+                  {descriptionText}
+                </Text>
+                {shouldShowToggle && (
+                  <TouchableOpacity
+                    onPress={() => setShowFullDescription((prev) => !prev)}
+                    accessibilityRole="button"
+                    style={{ marginTop: 6 }}
+                  >
+                    <Text style={{ color: UI.colors.primary, fontWeight: "600" }}>
+                      {showFullDescription ? "Mostra meno" : "Mostra di più"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          }}
+        />
       </View>
 
         {/* Prenotazione */}
@@ -936,7 +910,12 @@ export default function RideDetails() {
 
             <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
               <PrimaryButton label="Modifica nota" onPress={openNoteModal} disabled={!isBookable} />
-              <PrimaryButton label="Non Partecipo" onPress={leave} style={{ backgroundColor: "#b00020" }} />
+              <PrimaryButton
+                label="Non Partecipo"
+                onPress={leave}
+                style={{ backgroundColor: isArchived ? "#94a3b8" : "#b00020" }}
+                disabled={isArchived}
+              />
             </View>
           </>
         ) : (
@@ -952,7 +931,11 @@ export default function RideDetails() {
         <Text style={styles.sectionTitle}>Elenco partecipanti</Text>
         {isAdmin && (
           <View style={{ marginBottom: 12 }}>
-            <PrimaryButton label="Aggiungi manualmente" onPress={openManualModal} />
+            <PrimaryButton
+              label="Aggiungi manualmente"
+              onPress={openManualModal}
+              disabled={isArchived}
+            />
           </View>
         )}
         {loadingParts ? (
@@ -978,7 +961,7 @@ export default function RideDetails() {
                   )}
                   {item.note ? <Text style={styles.participantNote}>Nota: {item.note}</Text> : null}
                 </View>
-                {isAdmin && (
+                {isAdmin && !isArchived && (
                   <TouchableOpacity
                     onPress={() => handleAdminRemove(item)}
                     style={styles.participantAdminBtn}
@@ -1106,15 +1089,21 @@ function Row({
   label,
   value,
   multiline,
+  renderValue,
 }: {
   label: string;
   value: string;
   multiline?: boolean;
+  renderValue?: () => React.ReactNode;
 }) {
   return (
     <View style={{ marginBottom: 10 }}>
       <Text style={{ fontWeight: "700", marginBottom: 4 }}>{label}</Text>
-      <Text style={{ color: "#222" }}>{multiline ? value : value}</Text>
+      {renderValue ? (
+        renderValue()
+      ) : (
+        <Text style={{ color: "#222" }}>{multiline ? value : value}</Text>
+      )}
     </View>
   );
 }

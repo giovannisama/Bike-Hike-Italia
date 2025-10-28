@@ -1,5 +1,5 @@
 // src/screens/ProfileScreen.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Pressable,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { auth, db } from "../firebase";
 import { doc, setDoc, serverTimestamp, onSnapshot, deleteField, deleteDoc } from "firebase/firestore";
 import { updateProfile as fbUpdateProfile, deleteUser } from "firebase/auth";
@@ -33,6 +34,8 @@ type LocalCard = {
   uri: string;
   mimeType?: string | null;
   base64?: string | null;
+  width?: number | null;
+  height?: number | null;
 };
 
 export default function ProfileScreen() {
@@ -138,6 +141,24 @@ export default function ProfileScreen() {
     return true;
   };
 
+  const normalizeForCrop = useCallback(async (uri: string) => {
+    try {
+      const normalized = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ rotate: 0 }],
+        { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      return {
+        uri: normalized.uri,
+        width: normalized.width,
+        height: normalized.height,
+      };
+    } catch (e) {
+      console.warn("normalizeForCrop", e);
+      return { uri, width: null, height: null };
+    }
+  }, []);
+
   const handleCaptureCard = async () => {
     const allowed = await ensureCameraPermission();
     if (!allowed) return;
@@ -146,11 +167,18 @@ export default function ProfileScreen() {
       mediaTypes: ["images"],
       allowsEditing: false,
       quality: 1,
+      exif: false,
     });
 
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
-      setCropSource({ uri: asset.uri, mimeType: asset.mimeType });
+      const normalized = await normalizeForCrop(asset.uri);
+      setCropSource({
+        uri: normalized.uri,
+        mimeType: asset.mimeType,
+        width: normalized.width ?? asset.width ?? null,
+        height: normalized.height ?? asset.height ?? null,
+      });
     }
   };
 
@@ -162,11 +190,18 @@ export default function ProfileScreen() {
       mediaTypes: ["images"],
       allowsEditing: false,
       quality: 1,
+      exif: false,
     });
 
     if (!result.canceled && result.assets?.[0]) {
       const asset = result.assets[0];
-      setCropSource({ uri: asset.uri, mimeType: asset.mimeType });
+      const normalized = await normalizeForCrop(asset.uri);
+      setCropSource({
+        uri: normalized.uri,
+        mimeType: asset.mimeType,
+        width: normalized.width ?? asset.width ?? null,
+        height: normalized.height ?? asset.height ?? null,
+      });
     }
   };
 
@@ -583,6 +618,8 @@ export default function ProfileScreen() {
       <CardCropperModal
         visible={!!cropSource}
         imageUri={cropSource?.uri}
+        imageWidth={cropSource?.width ?? undefined}
+        imageHeight={cropSource?.height ?? undefined}
         onCancel={() => setCropSource(null)}
         onConfirm={(result) => {
           if (result?.uri) {
@@ -590,6 +627,8 @@ export default function ProfileScreen() {
               uri: result.uri,
               mimeType: cropSource?.mimeType ?? "image/jpeg",
               base64: result.base64 ?? null,
+              width: result.width ?? null,
+              height: result.height ?? null,
             });
           }
           setCropSource(null);

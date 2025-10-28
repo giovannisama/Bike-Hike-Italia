@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, TextInput, Pressable, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
-import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, Timestamp, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
@@ -54,6 +54,20 @@ function toISODate(ts?: Timestamp | null) {
   return d.toISOString().slice(0, 10);
 }
 
+function rideDateValue(ride: Ride): number | null {
+  const ts = ride.dateTime ?? ride.date;
+  if (!ts?.toDate) return null;
+  const d = ts.toDate();
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function inputDateValue(raw: string): number | null {
+  const s = raw.trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
 export default function CalendarScreen() {
   const navigation = useNavigation<any>();
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
@@ -67,7 +81,9 @@ export default function CalendarScreen() {
   });
 
   const [rides, setRides] = useState<Ride[]>([]);
+  const [allRides, setAllRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [allRidesLoading, setAllRidesLoading] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // 🔎 Ricerca
@@ -131,7 +147,12 @@ export default function CalendarScreen() {
     }
   }, [yearMonthInput]);
 
-  const normalized = (s?: string) => (s || "").toLowerCase();
+  const normalizeForSearch = (s?: string) =>
+    (s || "")
+      .toString()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
 
   const clearSearch = useCallback(() => {
     setYearMonthInput("");
@@ -142,6 +163,96 @@ export default function CalendarScreen() {
 
   // debounce per aggiornare il mese di query senza far "saltare" il layout
   const monthChangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const keywordActive = searchText.trim().length > 0;
+
+  const keywordResults = useMemo(() => {
+    if (!keywordActive) return [];
+    const q = normalizeForSearch(searchText.trim());
+    if (!q) return [];
+    const source = allRides.length > 0 ? allRides : rides;
+    const fromValue = inputDateValue(dateFromInput);
+    const toValue = inputDateValue(dateToInput);
+
+    const matches = source.filter((r) => {
+      const value = rideDateValue(r);
+      if (fromValue != null && (value == null || value < fromValue)) return false;
+      if (toValue != null && (value == null || value > toValue)) return false;
+      const title = normalizeForSearch(r.title);
+      const place = normalizeForSearch(r.meetingPoint);
+      return title.includes(q) || place.includes(q);
+    });
+    matches.sort((a, b) => {
+      const tb = (b.dateTime || b.date)?.toDate?.()?.getTime() ?? 0;
+      const ta = (a.dateTime || a.date)?.toDate?.()?.getTime() ?? 0;
+      return tb - ta;
+    });
+    return matches;
+  }, [keywordActive, rides, searchText, allRides, dateFromInput, dateToInput]);
+
+  const allRidesFetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!keywordActive || allRidesFetchedRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setAllRidesLoading(true);
+        const col = collection(db, "rides");
+        const snap = await getDocs(col);
+        if (cancelled) return;
+        const rows: Ride[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          rows.push({
+            id: docSnap.id,
+            title: d?.title ?? "",
+            meetingPoint: d?.meetingPoint ?? "",
+            date: d?.date ?? null,
+            dateTime: d?.dateTime ?? null,
+            status: (d?.status as Ride["status"]) ?? "active",
+            archived: !!d?.archived,
+          });
+        });
+        rows.sort((a, b) => {
+          const tb = (b.dateTime || b.date)?.toDate?.()?.getTime() ?? 0;
+          const ta = (a.dateTime || a.date)?.toDate?.()?.getTime() ?? 0;
+          return tb - ta;
+        });
+        setAllRides(rows);
+        allRidesFetchedRef.current = true;
+      } catch (e) {
+        if (!cancelled) console.error("all rides fetch", e);
+      } finally {
+        if (!cancelled) setAllRidesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [keywordActive]);
+
+  const resetFiltersAndView = useCallback(() => {
+    clearSearch();
+    setYmLocal("");
+    setFromLocal("");
+    setToLocal("");
+    setTextLocal("");
+
+    const now = new Date();
+    const month = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+    const today = now.toISOString().slice(0, 10);
+
+    setSelectedDay(today);
+    setVisibleMonth(`${month}-01`);
+    if (monthChangeTimer.current) {
+      clearTimeout(monthChangeTimer.current);
+      monthChangeTimer.current = null;
+    }
+    setCurrentMonth(month);
+    setSearchOpen(false);
+  }, [clearSearch]);
 
     // 🔎 carica le uscite del mese corrente da ENTRAMBI i campi: `dateTime` e `date`
     useEffect(() => {
@@ -202,7 +313,7 @@ export default function CalendarScreen() {
     const out: CalendarMarkedDates = {};
 
     // Filtri attivi
-    const qText = searchText.trim().toLowerCase();
+    const qText = normalizeForSearch(searchText.trim());
     const from = isYYYYMMDD(dateFromInput.trim()) ? dateFromInput.trim() : null;
     const to = isYYYYMMDD(dateToInput.trim()) ? dateToInput.trim() : null;
 
@@ -216,8 +327,8 @@ export default function CalendarScreen() {
 
       // Filtro testo (se presente)
       if (qText) {
-        const t = normalized(r.title);
-        const p = normalized(r.meetingPoint);
+        const t = normalizeForSearch(r.title);
+        const p = normalizeForSearch(r.meetingPoint);
         if (!t.includes(qText) && !p.includes(qText)) return false;
       }
       return true;
@@ -261,43 +372,52 @@ export default function CalendarScreen() {
     const key = selectedDay;
     let base = rides.filter((r) => toISODate(r.dateTime || r.date) === key);
 
-    const q = searchText.trim().toLowerCase();
-    if (q) base = base.filter((r) => normalized(r.title).includes(q) || normalized(r.meetingPoint).includes(q));
+    const q = normalizeForSearch(searchText.trim());
+    if (q) base = base.filter((r) => normalizeForSearch(r.title).includes(q) || normalizeForSearch(r.meetingPoint).includes(q));
 
-    const from = isYYYYMMDD(dateFromInput.trim()) ? dateFromInput.trim() : null;
-    const to = isYYYYMMDD(dateToInput.trim()) ? dateToInput.trim() : null;
-    if (from) base = base.filter((r) => key >= from);
-    if (to) base = base.filter((r) => key <= to);
+    const fromValue = inputDateValue(dateFromInput);
+    const toValue = inputDateValue(dateToInput);
+    if (fromValue != null) {
+      base = base.filter((r) => {
+        const value = rideDateValue(r);
+        return value != null && value >= fromValue;
+      });
+    }
+    if (toValue != null) {
+      base = base.filter((r) => {
+        const value = rideDateValue(r);
+        return value != null && value <= toValue;
+      });
+    }
 
     return base;
   }, [rides, selectedDay, searchText, dateFromInput, dateToInput]);
 
-    const hasActiveFilter = useMemo(() => {
-      const q = searchText.trim();
-      const f = dateFromInput.trim();
-      const t = dateToInput.trim();
-      const ym = yearMonthInput.trim();
-      return q.length > 0 || isYYYYMMDD(f) || isYYYYMMDD(t) || isYYYYMM(ym);
-    }, [searchText, dateFromInput, dateToInput, yearMonthInput]);
+  const hasRangeFilters = useMemo(() => {
+    const f = dateFromInput.trim();
+    const t = dateToInput.trim();
+    const ym = yearMonthInput.trim();
+    return isYYYYMMDD(f) || isYYYYMMDD(t) || isYYYYMM(ym);
+  }, [dateFromInput, dateToInput, yearMonthInput]);
 
   const resultsAll = useMemo(() => {
     let base = [...rides];
 
-    const from = isYYYYMMDD(dateFromInput.trim()) ? dateFromInput.trim() : null;
-    const to = isYYYYMMDD(dateToInput.trim()) ? dateToInput.trim() : null;
-    if (from || to) {
+    const fromValue = inputDateValue(dateFromInput);
+    const toValue = inputDateValue(dateToInput);
+    if (fromValue != null || toValue != null) {
       base = base.filter((r) => {
-        const key = toISODate(r.dateTime || r.date);
-        if (!key) return false;
-        if (from && key < from) return false;
-        if (to && key > to) return false;
+        const value = rideDateValue(r);
+        if (value == null) return false;
+        if (fromValue != null && value < fromValue) return false;
+        if (toValue != null && value > toValue) return false;
         return true;
       });
     }
 
-    const q = searchText.trim().toLowerCase();
+    const q = normalizeForSearch(searchText.trim());
     if (q) {
-      base = base.filter((r) => normalized(r.title).includes(q) || normalized(r.meetingPoint).includes(q));
+      base = base.filter((r) => normalizeForSearch(r.title).includes(q) || normalizeForSearch(r.meetingPoint).includes(q));
     }
 
     base.sort((a, b) => {
@@ -308,6 +428,28 @@ export default function CalendarScreen() {
 
     return base;
   }, [rides, searchText, dateFromInput, dateToInput]);
+
+  const keywordHeader = useMemo(() => {
+    const term = searchText.trim();
+    return (
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        <Text style={styles.listTitle} numberOfLines={2}>
+          {term ? `Risultati per "${term}"` : "Risultati"}
+        </Text>
+      </View>
+    );
+  }, [searchText]);
+
+  const keywordEmpty = useMemo(() => {
+    const term = searchText.trim();
+    return (
+      <View style={[styles.centerRow, { paddingHorizontal: 16, paddingVertical: 32 }]}>
+        <Text style={{ color: "#6B7280", textAlign: "center" }}>
+          {term ? `Nessuna uscita trovata per "${term}".` : "Nessun risultato."}
+        </Text>
+      </View>
+    );
+  }, [searchText]);
 
   const onDayPress = useCallback((d: DateData) => {
     // ✅ Quando l'utente seleziona una data dal calendario, azzeriamo QUALSIASI filtro attivo
@@ -352,6 +494,48 @@ export default function CalendarScreen() {
       navigation.navigate("RideDetails", { rideId: ride.id, title: ride.title });
     },
     [navigation]
+  );
+
+  const renderKeywordItem = useCallback(
+    ({ item }: { item: Ride }) => {
+      const isCancelled = item.status === "cancelled";
+      const isArchived = !!item.archived;
+      const dateObj = item.dateTime?.toDate?.() ?? item.date?.toDate?.() ?? null;
+      const dateLabel = dateObj
+        ? format(dateObj, "EEEE d MMMM yyyy 'alle' HH:mm", { locale: it })
+        : "Data da definire";
+
+      return (
+        <TouchableOpacity style={[styles.rideCard, { marginHorizontal: 12 }]} onPress={() => openRide(item)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rideDate} numberOfLines={1}>
+              {dateLabel}
+            </Text>
+            <Text
+              style={[
+                styles.rideTitle,
+                isCancelled && { textDecorationLine: "line-through", color: "#991B1B" },
+                isArchived && { color: "#374151" },
+              ]}
+              numberOfLines={1}
+            >
+              {item.title || "Uscita"}
+            </Text>
+            <Text style={styles.ridePlace} numberOfLines={1}>
+              {item.meetingPoint || "—"}
+            </Text>
+          </View>
+          {isArchived ? (
+            <Badge text="Arch." bg="#E5E7EB" fg="#374151" />
+          ) : isCancelled ? (
+            <Badge text="No" bg="#FEE2E2" fg="#991B1B" />
+          ) : (
+            <Badge text="OK" bg="#111" fg="#fff" />
+          )}
+        </TouchableOpacity>
+      );
+    },
+    [openRide]
   );
 
   const headerRightBtn = (
@@ -451,7 +635,7 @@ export default function CalendarScreen() {
 
       {/* titolo lista (risultati o giorno selezionato) */}
       <View style={{ paddingHorizontal: 12, paddingTop: 4, paddingBottom: 4 }}>
-        {hasActiveFilter ? (
+        {hasRangeFilters ? (
           <Text style={styles.listTitle} numberOfLines={1}>
             Risultati: {resultsAll.length} uscita{resultsAll.length === 1 ? "" : "e"}
           </Text>
@@ -462,7 +646,7 @@ export default function CalendarScreen() {
         )}
       </View>
     </View>
-  ), [visibleMonth, marked, onDayPress, onMonthChange, hasActiveFilter, resultsAll.length, selectedDay]);
+  ), [visibleMonth, marked, onDayPress, onMonthChange, hasRangeFilters, resultsAll.length, selectedDay]);
 
   return (
     <Screen title="Calendario" subtitle="Visualizza uscite per giorno" scroll={false} headerRight={headerRightBtn}>
@@ -476,8 +660,22 @@ export default function CalendarScreen() {
         >
           <View style={{ flex: 1, backgroundColor: "#fff" }}>
             <SafeAreaView edges={["top", "left", "right"]}>
-              <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#e5e7eb" }}>
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 8,
+                  paddingBottom: 8,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderColor: "#e5e7eb",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <Text style={{ fontSize: 18, fontWeight: "800", color: "#111827" }}>Cerca</Text>
+                <TouchableOpacity onPress={() => setSearchOpen(false)} accessibilityLabel="Chiudi filtri" accessibilityRole="button">
+                  <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }}>×</Text>
+                </TouchableOpacity>
               </View>
             </SafeAreaView>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -538,19 +736,6 @@ export default function CalendarScreen() {
                 </View>
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
                   <Pressable
-                    onPress={() => {
-                      setYmLocal("");
-                      setFromLocal("");
-                      setToLocal("");
-                      setTextLocal("");
-                      clearSearch();
-                    }}
-                    style={[styles.goBtn, { backgroundColor: "#6B7280" }]}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>Pulisci</Text>
-                  </Pressable>
-
-                  <Pressable
                     onPress={applySearchAndClose}
                     style={[styles.goBtn, { backgroundColor: "#111" }]}
                   >
@@ -558,22 +743,36 @@ export default function CalendarScreen() {
                   </Pressable>
 
                   <Pressable
-                    onPress={() => setSearchOpen(false)}
-                    style={[styles.goBtn, { backgroundColor: "#111827" }]}
+                    onPress={resetFiltersAndView}
+                    style={[styles.goBtn, { backgroundColor: "#6B7280" }]}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>Chiudi</Text>
+                    <Text style={{ color: "#fff", fontWeight: "800" }}>Reimposta</Text>
                   </Pressable>
                 </View>
               </ScrollView>
             </KeyboardAvoidingView>
           </View>
         </Modal>
-        {loading ? (
+        {loading && rides.length === 0 ? (
           <View style={styles.centerRow}><ActivityIndicator /></View>
+        ) : keywordActive ? (
+          allRidesLoading && allRides.length === 0 ? (
+            <View style={styles.centerRow}><ActivityIndicator /></View>
+          ) : (
+            <FlatList
+              data={keywordResults}
+              keyExtractor={(r) => r.id}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+              renderItem={renderKeywordItem}
+              ListHeaderComponent={keywordHeader}
+              ListEmptyComponent={keywordEmpty}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 32, paddingTop: 12 }}
+            />
+          )
         ) : (
           <FlatList
             ListHeaderComponent={listHeader}
-            data={hasActiveFilter ? resultsAll : listForSelected}
+            data={hasRangeFilters ? resultsAll : listForSelected}
             keyExtractor={(r) => r.id}
             ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
             renderItem={({ item }) => {
@@ -647,7 +846,6 @@ const SearchBar = React.memo(function SearchBar({
   onChangeDateFrom,
   dateToInput,
   onChangeDateTo,
-  onClear,
 }: {
   yearMonthInput: string;
   onChangeYearMonth: (v: string) => void;
@@ -658,7 +856,6 @@ const SearchBar = React.memo(function SearchBar({
   onChangeDateFrom: (v: string) => void;
   dateToInput: string;
   onChangeDateTo: (v: string) => void;
-  onClear: () => void;
 }) {
   // Refs agli input per evitare re-render e mantenere SEMPRE il focus
   const ymRef = React.useRef<TextInput>(null);
@@ -692,13 +889,6 @@ const SearchBar = React.memo(function SearchBar({
   const handleFromEnd = () => onChangeDateFrom(fromVal.current);
   const handleToEnd = () => onChangeDateTo(toVal.current);
   const handleTextEnd = () => onChangeSearchText(textVal.current);
-
-  const handleClear = () => {
-    onClear();
-    ymVal.current = ""; fromVal.current = ""; toVal.current = ""; textVal.current = "";
-    ymRef.current?.clear(); fromRef.current?.clear(); toRef.current?.clear(); textRef.current?.clear();
-    setYmValid(false);
-  };
 
   return (
     <View style={styles.searchCard}>
@@ -781,9 +971,6 @@ const SearchBar = React.memo(function SearchBar({
         <Pressable onPress={handleYmSubmit} style={styles.goBtn} disabled={!ymValid}>
           <Text style={{ color: "#fff", fontWeight: "800", opacity: ymValid ? 1 : 0.5 }}>Vai</Text>
         </Pressable>
-        <Pressable onPress={handleClear} style={[styles.goBtn, { backgroundColor: "#6B7280" }]}>
-          <Text style={{ color: "#fff", fontWeight: "800" }}>Pulisci</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -810,6 +997,7 @@ const styles = StyleSheet.create({
   },
   rideTitle: { fontWeight: "700", color: "#111" },
   ridePlace: { color: "#374151", marginTop: 2 },
+  rideDate: { color: "#6B7280", fontSize: 12, marginBottom: 4 },
   centerRow: { padding: 12, alignItems: "center", justifyContent: "center" },
   searchCard: {
     backgroundColor: "#FFFFFF",

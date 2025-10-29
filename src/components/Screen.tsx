@@ -45,6 +45,7 @@ export const UI = {
 
 type ScreenProps = {
   title?: string;
+  titleMeta?: string;
   subtitle?: string;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
@@ -55,6 +56,7 @@ type ScreenProps = {
 
 export function Screen({
   title,
+  titleMeta,
   subtitle,
   headerRight,
   children,
@@ -79,8 +81,15 @@ export function Screen({
           <SafeAreaView edges={["top"]}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
-                {!!title && (
-                  <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
+                {(!!title || !!titleMeta) && (
+                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                    {!!title && (
+                      <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
+                    )}
+                    {!!titleMeta && (
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>{titleMeta}</Text>
+                    )}
+                  </View>
                 )}
                 {!!subtitle && (
                   <Text

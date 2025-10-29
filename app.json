@@ -2,8 +2,8 @@
   "expo": {
     "name": "bike-hike-italia",
     "slug": "bike-hike-italia",
-    "version": "1.0.0",
-    "orientation": "portrait",
+    "version": "1.0.2",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -14,12 +14,13 @@
     },
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "3",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Userò Face ID per accedere più velocemente all'app.",
         "NSCameraUsageDescription": "Uso la fotocamera per scansionare la tessera socio.",
         "NSPhotoLibraryUsageDescription": "Uso la libreria foto per caricare l'immagine della tessera."
       },
-      "bundleIdentifier": "com.giovanni.sama.bikehikeitalia",
+      "bundleIdentifier": "com.giovanni.sama.bikehikeitalia"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +29,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.giovanni.sama.bikehikeitalia"
+      "package": "com.giovanni.sama.bikehikeitalia",
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,6 +41,10 @@
     "extra": {
       "eas": {
         "projectId": "e74521c0-d040-4137-a8d1-0d535e353f2d"
+      },
+      "version": {
+        "ios": "1.0.0",
+        "android": "1.0.2"
       }
     }
   }

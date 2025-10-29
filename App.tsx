@@ -32,7 +32,10 @@ import {
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
+import Constants from "expo-constants";
+import * as Updates from "expo-updates";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import appConfig from "./app.json";
 
 import {
   onAuthStateChanged,
@@ -173,6 +176,38 @@ const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
 );
 // ---- LOGO ----
 const logo = require("./assets/images/logo.jpg");
+
+const APP_VERSION_LABEL = (() => {
+  const platformKey = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : Platform.OS;
+  const staticExtra =
+    (((appConfig as any)?.expo?.extra?.version as Record<string, string> | undefined) ?? {})[platformKey] ?? null;
+  if (staticExtra) return `v. ${staticExtra}`;
+
+  const staticVersion = (appConfig as any)?.expo?.version ?? null;
+  try {
+    const constantsAny: Record<string, any> = Constants as any;
+    const updatesExtra =
+      (Updates?.manifest as any)?.extra?.version?.[platformKey] ??
+      null;
+    if (updatesExtra) return `v. ${updatesExtra}`;
+
+    const runtimeExtra =
+      constantsAny?.expoConfig?.extra?.version?.[platformKey] ??
+      constantsAny?.manifest?.extra?.version?.[platformKey] ??
+      null;
+    if (runtimeExtra) return `v. ${runtimeExtra}`;
+
+    const configVersion =
+      constantsAny?.expoConfig?.version ??
+      constantsAny?.manifest?.version ??
+      null;
+    const nativeVersion = Constants?.nativeAppVersion ?? null;
+    const resolved = configVersion ?? staticVersion ?? nativeVersion ?? null;
+    return resolved ? `v. ${resolved}` : null;
+  } catch {
+    return staticVersion ? `v. ${staticVersion}` : null;
+  }
+})();
 
 // ---- TIPO profilo (per typing nella signup) ----
 type UserProfile = {
@@ -346,6 +381,7 @@ function LoginScreen({
       >
         <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
           <Image source={logo} style={styles.authLogo} />
+          {!!APP_VERSION_LABEL && <Text style={styles.authVersion}>{APP_VERSION_LABEL}</Text>}
           <Text style={styles.authTitle}>Accedi</Text>
 
           <Text style={styles.inputLabel}>Email</Text>
@@ -1302,6 +1338,15 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
     alignSelf: "center",
     marginBottom: 16,
+  },
+  authVersion: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLOR_MUTED,
+    textAlign: "center",
+    alignSelf: "center",
+    marginTop: -10,
+    marginBottom: 12,
   },
   authTitle: { fontSize: 24, fontWeight: "800", marginBottom: 20, textAlign: "center" },
   btnPrimary: {

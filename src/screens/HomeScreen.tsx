@@ -128,7 +128,7 @@ function useActiveRidesCount() {
 // ------------------------------------------------------------------
 export default function HomeScreen({ navigation }: any) {
   const user = auth.currentUser;
-  const { profile, isAdmin, loading } = useCurrentProfile();
+  const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
 
   const firstName = (profile?.firstName ?? "").trim();
@@ -154,13 +154,21 @@ export default function HomeScreen({ navigation }: any) {
         isAdmin ? (
           <View
             style={{
-              backgroundColor: "#FDE68A",
+              backgroundColor: isOwner ? "#1D4ED8" : "#FDE68A",
               paddingHorizontal: 8,
               paddingVertical: 2,
               borderRadius: UI.radius.round,
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: "800", color: "#92400E" }}>ADMIN</Text>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "800",
+                color: isOwner ? "#EFF6FF" : "#92400E",
+              }}
+            >
+              {isOwner ? "OWNER" : "ADMIN"}
+            </Text>
           </View>
         ) : undefined
       }
@@ -248,7 +256,7 @@ export default function HomeScreen({ navigation }: any) {
         {isAdmin && (
           <Tile
             title="Crea nuova uscita"
-            subtitle="Solo per amministratori"
+            subtitle="Solo Admin o Owner"
             onPress={() => navigation.navigate("CreateRide")}
             icon={<Ionicons name="add-circle-outline" size={28} color={UI.colors.primary} />}
           />

@@ -88,7 +88,7 @@ function AdminGate() {
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8 }}>Accesso negato</Text>
         <Text style={{ textAlign: "center", color: "#475569" }}>
-          Questa sezione è riservata agli amministratori.
+          Questa sezione è riservata agli Admin e agli Owner.
         </Text>
       </SafeAreaView>
     );
@@ -269,7 +269,9 @@ function LoginScreen({
       }
     } catch (e: any) {
       let message = e?.message ?? "Impossibile effettuare il login";
-      if (
+      if (e?.code === "auth/invalid-email") {
+        message = "Email non valida. Controlla il formato dell'indirizzo.";
+      } else if (
         e?.code === "auth/invalid-credential" ||
         e?.code === "auth/user-not-found" ||
         e?.code === "auth/wrong-password"
@@ -305,7 +307,9 @@ function LoginScreen({
       await signInWithEmailAndPassword(auth, saved.email, saved.password);
     } catch (e: any) {
       let message = e?.message ?? "Impossibile usare l'accesso rapido.";
-      if (
+      if (e?.code === "auth/invalid-email") {
+        message = "Email non valida. Controlla il formato dell'indirizzo.";
+      } else if (
         e?.code === "auth/invalid-credential" ||
         e?.code === "auth/user-not-found" ||
         e?.code === "auth/wrong-password"
@@ -315,12 +319,6 @@ function LoginScreen({
       }
       Alert.alert("Errore Face ID", message);
     }
-  };
-
-  const disableBiometrics = async () => {
-    await clearCredsSecurely();
-    setBioReady(false);
-    Alert.alert("Disattivato", "Accesso rapido disabilitato.");
   };
 
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -394,25 +392,17 @@ function LoginScreen({
           </Pressable>
 
           {bioReady && (
-            <>
-              <Pressable onPress={loginWithBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
-                <Text style={styles.btnSecondaryText}>Accedi con Face ID / Touch ID</Text>
-              </Pressable>
-
-              <Pressable onPress={disableBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
-                <Text style={styles.btnSecondaryText}>Disattiva accesso rapido</Text>
-              </Pressable>
-            </>
-          )}
-
-          {!bioReady && (
-            <Pressable
-              onPress={() => navigation.replace("Signup")}
-              style={[styles.btnSecondary, { marginTop: 12 }]}
-            >
-              <Text style={styles.btnSecondaryText}>Registrati</Text>
+            <Pressable onPress={loginWithBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
+              <Text style={styles.btnSecondaryText}>Accedi con Face ID / Touch ID</Text>
             </Pressable>
           )}
+
+          <Pressable
+            onPress={() => navigation.replace("Signup")}
+            style={[styles.btnTextLink, { marginTop: 16 }]}
+          >
+            <Text style={styles.textLink}>Non hai un account? Registrati</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -432,6 +422,8 @@ function SignupScreen({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   const doSignup = async () => {
     if (!firstName.trim()) return Alert.alert("Campo mancante", "Inserisci il Nome.");
@@ -541,22 +533,54 @@ function SignupScreen({
           />
 
           <Text style={styles.inputLabel}>Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Minimo 6 caratteri"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Minimo 6 caratteri"
+              secureTextEntry={!passwordVisible}
+              value={password}
+              onChangeText={setPassword}
+              textContentType="newPassword"
+              autoCapitalize="none"
+            />
+            <Pressable
+              onPress={() => setPasswordVisible((prev) => !prev)}
+              style={styles.passwordToggle}
+              accessibilityLabel={passwordVisible ? "Nascondi password" : "Mostra password"}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#475569"
+              />
+            </Pressable>
+          </View>
 
           <Text style={styles.inputLabel}>Conferma Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ripeti la password"
-            secureTextEntry
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Ripeti la password"
+              secureTextEntry={!confirmVisible}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              textContentType="newPassword"
+              autoCapitalize="none"
+            />
+            <Pressable
+              onPress={() => setConfirmVisible((prev) => !prev)}
+              style={styles.passwordToggle}
+              accessibilityLabel={confirmVisible ? "Nascondi password" : "Mostra password"}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={confirmVisible ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color="#475569"
+              />
+            </Pressable>
+          </View>
 
           <Pressable onPress={doSignup} style={[styles.btnPrimary, { marginTop: 16 }]}>
             <Text style={styles.btnPrimaryText}>{busy ? "Creazione account..." : "Crea account"}</Text>
@@ -805,7 +829,7 @@ function ShortcutCard({
 
 function HomeScreen({ navigation }: HomeProps) {
   const user = auth.currentUser;
-  const { profile, isAdmin, loading } = useCurrentProfile();
+  const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
 
   const firstName = (profile?.firstName ?? "").trim();
@@ -890,13 +914,15 @@ function HomeScreen({ navigation }: HomeProps) {
             {isAdmin && (
               <View
                 style={{
-                  backgroundColor: UI.colors.accent,
+                  backgroundColor: isOwner ? "#1D4ED8" : UI.colors.accent,
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: UI.radius.round,
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>ADMIN</Text>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>
+                  {isOwner ? "OWNER" : "ADMIN"}
+                </Text>
               </View>
             )}
           </View>
@@ -948,7 +974,7 @@ function HomeScreen({ navigation }: HomeProps) {
         {isAdmin && (
           <ShortcutCard
             label="Nuova uscita"
-            caption="Solo Admin"
+            caption="Admin e Owner"
             icon={
               <MaterialCommunityIcons
                 name="plus-circle-outline"
@@ -977,10 +1003,10 @@ function HomeScreen({ navigation }: HomeProps) {
           style={{ marginBottom: UI.spacing.md }}
         />
 
-        {isAdmin && (
+        {isOwner && (
           <ShortcutCard
             label="Amministrazione"
-            caption="Solo Admin"
+            caption="Solo Owner"
             icon={
               <MaterialCommunityIcons
                 name="shield-lock-outline"
@@ -1296,6 +1322,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   btnSecondaryText: { color: COLOR_TEXT, fontWeight: "700" },
+  btnTextLink: { alignItems: "center" },
+  textLink: { color: COLOR_PRIMARY, fontWeight: "700" },
 
   // Loading e profilo
   loading: {

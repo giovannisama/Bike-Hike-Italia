@@ -159,16 +159,16 @@ export default function UserDetailScreen() {
   const isOwner = user?.role === "owner";
   const isSelf  = !!currentUid && user?.uid === currentUid;
   const isCurrentOwner = myRole === "owner";
-  const isCurrentAdmin = myRole === "admin" || isCurrentOwner;
   const isSelfDeleted = user?.selfDeleted === true;
 
   // Abilitazioni azioni
-  const canApprove   = !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === false && user?.disabled !== true;
-  const canActivate  = !isOwner && !isSelf && !isSelfDeleted && user?.disabled === true;
-  const canDeactivate= !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
-  const canPromote   = !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === true && user?.disabled !== true;
-  const canDemote    = !isOwner && !isSelf && !isSelfDeleted && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
-  const canDelete    = isCurrentAdmin && !isOwner && !isSelf && (user?.disabled === true || isSelfDeleted); // admin/owner possono eliminare
+  const canApprove   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === false && user?.disabled !== true;
+  const canActivate  = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.disabled === true;
+  const canDeactivate= isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
+  const canPromote   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === true && user?.disabled !== true;
+  const canDemote    = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
+  const canDelete    = isCurrentOwner && !isOwner && !isSelf && (user?.disabled === true || isSelfDeleted);
+  const canEditProfile = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
@@ -330,7 +330,7 @@ export default function UserDetailScreen() {
                     if (fallbackErr?.code === "permission-denied") {
                       Alert.alert(
                         "Permessi insufficienti",
-                        "Non hai i permessi necessari per eliminare questo utente. Contatta un amministratore superiore."
+                        "Non hai i permessi necessari per eliminare questo utente. Contatta un Owner."
                       );
                       return;
                     }
@@ -545,33 +545,62 @@ export default function UserDetailScreen() {
                 <Text style={{ color: "#b91c1c", fontWeight: "600" }}>
                   Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
                 </Text>
-              ) : (
+              ) : isCurrentOwner ? (
                 <>
-                  {user.approved && !user.disabled && (
-                    <>
-                      <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading || isOwner} />
-                      {state.isMember && (
-                        <Button title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"} onPress={handlePromote} disabled={!canPromote || !!actionLoading} />
-                      )}
-                      {state.isAdmin && !isOwner && (
-                        <Button title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"} onPress={handleDemote} disabled={!canDemote || !!actionLoading} danger />
-                      )}
-                      <Button title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"} onPress={handleDeactivate} disabled={!canDeactivate || !!actionLoading} danger />
-                    </>
+                  {canEditProfile && (
+                    <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading} />
                   )}
-
-                  {state.isMember && !user.approved && !user.disabled && (
-                    <Button title={actionLoading === "approve" ? "Approvazione…" : "Approva"} onPress={handleApprove} disabled={!canApprove || !!actionLoading} />
+                  {canPromote && (
+                    <Button
+                      title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"}
+                      onPress={handlePromote}
+                      disabled={!!actionLoading}
+                    />
                   )}
-
-                  {user.disabled && (
-                    <Button title={actionLoading === "activate" ? "Attivazione…" : "Attiva"} onPress={handleActivate} disabled={!canActivate || !!actionLoading} />
+                  {canDemote && (
+                    <Button
+                      title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"}
+                      onPress={handleDemote}
+                      disabled={!!actionLoading}
+                      danger
+                    />
+                  )}
+                  {canDeactivate && (
+                    <Button
+                      title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
+                      onPress={handleDeactivate}
+                      disabled={!!actionLoading}
+                      danger
+                    />
+                  )}
+                  {canApprove && (
+                    <Button
+                      title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
+                      onPress={handleApprove}
+                      disabled={!!actionLoading}
+                    />
+                  )}
+                  {canActivate && (
+                    <Button
+                      title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
+                      onPress={handleActivate}
+                      disabled={!!actionLoading}
+                    />
                   )}
                 </>
+              ) : (
+                <Text style={{ color: "#64748b", fontWeight: "600" }}>
+                  Solo un Owner può modificare o approvare altri utenti.
+                </Text>
               )}
 
-              {(user.disabled || isSelfDeleted) && (
-                <Button title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"} onPress={handleDelete} disabled={!canDelete || !!actionLoading} danger />
+              {canDelete && (
+                <Button
+                  title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"}
+                  onPress={handleDelete}
+                  disabled={!!actionLoading}
+                  danger
+                />
               )}
             </>
           )}

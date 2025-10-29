@@ -222,7 +222,7 @@ export default function CreateRideScreen() {
   // ---------- salva ----------
   const onSave = async () => {
     if (!isAdmin) {
-      Alert.alert("Permesso negato", "Solo l'amministratore può salvare.");
+      Alert.alert("Permesso negato", "Solo Admin o Owner possono salvare.");
       return;
     }
     if (!auth.currentUser) {
@@ -339,12 +339,12 @@ export default function CreateRideScreen() {
   // ---------- UI ----------
   const titleScreen = isEdit ? "Modifica Uscita" : "Crea Uscita";
 
-  const adminWarning = !isAdmin ? "Solo l’amministratore può salvare o modificare un’uscita." : null;
+  const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
   return (
     <Screen
       title={titleScreen}
-      subtitle={isAdmin ? "Solo gli amministratori possono salvare" : "Compila i dettagli dell'uscita"}
+      subtitle={isAdmin ? "Solo Admin o Owner possono salvare" : "Compila i dettagli dell'uscita"}
       scroll={true}
       keyboardShouldPersistTaps="handled"
     >

@@ -760,6 +760,7 @@ export default function CalendarScreen() {
             <View style={styles.centerRow}><ActivityIndicator /></View>
           ) : (
             <FlatList
+              style={{ flex: 1 }}
               data={keywordResults}
               keyExtractor={(r) => r.id}
               ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -767,10 +768,12 @@ export default function CalendarScreen() {
               ListHeaderComponent={keywordHeader}
               ListEmptyComponent={keywordEmpty}
               contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 32, paddingTop: 12 }}
+              showsVerticalScrollIndicator
             />
           )
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             ListHeaderComponent={listHeader}
             data={hasRangeFilters ? resultsAll : listForSelected}
             keyExtractor={(r) => r.id}
@@ -812,6 +815,8 @@ export default function CalendarScreen() {
             windowSize={10}
             maxToRenderPerBatch={10}
             removeClippedSubviews={false}
+            contentContainerStyle={{ paddingBottom: 32 }}
+            showsVerticalScrollIndicator
           />
         )}
       </View>

@@ -6,8 +6,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, Hero } from "../components/Screen";
 import { Ionicons } from "@expo/vector-icons";
-import { auth, db } from "../firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import useCurrentProfile from "../hooks/useCurrentProfile";
 
 // Fallback theme (in caso l'UI del Screen non sia esportata)
 const THEME = {
@@ -16,7 +15,7 @@ const THEME = {
 
 export default function AdminScreen() {
   const navigation = useNavigation<any>();
-  const currentUid = auth.currentUser?.uid || null;
+  const { isAdmin, isOwner } = useCurrentProfile();
 
   // Mostra header nativo coerente
   useEffect(() => {
@@ -27,31 +26,24 @@ export default function AdminScreen() {
     });
   }, [navigation]);
 
-  // (Opzionale) badge ADMIN nell’hero se l’utente lo è davvero
-  const [isAdmin, setIsAdmin] = React.useState(false);
-  useEffect(() => {
-    if (!currentUid) return;
-    const ref = doc(db, "users", currentUid);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        const role = snap.exists() ? (snap.data() as any)?.role : null;
-        setIsAdmin(role === "admin" || role === "owner");
-      },
-      () => setIsAdmin(false)
-    );
-    return () => unsub();
-  }, [currentUid]);
-
   const goUsers = () => navigation.navigate("UserList"); // <-- ROTTA verso la lista utenti
+  const heroSubtitle = isOwner
+    ? "Accesso completo (Owner)"
+    : isAdmin
+    ? "Accesso a funzioni amministrative"
+    : "Permessi insufficienti";
 
   return (
     <Screen useNativeHeader={true} scroll={false}>
       <Hero
         title="Amministrazione"
-        subtitle={isAdmin ? "Accesso a funzioni amministrative" : "Permessi insufficienti"}
+        subtitle={heroSubtitle}
         rightSlot={
-          isAdmin ? (
+          isOwner ? (
+            <View style={styles.badgeOwner}>
+              <Text style={styles.badgeOwnerText}>OWNER</Text>
+            </View>
+          ) : isAdmin ? (
             <View style={styles.badgeAdmin}>
               <Text style={styles.badgeAdminText}>ADMIN</Text>
             </View>
@@ -63,9 +55,14 @@ export default function AdminScreen() {
         {/* SOTTOMENU 1: Gestione Utenti */}
         <MenuTile
           title="Gestione Utenti"
-          subtitle="Approva, attiva/disattiva, ruoli (Admin/Member)"
+          subtitle={
+            isOwner
+              ? "Approva, attiva/disattiva, ruoli (Admin/Member)"
+              : "Riservata al ruolo Owner"
+          }
           icon={<Ionicons name="people-outline" size={26} color={THEME.colors.primary} />}
           onPress={goUsers}
+          disabled={!isOwner}
         />
 
         {/* Qui potrai aggiungere gli altri sottomenu in futuro:
@@ -84,17 +81,25 @@ function MenuTile({
   subtitle,
   icon,
   onPress,
+  disabled = false,
 }: {
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={disabled ? undefined : onPress}
       accessibilityRole="button"
-      style={[styles.tile, styles.shadowCard]}
+      accessibilityState={disabled ? { disabled: true } : undefined}
+      style={[
+        styles.tile,
+        styles.shadowCard,
+        disabled ? styles.tileDisabled : undefined,
+      ]}
+      disabled={disabled}
     >
       <View style={[styles.tileIcon, { backgroundColor: THEME.colors.tint }]}>
         {icon}
@@ -119,6 +124,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#92400E",
+  },
+  badgeOwner: {
+    backgroundColor: "#1D4ED8",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  badgeOwnerText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#EFF6FF",
   },
   tile: {
     backgroundColor: "#fff",
@@ -151,5 +167,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+  },
+  tileDisabled: {
+    opacity: 0.55,
   },
 });

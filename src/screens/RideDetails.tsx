@@ -432,7 +432,7 @@ export default function RideDetails() {
       userRef,
       (snap) => {
         const role = snap.exists() ? (snap.data() as any)?.role : null;
-        setIsAdmin(role === "admin");
+        setIsAdmin(role === "admin" || role === "owner");
       },
       () => setIsAdmin(false)
     );

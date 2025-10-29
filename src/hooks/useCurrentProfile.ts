@@ -49,7 +49,11 @@ export default function useCurrentProfile() {
     return () => unsub();
   }, [authUser?.uid]);
 
-  const role = (profile?.role ?? "member") as UserRole;
+  const role = (() => {
+    const raw = typeof profile?.role === "string" ? profile.role.toLowerCase() : "member";
+    if (raw === "owner" || raw === "admin" || raw === "member") return raw as UserRole;
+    return "member";
+  })();
   const isAdmin = role === "admin" || role === "owner";
   const isOwner = role === "owner";
 

@@ -139,7 +139,8 @@ function Row({
 }) {
   const cognome = (user.lastName || "").trim();
   const nome = (user.firstName || "").trim();
-  const ruolo = user.role === "admin" || user.role === "owner" ? "Admin" : "Member";
+  const ruolo =
+    user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Member";
 
   const approvedFlag = user.approvedFlag ?? normalizeBooleanFlag(user.approved);
   const disabledFlag = user.disabledFlag ?? normalizeBooleanFlag(user.disabled);
@@ -202,20 +203,35 @@ export default function UserListScreen() {
   const [privateLoaded, setPrivateLoaded] = useState(false);
   const [actionUid, setActionUid] = useState<string | null>(null);
   const [actionType, setActionType] = useState<QuickAction>(null);
-
-  // Ruolo dell'utente corrente (per debug/UX)
   const [meRole, setMeRole] = useState<string | null>(null);
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) { setMeRole(null); return; }
-    const unsubMe = onSnapshot(doc(db, "users", uid), (ds) => {
-      const r = ds.exists() ? (ds.data() as any)?.role : null;
-      setMeRole(typeof r === "string" ? r : null);
-    });
-    return () => unsubMe();
-  }, []);
+  const [meRoleLoaded, setMeRoleLoaded] = useState(false);
 
   const currentUid = auth.currentUser?.uid || null;
+
+  // Ruolo dell'utente corrente (per debug/UX)
+  useEffect(() => {
+    if (!currentUid) {
+      setMeRole(null);
+      setMeRoleLoaded(true);
+      return;
+    }
+    setMeRoleLoaded(false);
+    const unsubMe = onSnapshot(
+      doc(db, "users", currentUid),
+      (ds) => {
+        const r = ds.exists() ? (ds.data() as any)?.role : null;
+        setMeRole(typeof r === "string" ? r : null);
+        setMeRoleLoaded(true);
+      },
+      () => {
+        setMeRole(null);
+        setMeRoleLoaded(true);
+      }
+    );
+    return () => {
+      try { unsubMe(); } catch {}
+    };
+  }, [currentUid]);
 
   // Header nativo
   useEffect(() => {
@@ -351,7 +367,7 @@ export default function UserListScreen() {
       );
     } else if (filter === "pending") {
       filtered = withoutSelfDeleted.filter(
-        (r) => r.approvedFlag === false && r.disabledFlag !== true
+        (r) => r.approvedFlag !== true && r.disabledFlag !== true
       );
     } else if (filter === "disabled") {
       filtered = withoutSelfDeleted.filter((r) => r.disabledFlag === true);
@@ -368,8 +384,20 @@ export default function UserListScreen() {
     [navigation, meRole]
   );
 
+  const requireOwner = useCallback(() => {
+    if (meRole !== "owner") {
+      Alert.alert(
+        "Permessi insufficienti",
+        "Solo il ruolo Owner può eseguire questa azione."
+      );
+      return false;
+    }
+    return true;
+  }, [meRole]);
+
   // Azioni rapide
   const doApprove = useCallback(async (uid: string) => {
+    if (!requireOwner()) return;
     try {
       setActionUid(uid);
       setActionType("approve");
@@ -381,9 +409,10 @@ export default function UserListScreen() {
       setActionUid(null);
       setActionType(null);
     }
-  }, []);
+  }, [requireOwner]);
 
   const doActivate = useCallback(async (uid: string) => {
+    if (!requireOwner()) return;
     try {
       setActionUid(uid);
       setActionType("activate");
@@ -395,9 +424,10 @@ export default function UserListScreen() {
       setActionUid(null);
       setActionType(null);
     }
-  }, []);
+  }, [requireOwner]);
 
   const doDeactivate = useCallback((uid: string) => {
+    if (!requireOwner()) return;
     Alert.alert("Conferma", "Disattivare questo utente?", [
       { text: "Annulla", style: "cancel" },
       {
@@ -418,7 +448,9 @@ export default function UserListScreen() {
         },
       },
     ]);
-  }, []);
+  }, [requireOwner]);
+
+  const isCurrentOwner = meRole === "owner";
 
   const renderItem = useCallback(
     ({ item }: { item: UserRow }) => {
@@ -439,7 +471,7 @@ export default function UserListScreen() {
 
       const busy = actionUid === item.uid && !!actionType;
 
-      if (!isSelf && !isOwner && !isSelfDeleted) {
+      if (isCurrentOwner && !isSelf && !isOwner && !isSelfDeleted) {
         if (isPending) {
           actionNode = (
             <SmallBtn
@@ -470,7 +502,16 @@ export default function UserListScreen() {
 
       return <Row user={item} onPress={openDetail} right={actionNode} />;
     },
-    [openDetail, currentUid, actionUid, actionType, doApprove, doActivate, doDeactivate]
+    [
+      openDetail,
+      currentUid,
+      actionUid,
+      actionType,
+      doApprove,
+      doActivate,
+      doDeactivate,
+      isCurrentOwner,
+    ]
   );
 
   // Tab filtro
@@ -520,15 +561,35 @@ export default function UserListScreen() {
     );
   };
 
+  const meRoleLabel =
+    meRole === "owner"
+      ? "Owner"
+      : meRole === "admin"
+      ? "Admin"
+      : meRole === "member"
+      ? "Member"
+      : "(sconosciuto)";
+
   return (
     <Screen useNativeHeader={true} scroll={false}>
       <View style={{ padding: UI.spacing.lg, flex: 1, gap: UI.spacing.md }}>
-        <FilterTab />
+        {meRoleLoaded && isCurrentOwner && <FilterTab />}
         <Text style={{ color: UI.colors.muted }}>
-          Ruolo corrente: {meRole || "(sconosciuto)"}
+          Ruolo corrente: {meRoleLabel}
         </Text>
 
-        {loading ? (
+        {!meRoleLoaded ? (
+          <View style={styles.center}>
+            <ActivityIndicator />
+            <Text style={{ marginTop: 8 }}>Verifico permessi…</Text>
+          </View>
+        ) : !isCurrentOwner ? (
+          <View style={styles.center}>
+            <Text style={{ textAlign: "center", color: "#666" }}>
+              Solo il ruolo Owner può accedere alla gestione utenti.
+            </Text>
+          </View>
+        ) : loading ? (
           <View style={styles.center}>
             <ActivityIndicator />
             <Text style={{ marginTop: 8 }}>Carico utenti…</Text>

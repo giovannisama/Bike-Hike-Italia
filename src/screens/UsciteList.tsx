@@ -315,11 +315,16 @@ export default function UsciteList() {
       const ts = item.dateTime || item.date;
       if (!ts) return "—";
       try {
-        return format(ts.toDate(), "EEE d MMM yyyy '•' HH:mm", { locale: it });
+        return format(ts.toDate(), "dd MMM yyyy '•' HH:mm", { locale: it });
       } catch {
         return "—";
       }
     })();
+
+    const bikeLabel =
+      Array.isArray(item.bikes) && item.bikes.length > 0
+        ? item.bikes.join(", ")
+        : "—";
 
     const isCancelled = item.status === "cancelled";
 
@@ -334,6 +339,11 @@ export default function UsciteList() {
         }
       >
         <View style={{ flex: 1 }}>
+          {/* Data e ora */}
+          <Text style={styles.dateLine} numberOfLines={1}>
+            {when}
+          </Text>
+
           {/* Titolo + stato */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text
@@ -367,15 +377,7 @@ export default function UsciteList() {
             )}
           </View>
 
-          {/* Difficoltà */}
-          <Text style={styles.row}>
-            <Text style={styles.label}>Difficoltà: </Text>
-            <Text style={styles.value} numberOfLines={1}>
-              {item.difficulty || "—"}
-            </Text>
-          </Text>
-
-          {/* Guide */}
+          {/* Guida */}
           <Text style={styles.row}>
             <Text style={styles.label}>Guida: </Text>
             <Text style={styles.value} numberOfLines={1}>
@@ -383,10 +385,20 @@ export default function UsciteList() {
             </Text>
           </Text>
 
-          {/* Data e ora */}
+          {/* Tipo bici */}
           <Text style={styles.row}>
-            <Text style={styles.label}>Data e ora: </Text>
-            <Text style={styles.value}>{when}</Text>
+            <Text style={styles.label}>Tipo bici: </Text>
+            <Text style={styles.value} numberOfLines={1}>
+              {bikeLabel}
+            </Text>
+          </Text>
+
+          {/* Difficoltà */}
+          <Text style={styles.row}>
+            <Text style={styles.label}>Difficoltà: </Text>
+            <Text style={styles.value} numberOfLines={1}>
+              {item.difficulty || "—"}
+            </Text>
           </Text>
 
           {/* Ritrovo */}
@@ -546,6 +558,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
   },
+  dateLine: { fontSize: 12, color: "#6B7280", fontWeight: "600" },
   title: { fontSize: 16, fontWeight: "700", marginBottom: 2, color: "#111" },
   row: { marginTop: 2 },
   label: { fontWeight: "700", color: "#222" },

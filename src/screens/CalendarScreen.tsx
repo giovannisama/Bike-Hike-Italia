@@ -808,14 +808,11 @@ export default function CalendarScreen() {
                 </TouchableOpacity>
               );
             }}
-            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-            contentInsetAdjustmentBehavior="never"
-            automaticallyAdjustContentInsets={false}
             initialNumToRender={10}
             windowSize={10}
             maxToRenderPerBatch={10}
             removeClippedSubviews={false}
-            contentContainerStyle={{ paddingBottom: 32 }}
+            contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}
             showsVerticalScrollIndicator
           />
         )}

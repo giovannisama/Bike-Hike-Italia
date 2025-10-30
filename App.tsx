@@ -388,10 +388,14 @@ function LoginScreen({
           <TextInput
             style={styles.input}
             placeholder="nome@esempio.com"
+            placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            autoCorrect={false}
+            importantForAutofill="yes"
+            autoComplete="email"
           />
 
           <Text style={styles.inputLabel}>Password</Text>
@@ -399,11 +403,14 @@ function LoginScreen({
             <TextInput
               style={[styles.input, styles.passwordInput]}
               placeholder="••••••••"
+              placeholderTextColor="#9CA3AF"
               secureTextEntry={!passwordVisible}
               value={password}
               onChangeText={setPassword}
               textContentType="password"
               autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="password"
             />
             <Pressable
               onPress={() => setPasswordVisible((prev) => !prev)}
@@ -1389,6 +1396,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: Platform.select({ ios: 12, android: 10 }),
     backgroundColor: "#fff",
+    color: "#111827",
+    fontSize: 16,
+    caretColor: "#111827",
   },
 
   // Riga titolo + badge tondo

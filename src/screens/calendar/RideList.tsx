@@ -1,19 +1,39 @@
 import React from "react";
-import { FlatList, View, TouchableOpacity, Text, StyleProp, ViewStyle } from "react-native";
+import {
+  FlatList,
+  View,
+  TouchableOpacity,
+  Text,
+  StyleProp,
+  ViewStyle,
+  Pressable,
+} from "react-native";
 import { calendarStyles } from "./styles";
 import { Ride } from "./types";
 import { StatusBadge } from "./StatusBadge";
 
-type RideListProps = {
+export type RideListProps = {
   data: Ride[];
   onSelect: (ride: Ride) => void;
   contentContainerStyle: StyleProp<ViewStyle>;
   indicatorInsets: { bottom: number };
+  listRef?: React.RefObject<FlatList<Ride> | null>;
+  emptyMessage?: string;
+  onClearFilters?: () => void;
 };
 
-export function RideList({ data, onSelect, contentContainerStyle, indicatorInsets }: RideListProps) {
+export function RideList({
+  data,
+  onSelect,
+  contentContainerStyle,
+  indicatorInsets,
+  listRef,
+  emptyMessage,
+  onClearFilters,
+}: RideListProps) {
   return (
     <FlatList
+      ref={listRef}
       style={{ flex: 1 }}
       data={data}
       keyExtractor={(item) => item.id}
@@ -39,15 +59,37 @@ export function RideList({ data, onSelect, contentContainerStyle, indicatorInset
               </Text>
             </View>
             {isArchived ? (
-              <StatusBadge text="Arch." bg="#E5E7EB" fg="#374151" />
+              <StatusBadge text="Arch." icon="📦" bg="#E5E7EB" fg="#374151" />
             ) : isCancelled ? (
-              <StatusBadge text="No" bg="#FEE2E2" fg="#991B1B" />
+              <StatusBadge text="No" icon="✖" bg="#FEE2E2" fg="#991B1B" />
             ) : (
-              <StatusBadge text="OK" bg="#111" fg="#fff" />
+              <StatusBadge text="OK" icon="✓" bg="#111" fg="#fff" />
             )}
           </TouchableOpacity>
         );
       }}
+      ListEmptyComponent={
+        <View style={[calendarStyles.centerRow, { paddingVertical: 40 }]}>
+          <View style={{ alignItems: "center", gap: 12, paddingHorizontal: 24 }}>
+            <Text style={{ color: "#64748B", textAlign: "center" }}>
+              {emptyMessage || "Nessuna uscita disponibile."}
+            </Text>
+            {onClearFilters ? (
+              <Pressable
+                onPress={onClearFilters}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: "#111",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Rimuovi filtri</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      }
       initialNumToRender={10}
       windowSize={10}
       maxToRenderPerBatch={10}

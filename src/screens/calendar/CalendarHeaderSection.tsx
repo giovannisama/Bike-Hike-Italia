@@ -16,6 +16,10 @@ type CalendarHeaderSectionProps = {
   onMonthChange: (day: DateData) => void;
   collapsed: boolean;
   onToggle: () => void;
+  quickTargets: {
+    today: string;
+  };
+  onQuickSelect: (dateString: string) => void;
 };
 
 function LegendDot({ color, label }: { color: string; label: string }) {
@@ -38,10 +42,12 @@ export function CalendarHeaderSection({
   onMonthChange,
   collapsed,
   onToggle,
+  quickTargets,
+  onQuickSelect,
 }: CalendarHeaderSectionProps) {
   return (
     <View>
-      <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 }}>
+      <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Text style={[calendarStyles.listTitle, { marginRight: 12 }]}>Calendario</Text>
           <TouchableOpacity
@@ -49,9 +55,24 @@ export function CalendarHeaderSection({
             accessibilityRole="button"
             accessibilityLabel={collapsed ? "Mostra calendario" : "Nascondi calendario"}
             style={calendarStyles.toggleButton}
+            activeOpacity={0.7}
           >
             <Text style={calendarStyles.toggleText}>{collapsed ? "Mostra" : "Nascondi"}</Text>
             <Text style={[calendarStyles.toggleText, { fontSize: 14 }]}>{collapsed ? "▼" : "▲"}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
+          <TouchableOpacity
+            onPress={() => onQuickSelect(quickTargets.today)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 999,
+              backgroundColor: "#0EA5E9",
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>Oggi</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -62,7 +83,7 @@ export function CalendarHeaderSection({
             <Calendar
               key={`cal-${visibleMonth}`}
               current={visibleMonth}
-              style={{ height: 360 }}
+              style={{ height: 320 }}
               hideExtraDays={false}
               enableSwipeMonths
               markingType="multi-dot"
@@ -71,6 +92,25 @@ export function CalendarHeaderSection({
               onMonthChange={onMonthChange}
               firstDay={1}
               theme={{
+                textDayFontSize: 14,
+                textDayHeaderFontSize: 12,
+                arrowStyle: { padding: 0 },
+                stylesheet: {
+                  calendar: {
+                    main: {
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                    },
+                  },
+                  day: {
+                    basic: {
+                      base: {
+                        height: 40,
+                        width: 40,
+                      },
+                    },
+                  },
+                } as any,
                 todayTextColor: "#0EA5E9",
                 arrowColor: "#111",
                 monthTextColor: "#111",
@@ -103,14 +143,14 @@ export function CalendarHeaderSection({
                     disabled={isDisabled}
                     activeOpacity={0.6}
                   >
-                    <View
-                      style={{
-                        paddingHorizontal: 6,
-                        paddingVertical: 3,
-                        borderRadius: 8,
-                        backgroundColor: isSelected ? "#111" : "transparent",
-                      }}
-                    >
+                <View
+                  style={{
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 8,
+                    backgroundColor: isSelected ? "#111" : "transparent",
+                  }}
+                >
                       <Text
                         style={{
                           fontWeight: "700",
@@ -122,7 +162,7 @@ export function CalendarHeaderSection({
                       </Text>
                     </View>
                     {dots.length > 0 ? (
-                      <View style={{ flexDirection: "row", marginTop: 3 }}>
+                  <View style={{ flexDirection: "row", marginTop: 2 }}>
                         {dots.map((d: any, idx: number) => (
                           <View
                             key={idx}
@@ -143,7 +183,7 @@ export function CalendarHeaderSection({
             />
           </View>
 
-          <View style={[calendarStyles.legend, { minHeight: 36, paddingHorizontal: 12 }]}>
+          <View style={[calendarStyles.legend, { minHeight: 26, paddingHorizontal: 12, marginTop: 4 }]}>
             <LegendDot color="#10B981" label="Attiva" />
             <LegendDot color="#DC2626" label="Annullata" />
             <LegendDot color="#3B82F6" label="Archiviata" />

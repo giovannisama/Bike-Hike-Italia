@@ -4,8 +4,8 @@ export const calendarStyles = StyleSheet.create({
   legend: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   listTitle: { fontWeight: "700", color: "#111", lineHeight: 22 },
   rideCard: {
@@ -44,14 +44,15 @@ export const calendarStyles = StyleSheet.create({
   toggleButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     backgroundColor: "#111",
   },
   toggleText: {
     color: "#fff",
     fontWeight: "700",
+    fontSize: 12,
   },
 });

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleProp,
   ViewStyle,
+  Pressable,
 } from "react-native";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
@@ -14,13 +15,14 @@ import { calendarStyles } from "./styles";
 import { Ride } from "./types";
 import { StatusBadge } from "./StatusBadge";
 
-type KeywordResultsListProps = {
+export type KeywordResultsListProps = {
   data: Ride[];
   loading: boolean;
   searchText: string;
   onSelect: (ride: Ride) => void;
   contentContainerStyle: StyleProp<ViewStyle>;
   indicatorInsets: { bottom: number };
+  onClearFilters?: () => void;
 };
 
 export function KeywordResultsList({
@@ -30,6 +32,7 @@ export function KeywordResultsList({
   onSelect,
   contentContainerStyle,
   indicatorInsets,
+  onClearFilters,
 }: KeywordResultsListProps) {
   const headerTitle = useMemo(() => {
     const term = searchText.trim();
@@ -84,11 +87,11 @@ export function KeywordResultsList({
               </Text>
             </View>
             {isArchived ? (
-              <StatusBadge text="Arch." bg="#E5E7EB" fg="#374151" />
+              <StatusBadge text="Arch." icon="📦" bg="#E5E7EB" fg="#374151" />
             ) : isCancelled ? (
-              <StatusBadge text="No" bg="#FEE2E2" fg="#991B1B" />
+              <StatusBadge text="No" icon="✖" bg="#FEE2E2" fg="#991B1B" />
             ) : (
-              <StatusBadge text="OK" bg="#111" fg="#fff" />
+              <StatusBadge text="OK" icon="✓" bg="#111" fg="#fff" />
             )}
           </TouchableOpacity>
         );
@@ -101,8 +104,16 @@ export function KeywordResultsList({
         </View>
       }
       ListEmptyComponent={
-        <View style={[calendarStyles.centerRow, { paddingHorizontal: 16, paddingVertical: 32 }]}>
+        <View style={[calendarStyles.centerRow, { paddingHorizontal: 16, paddingVertical: 32, gap: 12 }]}>
           <Text style={{ color: "#6B7280", textAlign: "center" }}>{emptyMessage}</Text>
+          {onClearFilters ? (
+            <Pressable
+              onPress={onClearFilters}
+              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: "#111" }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Rimuovi filtri</Text>
+            </Pressable>
+          ) : null}
         </View>
       }
       contentContainerStyle={contentContainerStyle}

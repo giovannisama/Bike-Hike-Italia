@@ -407,6 +407,7 @@ function LoginScreen({
             autoCorrect={false}
             importantForAutofill="yes"
             autoComplete="email"
+            selectionColor="#111827"
           />
 
           <Text style={styles.inputLabel}>Password</Text>
@@ -422,6 +423,7 @@ function LoginScreen({
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="password"
+              selectionColor="#111827"
             />
             <Pressable
               onPress={() => setPasswordVisible((prev) => !prev)}
@@ -571,13 +573,31 @@ function SignupScreen({
           <Text style={styles.authTitle}>Registrati</Text>
 
           <Text style={styles.inputLabel}>Nome *</Text>
-          <TextInput style={styles.input} placeholder="Mario" value={firstName} onChangeText={setFirstName} />
+          <TextInput
+            style={styles.input}
+            placeholder="Mario"
+            value={firstName}
+            onChangeText={setFirstName}
+            selectionColor="#111827"
+          />
 
           <Text style={styles.inputLabel}>Cognome *</Text>
-          <TextInput style={styles.input} placeholder="Rossi" value={lastName} onChangeText={setLastName} />
+          <TextInput
+            style={styles.input}
+            placeholder="Rossi"
+            value={lastName}
+            onChangeText={setLastName}
+            selectionColor="#111827"
+          />
 
           <Text style={styles.inputLabel}>Nickname (facoltativo)</Text>
-          <TextInput style={styles.input} placeholder="SuperBiker" value={nickname} onChangeText={setNickname} />
+          <TextInput
+            style={styles.input}
+            placeholder="SuperBiker"
+            value={nickname}
+            onChangeText={setNickname}
+            selectionColor="#111827"
+          />
 
           <Text style={styles.inputLabel}>Email *</Text>
           <TextInput
@@ -587,6 +607,7 @@ function SignupScreen({
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            selectionColor="#111827"
           />
 
           <Text style={styles.inputLabel}>Password *</Text>
@@ -599,6 +620,7 @@ function SignupScreen({
               onChangeText={setPassword}
               textContentType="newPassword"
               autoCapitalize="none"
+              selectionColor="#111827"
             />
             <Pressable
               onPress={() => setPasswordVisible((prev) => !prev)}
@@ -624,6 +646,7 @@ function SignupScreen({
               onChangeText={setConfirmPassword}
               textContentType="newPassword"
               autoCapitalize="none"
+              selectionColor="#111827"
             />
             <Pressable
               onPress={() => setConfirmVisible((prev) => !prev)}
@@ -1412,7 +1435,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     color: "#111827",
     fontSize: 16,
-    caretColor: "#111827",
   },
 
   // Riga titolo + badge tondo

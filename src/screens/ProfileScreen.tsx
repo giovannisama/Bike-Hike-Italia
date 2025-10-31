@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -56,10 +57,25 @@ export default function ProfileScreen() {
   const [cardModalVisible, setCardModalVisible] = useState(false);
   const [cropSource, setCropSource] = useState<LocalCard | null>(null);
   const [removingCard, setRemovingCard] = useState(false);
+  const [cardPreviewLoading, setCardPreviewLoading] = useState(false);
+  const toastTimer = useRef<NodeJS.Timeout | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+
+  const showToast = useCallback((message: string, tone: "success" | "error") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, tone });
+    setToastVisible(true);
+    toastTimer.current = setTimeout(() => {
+      setToastVisible(false);
+      setToast(null);
+    }, 3200);
+  }, []);
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
 
@@ -251,9 +267,12 @@ export default function ProfileScreen() {
                 { merge: true }
               );
               setCardImageRemote(null);
-              Alert.alert("Tessera rimossa", "La tessera è stata eliminata dal profilo.");
+              showToast("Tessera rimossa dal profilo.", "success");
             } catch (err: any) {
-              Alert.alert("Errore rimozione", err?.message ?? "Impossibile rimuovere la tessera.");
+              showToast(
+                err?.message ?? "Impossibile rimuovere la tessera in questo momento.",
+                "error"
+              );
             } finally {
               setRemovingCard(false);
             }
@@ -342,9 +361,9 @@ export default function ProfileScreen() {
         setCardImageLocal(null);
       }
 
-      Alert.alert("Fatto!", "Profilo aggiornato correttamente.");
+      showToast("Profilo aggiornato correttamente.", "success");
     } catch (e: any) {
-      Alert.alert("Errore salvataggio", e?.message ?? "Operazione non riuscita.");
+      showToast(e?.message ?? "Operazione non riuscita.", "error");
     } finally {
       setSaving(false);
     }
@@ -469,6 +488,18 @@ export default function ProfileScreen() {
   const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
   const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
 
+  useEffect(() => {
+    if (!cardUri) {
+      setCardPreviewLoading(false);
+      return;
+    }
+    setCardPreviewLoading(true);
+    const fallback = setTimeout(() => {
+      setCardPreviewLoading(false);
+    }, 2000);
+    return () => clearTimeout(fallback);
+  }, [cardUri]);
+
   return (
     <Screen title="Profilo" subtitle="Gestisci i tuoi dati">
       <View style={styles.header}>
@@ -516,14 +547,30 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel="Anteprima tessera associato"
         >
-          {cardUri ? (
-            <Image source={{ uri: cardUri }} style={styles.cardPreview} />
-          ) : (
-            <View style={styles.cardPlaceholder}>
-              <Text style={styles.placeholderText}>Nessuna tessera caricata</Text>
-              <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
-            </View>
-          )}
+          <View style={styles.cardPreviewInner}>
+            {cardUri ? (
+              <>
+                <Image
+                  source={{ uri: cardUri }}
+                  style={styles.cardPreview}
+                  onLoad={() => setCardPreviewLoading(false)}
+                  onLoadEnd={() => setCardPreviewLoading(false)}
+                  onError={() => setCardPreviewLoading(false)}
+                />
+                {cardPreviewLoading && (
+                  <View style={styles.cardLoadingOverlay}>
+                    <ActivityIndicator size="small" color="#0B3D2E" />
+                    <Text style={styles.cardLoadingText}>Caricamento tessera…</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.cardPlaceholder}>
+                <Text style={styles.placeholderText}>Nessuna tessera caricata</Text>
+                <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
+              </View>
+            )}
+          </View>
         </Pressable>
         {cardUri && (
           <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
@@ -571,8 +618,21 @@ export default function ProfileScreen() {
       <View style={{ marginTop: 24 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={styles.label}>Face ID / Touch ID</Text>
-          <Switch value={bioEnabled} onValueChange={onToggleBiometrics} disabled={!bioAvailable} />
+          <Switch
+            value={bioEnabled}
+            onValueChange={onToggleBiometrics}
+            disabled={!bioAvailable}
+            accessibilityRole="switch"
+            accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
+          />
         </View>
+        <Text style={styles.helperTextSmall}>
+          {bioAvailable
+            ? bioEnabled
+              ? "Accederai più velocemente usando le credenziali salvate sul dispositivo."
+              : "Salva le credenziali durante il prossimo login per attivare l'accesso rapido."
+            : "Il dispositivo non supporta Face ID / Touch ID."}
+        </Text>
       </View>
       <PrimaryButton
         label="Salva"
@@ -635,6 +695,18 @@ export default function ProfileScreen() {
           setCropSource(null);
         }}
       />
+      {toastVisible && toast && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.toastBase,
+            toast.tone === "error" ? styles.toastError : styles.toastSuccess,
+          ]}
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={styles.toastText}>{toast.message}</Text>
+        </View>
+      )}
     </Screen>
   );
 }
@@ -661,9 +733,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#f8fafc",
-    height: 180,
+    height: 140,
+  },
+  cardPreviewInner: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
   },
   cardPreview: { width: "100%", height: "100%", resizeMode: "contain" },
   cardPlaceholder: {
@@ -676,6 +752,16 @@ const styles = StyleSheet.create({
   },
   placeholderText: { fontWeight: "600", color: "#475569" },
   placeholderHint: { fontSize: 12, color: "#94a3b8", marginTop: 4, textAlign: "center" },
+  cardLoadingOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(248,250,252,0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  cardLoadingText: { fontSize: 12, fontWeight: "600", color: "#0B3D2E" },
   cardHint: { marginTop: 8, fontSize: 12, color: "#64748b" },
   helperText: { marginTop: 4, fontSize: 13, color: "#6b7280" },
   helperTextSmall: { marginTop: 6, fontSize: 12, color: "#64748b" },
@@ -725,4 +811,28 @@ const styles = StyleSheet.create({
   },
   deleteAccountText: { color: "#b91c1c", fontWeight: "700" },
   deleteAccountHint: { marginTop: 8, fontSize: 12, color: "#64748b", textAlign: "center" },
+  toastBase: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  toastSuccess: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#4ade80",
+  },
+  toastError: {
+    backgroundColor: "#fee2e2",
+    borderWidth: 1,
+    borderColor: "#f87171",
+  },
+  toastText: { textAlign: "center", fontWeight: "700", color: "#1f2937" },
 });

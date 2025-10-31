@@ -8,6 +8,8 @@ import {
   Alert,
   Pressable,
   TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -23,7 +25,17 @@ import {
 } from "firebase/firestore";
 import { Screen, UI } from "../components/Screen";
 
-const BIKE_TYPES = ["BDC", "Gravel", "MTB", "Enduro"] as const;
+type FieldErrors = {
+  title?: string;
+  meetingPoint?: string;
+  date?: string;
+  time?: string;
+  maxParticipants?: string;
+  link?: string;
+  bikes?: string;
+};
+
+const BIKE_TYPES = ["BDC", "Gravel", "MTB", "eBike", "Enduro"] as const;
 const DIFFICULTY_OPTIONS = [
   "Facile",
   "Medio/Moderato",
@@ -62,16 +74,24 @@ export default function CreateRideScreen() {
   const [maxParticipants, setMaxParticipants] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [loadingPrefill, setLoadingPrefill] = useState<boolean>(!!rideId);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback(null), feedback.type === "success" ? 2500 : 4000);
+    return () => clearTimeout(timer);
+  }, [feedback]);
 
   // campi amministrativi (solo in edit)
   const [status, setStatus] = useState<"active" | "cancelled">("active");
   const [archived, setArchived] = useState<boolean>(false);
 
   // --------- util ---------
-  const toggleBike = (b: string) =>
-    setBikes((prev) =>
-      prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]
-    );
+  const toggleBike = (b: string) => {
+    setBikes((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]));
+    if (errors.bikes) setErrors((prev) => ({ ...prev, bikes: undefined }));
+  };
 
   const parseDateTime = (): Date | null => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time))
@@ -80,6 +100,29 @@ export default function CreateRideScreen() {
     const [hh, mm] = time.split(":").map(Number);
     const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
     return isNaN(dt.getTime()) ? null : dt;
+  };
+
+  const handleDateChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+    if (digits.length > 6) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+    }
+    setDate(formatted);
+    if (errors.date) setErrors((prev) => ({ ...prev, date: undefined }));
+  };
+
+  const handleTimeChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 4);
+    let formatted = digits;
+    if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    }
+    setTime(formatted);
+    if (errors.time) setErrors((prev) => ({ ...prev, time: undefined }));
   };
 
   const isEdit = !!rideId;
@@ -152,54 +195,50 @@ export default function CreateRideScreen() {
   const validate = useCallback(() => {
     const t = title.trim();
     const mp = meetingPoint.trim();
+    const errs: FieldErrors = {};
 
     if (!t) {
-      Alert.alert("Titolo mancante", "Inserisci un titolo (es. Uscita Gravel).");
-      return false;
-    }
-    if (t.length > 120) {
-      Alert.alert("Titolo troppo lungo", "Massimo 120 caratteri.");
-      return false;
-    }
-    if (!mp) {
-      Alert.alert("Luogo mancante", "Inserisci il punto di ritrovo.");
-      return false;
-    }
-    if (mp.length > 200) {
-      Alert.alert("Luogo troppo lungo", "Massimo 200 caratteri.");
-      return false;
+      errs.title = "Inserisci un titolo";
+    } else if (t.length > 120) {
+      errs.title = "Massimo 120 caratteri";
     }
 
+    if (!mp) {
+      errs.meetingPoint = "Indica il luogo di ritrovo";
+    } else if (mp.length > 200) {
+      errs.meetingPoint = "Massimo 200 caratteri";
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      errs.date = "Formato atteso YYYY-MM-DD";
+    }
+    if (!/^\d{2}:\d{2}$/.test(time)) {
+      errs.time = "Formato atteso HH:MM";
+    }
     const dt = parseDateTime();
     if (!dt) {
-      Alert.alert(
-        "Data/Ora non validi",
-        "Controlla il formato di data (YYYY-MM-DD) e ora (HH:MM)."
-      );
-      return false;
+      errs.date = errs.date ?? "Data non valida";
+      errs.time = errs.time ?? "Ora non valida";
     }
 
-    if (
-      maxParticipants.trim() !== "" &&
-      (Number.isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)
-    ) {
-      Alert.alert(
-        "Numero massimo non valido",
-        "Lascia vuoto oppure inserisci un numero ≥ 0."
-      );
-      return false;
+    if (maxParticipants.trim() !== "") {
+      const num = Number(maxParticipants);
+      if (!Number.isFinite(num) || num < 0) {
+        errs.maxParticipants = "Inserisci un numero ≥ 0";
+      }
     }
-    if (difficulty && !DIFFICULTY_OPTIONS.includes(difficulty as any)) {
-      Alert.alert("Difficoltà non valida", "Seleziona un valore dall'elenco.");
-      return false;
-    }
-    // bikes max 20 (come da rules)
+
     if (Array.isArray(bikes) && bikes.length > 20) {
-      Alert.alert("Troppe tipologie bici", "Massimo 20 elementi.");
-      return false;
+      errs.bikes = "Max 20 tipologie";
     }
-    return true;
-  }, [title, meetingPoint, date, time, maxParticipants, difficulty, bikes]);
+
+    if (link.trim() && !/^((https?):\/\/|geo:)/i.test(link.trim())) {
+      errs.link = "Inserisci un URL valido (es. https://…)";
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }, [title, meetingPoint, date, time, maxParticipants, bikes, link]);
 
   // ---------- helper pulizia payload ----------
   function sanitizeCreatePayload(raw: any) {
@@ -222,16 +261,20 @@ export default function CreateRideScreen() {
   // ---------- salva ----------
   const onSave = async () => {
     if (!isAdmin) {
-      Alert.alert("Permesso negato", "Solo Admin o Owner possono salvare.");
+      setFeedback({ type: "error", message: "Solo Admin o Owner possono salvare." });
       return;
     }
     if (!auth.currentUser) {
-      Alert.alert("Attendi", "Autenticazione in corso…");
+      setFeedback({ type: "error", message: "Autenticazione in corso…" });
       return;
     }
-    if (!validate()) return;
+    if (!validate()) {
+      setFeedback({ type: "error", message: "Controlla i campi evidenziati." });
+      return;
+    }
 
-    const dt = parseDateTime()!;
+    const dt = parseDateTime();
+    if (!dt) return;
     const maxNum =
       maxParticipants.trim() === ""
         ? null
@@ -279,25 +322,25 @@ export default function CreateRideScreen() {
           status,   // "active" | "cancelled"
           archived, // true | false
         });
-        Alert.alert("Aggiornata", "Uscita modificata correttamente.");
+        setFeedback({ type: "success", message: "Uscita aggiornata correttamente." });
       } else {
         // CREATE con setDoc su id generato (invece di addDoc)
         const ridesColl = collection(db, "rides");
         // genera id localmente (usa crypto.randomUUID se disponibile, altrimenti Firestore doc().id)
         const newId = (globalThis as any).crypto?.randomUUID?.() ?? doc(ridesColl).id;
         await setDoc(doc(db, "rides", newId), payload);
-        Alert.alert("OK", "Uscita salvata!");
+        setFeedback({ type: "success", message: "Uscita creata!" });
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 400);
     } catch (e: any) {
       console.error("Errore creazione/modifica ride:", e);
-      // messaggio più parlante
-      Alert.alert(
-        "Errore",
-        e?.message?.includes("Missing or insufficient permissions")
-          ? "Permessi insufficienti secondo le regole Firestore. Verifica di essere ADMIN/OWNER e che tutti i campi rispettino lo schema (data/ora come Timestamp, title/meetingPoint non vuoti, ecc.)."
-          : e?.message ?? "Impossibile salvare l’uscita."
-      );
+      setFeedback({
+        type: "error",
+        message:
+          e?.message?.includes("Missing or insufficient permissions")
+            ? "Permessi insufficienti oppure dati non validi. Controlla i campi e riprova."
+            : e?.message ?? "Impossibile salvare l'uscita.",
+      });
     } finally {
       setSaving(false);
     }
@@ -349,6 +392,23 @@ export default function CreateRideScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={{ gap: UI.spacing.md }}>
+        {feedback && (
+          <View
+            style={[
+              styles.feedbackBox,
+              feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError,
+            ]}
+          >
+            <Text
+              style={{
+                color: feedback.type === "success" ? "#14532d" : "#7f1d1d",
+                fontWeight: "700",
+              }}
+            >
+              {feedback.message}
+            </Text>
+          </View>
+        )}
         {!!adminWarning && (
           <View style={styles.alertBox}>
             <Text style={styles.alertText}>{adminWarning}</Text>
@@ -359,14 +419,18 @@ export default function CreateRideScreen() {
           <Text style={styles.label}>Titolo *</Text>
           <TextInput
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(value) => {
+              setTitle(value);
+              if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+            }}
             placeholder="Uscita Gravel ai Colli Euganei"
-            style={styles.input}
+            style={[styles.input, errors.title && styles.inputError]}
             autoCorrect
             autoCapitalize="sentences"
             returnKeyType="next"
             blurOnSubmit={false}
           />
+          {errors.title && <Text style={styles.errorText}>{errors.title}</Text>}
         </View>
 
         <View style={styles.formBlock}>
@@ -384,7 +448,11 @@ export default function CreateRideScreen() {
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Tipo di bici</Text>
-          <View style={styles.chipsWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsScrollContent}
+          >
             {BIKE_TYPES.map((b) => {
               const active = bikes.includes(b);
               return (
@@ -397,12 +465,17 @@ export default function CreateRideScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
+          {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
         </View>
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Difficoltà</Text>
-          <View style={styles.chipsWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsScrollContent}
+          >
             {DIFFICULTY_OPTIONS.map((opt) => {
               const active = difficulty === opt;
               return (
@@ -415,53 +488,66 @@ export default function CreateRideScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Data (YYYY-MM-DD) *</Text>
           <TextInput
             value={date}
-            onChangeText={setDate}
+            onChangeText={handleDateChange}
             placeholder="2025-10-10"
-            keyboardType="default"
+            keyboardType="number-pad"
+            inputMode="numeric"
             autoCapitalize="none"
-            style={styles.input}
+            style={[styles.input, errors.date && styles.inputError]}
           />
+          {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
         </View>
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Ora (HH:MM) *</Text>
           <TextInput
             value={time}
-            onChangeText={setTime}
+            onChangeText={handleTimeChange}
             placeholder="08:30"
-            keyboardType="default"
+            keyboardType="number-pad"
+            inputMode="numeric"
             autoCapitalize="none"
-            style={styles.input}
+            style={[styles.input, errors.time && styles.inputError]}
           />
+          {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
         </View>
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Luogo di ritrovo *</Text>
           <TextInput
             value={meetingPoint}
-            onChangeText={setMeetingPoint}
+            onChangeText={(value) => {
+              setMeetingPoint(value);
+              if (errors.meetingPoint) setErrors((prev) => ({ ...prev, meetingPoint: undefined }));
+            }}
             placeholder="Piazzale Roma"
-            style={styles.input}
+            style={[styles.input, errors.meetingPoint && styles.inputError]}
           />
+          {errors.meetingPoint && <Text style={styles.errorText}>{errors.meetingPoint}</Text>}
         </View>
 
         <View style={styles.formBlock}>
           <Text style={styles.label}>Link posizione (opzionale)</Text>
           <TextInput
             value={link}
-            onChangeText={setLink}
+            onChangeText={(value) => {
+              setLink(value);
+              if (errors.link) setErrors((prev) => ({ ...prev, link: undefined }));
+            }}
             placeholder="Incolla link Google Maps / Apple Maps / geo:"
             autoCapitalize="none"
             autoCorrect={false}
-            style={styles.input}
+            keyboardType="url"
+            style={[styles.input, errors.link && styles.inputError]}
           />
+          {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
         </View>
 
         <View style={styles.formBlock}>
@@ -479,11 +565,16 @@ export default function CreateRideScreen() {
           <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
           <TextInput
             value={maxParticipants}
-            onChangeText={setMaxParticipants}
+            onChangeText={(value) => {
+              setMaxParticipants(value);
+              if (errors.maxParticipants) setErrors((prev) => ({ ...prev, maxParticipants: undefined }));
+            }}
             placeholder="es. 12 (lascia vuoto per nessun limite)"
             keyboardType="number-pad"
-            style={styles.input}
+            inputMode="numeric"
+            style={[styles.input, errors.maxParticipants && styles.inputError]}
           />
+          {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
         </View>
 
         {isEdit && isAdmin && (
@@ -529,15 +620,16 @@ export default function CreateRideScreen() {
               (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
             ]}
           >
-            <Text style={styles.saveBtnText}>
-              {saving
-                ? isEdit
-                  ? "Aggiorno…"
-                  : "Salvataggio…"
-                : isEdit
-                ? "💾 Salva modifiche"
-                : "💾 Crea uscita"}
-            </Text>
+            {saving ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno…" : "Salvataggio…"}</Text>
+              </View>
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {isEdit ? "💾 Salva modifiche" : "💾 Crea uscita"}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -565,6 +657,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: UI.colors.text,
   },
+  inputError: {
+    borderColor: "#f87171",
+  },
+  errorText: {
+    color: "#b91c1c",
+    fontSize: 12,
+    marginTop: 4,
+  },
   textArea: {
     minHeight: 120,
     textAlignVertical: "top",
@@ -573,13 +673,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: UI.colors.muted,
   },
+  chipsScrollContent: {
+    flexDirection: "row",
+    gap: UI.spacing.sm,
+    paddingVertical: 4,
+  },
   chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm },
   chip: {
     borderWidth: 1,
     borderColor: "#d1d5db",
     borderRadius: UI.radius.round,
-    paddingHorizontal: UI.spacing.md,
-    paddingVertical: UI.spacing.xs,
+    paddingHorizontal: UI.spacing.md - 2,
+    paddingVertical: UI.spacing.xs - 2,
     backgroundColor: "#fff",
   },
   chipActive: {
@@ -606,6 +711,20 @@ const styles = StyleSheet.create({
   alertText: {
     color: "#7C2D12",
     fontWeight: "600",
+  },
+  feedbackBox: {
+    paddingHorizontal: UI.spacing.sm,
+    paddingVertical: UI.spacing.xs,
+    borderRadius: UI.radius.md,
+    borderWidth: 1,
+  },
+  feedbackSuccess: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#bbf7d0",
+  },
+  feedbackError: {
+    backgroundColor: "#fee2e2",
+    borderColor: "#fecaca",
   },
   saveBtn: {
     backgroundColor: UI.colors.accent,

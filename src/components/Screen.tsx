@@ -82,12 +82,26 @@ export function Screen({
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
                 {(!!title || !!titleMeta) && (
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexWrap: "wrap" }}>
                     {!!title && (
-                      <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>{title}</Text>
+                      <Text
+                        style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.85}
+                      >
+                        {title}
+                      </Text>
                     )}
                     {!!titleMeta && (
-                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>{titleMeta}</Text>
+                      <Text
+                        style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.85}
+                      >
+                        {titleMeta}
+                      </Text>
                     )}
                   </View>
                 )}

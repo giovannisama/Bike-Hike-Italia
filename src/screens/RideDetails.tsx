@@ -35,6 +35,7 @@ import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { Ionicons } from "@expo/vector-icons";
+import { StatusBadge } from "./calendar/StatusBadge";
 
 // Tipi parametri di navigazione (adatta se usi un RootStack diverso)
 type RootStackParamList = {
@@ -375,7 +376,6 @@ export default function RideDetails() {
     });
   }, [participants, manualParticipantsList]);
 
-  const participantsCountLive = combinedParticipants.length;
   const maxText =
     ride?.maxParticipants == null ? "Nessun limite" : String(ride.maxParticipants);
 
@@ -720,11 +720,36 @@ export default function RideDetails() {
     ]);
   }, [rideId, adjustParticipantsCount, ride?.archived]);
 
+  const isCancelled = ride?.status === "cancelled";
+  const isArchived = !!ride?.archived;
+  const isBookable =
+    !!ride &&
+    !isCancelled &&
+    !isArchived &&
+    !(
+      typeof ride.maxParticipants === "number" &&
+      combinedParticipants.length >= (ride.maxParticipants ?? 0)
+    );
+
+  const statusBadge = isArchived
+    ? <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
+    : isCancelled
+    ? <StatusBadge text="Annullata" icon="✖" bg="#FEE2E2" fg="#991B1B" />
+    : <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />;
+
+  const participantsLabel = ride?.maxParticipants != null
+    ? `${combinedParticipants.length}/${ride.maxParticipants}`
+    : `${combinedParticipants.length}`;
+
   const handleAdminRemove = useCallback(
     (participant: Participant) => {
       if (!isAdmin || !rideId) return;
       if (ride?.archived) {
         Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
+        return;
+      }
+      if (isCancelled) {
+        Alert.alert("Non disponibile", "Uscita annullata: non puoi modificare la lista partecipanti.");
         return;
       }
       const label = formatCognomeNome(participant.uid ?? "", participant.name);
@@ -758,22 +783,8 @@ export default function RideDetails() {
         ]
       );
     },
-    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount, ride?.archived]
+    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount, ride?.archived, isCancelled]
   );
-
-  // ─────────────────────────────────────────
-  // Flag derivati
-  // ─────────────────────────────────────────
-  const isCancelled = ride?.status === "cancelled";
-  const isArchived = !!ride?.archived;
-  const isBookable =
-    !!ride &&
-    !isCancelled &&
-    !isArchived &&
-    !(
-      typeof ride.maxParticipants === "number" &&
-      combinedParticipants.length >= (ride.maxParticipants ?? 0)
-    );
 
   const canSubmitManual = manualName.trim().length > 0;
 
@@ -803,24 +814,42 @@ export default function RideDetails() {
         {/* HEADER + TOOLBAR ADMIN */}
         <View style={{ gap: 8, paddingHorizontal: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          {isCancelled && <Badge color="#DC2626" text="ANNULLATA" />}
-          {isArchived && <Badge color="#6B7280" text="ARCHIVIATA" />}
+          {statusBadge}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+              backgroundColor: "#0F172A",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>👥 {participantsLabel}</Text>
+          </View>
         </View>
 
         {isAdmin && (
           <View style={adminStyles.toolbar}>
-            <PrimaryButton label="Modifica" onPress={editRide} />
-            {isCancelled ? (
-              <PrimaryButton label="Riapri" onPress={reopenRide} style={{ backgroundColor: "#059669" }} />
-            ) : (
-              <PrimaryButton label="Annulla" onPress={cancelRide} style={{ backgroundColor: "#DC2626" }} />
-            )}
             {isArchived ? (
-              <PrimaryButton label="Ripristina" onPress={unarchive} style={{ backgroundColor: "#374151" }} />
+              <>
+                <PrimaryButton label="Ripristina" onPress={unarchive} style={{ backgroundColor: "#374151" }} />
+                <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
+              </>
+            ) : isCancelled ? (
+              <>
+                <PrimaryButton label="Riapri" onPress={reopenRide} style={{ backgroundColor: "#059669" }} />
+                <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
+                <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
+              </>
             ) : (
-              <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
+              <>
+                <PrimaryButton label="Modifica" onPress={editRide} />
+                <PrimaryButton label="Annulla" onPress={cancelRide} style={{ backgroundColor: "#DC2626" }} />
+                <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
+              </>
             )}
-            <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
           </View>
         )}
       </View>
@@ -886,13 +915,13 @@ export default function RideDetails() {
         <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>
         <Text style={styles.sectionTitle}>Prenotazione</Text>
 
-        <Text>
-          Partecipanti: <Text style={{ fontWeight: "700" }}>{participantsCountLive}</Text>
-          {ride.maxParticipants != null ? ` / ${ride.maxParticipants}` : ""}
+        <Text style={{ color: "#1F2937" }}>
+          Partecipanti: <Text style={{ fontWeight: "700" }}>{participantsLabel}</Text>
+          {ride.maxParticipants == null ? " (nessun limite)" : ""}
         </Text>
 
         {isArchived && <Text style={{ color: "#6b7280" }}>Uscita archiviata: sola visualizzazione.</Text>}
-        {isCancelled && <Text style={{ color: "#DC2626", fontWeight: "600" }}>Uscita annullata: non prenotabile.</Text>}
+        {isCancelled && <Text style={{ color: "#DC2626", fontWeight: "600" }}>Uscita annullata: le prenotazioni sono bloccate.</Text>}
         {!isBookable && !isArchived && !isCancelled && typeof ride.maxParticipants === "number" && (
           <Text style={{ color: "#DC2626" }}>Posti esauriti.</Text>
         )}
@@ -909,12 +938,16 @@ export default function RideDetails() {
             )}
 
             <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-              <PrimaryButton label="Modifica nota" onPress={openNoteModal} disabled={!isBookable} />
+              <PrimaryButton
+                label="Modifica nota"
+                onPress={openNoteModal}
+                disabled={!isBookable}
+              />
               <PrimaryButton
                 label="Non Partecipo"
                 onPress={leave}
-                style={{ backgroundColor: isArchived ? "#94a3b8" : "#b00020" }}
-                disabled={isArchived}
+                style={{ backgroundColor: isArchived || isCancelled ? "#94a3b8" : "#b00020" }}
+                disabled={isArchived || isCancelled}
               />
             </View>
           </>
@@ -934,7 +967,7 @@ export default function RideDetails() {
             <PrimaryButton
               label="Aggiungi manualmente"
               onPress={openManualModal}
-              disabled={isArchived}
+              disabled={isArchived || isCancelled}
             />
           </View>
         )}

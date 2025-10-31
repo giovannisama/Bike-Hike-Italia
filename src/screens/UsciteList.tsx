@@ -1,5 +1,5 @@
 // src/screens/UsciteList.tsx
-import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from "react";
+import React, { useEffect, useState, useCallback, useLayoutEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   StyleSheet,
   Pressable,
+  TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +29,8 @@ import {
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
+import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
+import { StatusBadge } from "./calendar/StatusBadge";
 
 // ---- Tipi ----
 type Ride = {
@@ -48,12 +51,23 @@ type Ride = {
   manualCount?: number;
 };
 
+const normalizeForSearch = (value?: string) =>
+  (value || "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 // ---- Badge partecipanti ----
-function ParticipantsBadge({ count }: { count?: number }) {
+function ParticipantsBadge({ count, max }: { count?: number; max?: number | null }) {
+  const display = max != null ? `${count ?? 0}/${max}` : String(count ?? 0);
   return (
     <View style={styles.badge}>
       <Text style={styles.badgeIcon}>👥</Text>
-      <Text style={styles.badgeText}>{String(count ?? 0)}</Text>
+      <Text style={styles.badgeText}>{display}</Text>
     </View>
   );
 }
@@ -80,12 +94,37 @@ export default function UsciteList() {
   const ridesRef = useRef<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
   // 🔢 mappa dinamica dei conteggi partecipanti per rideId (Aggregate)
   const [counts, setCounts] = useState<Record<string, number>>({});
 
   // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
+
+  const listRef = useRef<FlatList<Ride> | null>(null);
+
+  const normalizedSearch = useMemo(() => normalizeForSearch(searchText), [searchText]);
+
+  const filteredRides = useMemo(() => {
+    if (!normalizedSearch) return rides;
+    return rides.filter((ride) => {
+      const haystack = `${normalizeForSearch(ride.title)} ${normalizeForSearch(ride.meetingPoint)}`;
+      return haystack.includes(normalizedSearch);
+    });
+  }, [rides, normalizedSearch]);
+
+  const filterChips = useMemo(() => {
+    const chips: string[] = [];
+    if (normalizedSearch) chips.push(`Testo: "${searchText.trim()}"`);
+    if (showArchived) chips.push("Archivio");
+    return chips;
+  }, [normalizedSearch, searchText, showArchived]);
+
+  const clearFilters = useCallback(() => {
+    setSearchText("");
+    setShowArchived(false);
+  }, []);
 
   // Helper: preleva il conteggio server-side dei partecipanti per una singola uscita
   const fetchCountForRide = useCallback(async (rideId: string) => {
@@ -268,6 +307,24 @@ export default function UsciteList() {
     }, [refreshCounts])
   );
 
+useEffect(() => {
+  listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  subsRef.current.forEach((unsub) => {
+    try { unsub(); } catch {}
+  });
+  subsRef.current.clear();
+  visibleSetRef.current.clear();
+}, [normalizedSearch, showArchived]);
+
+useEffect(() => {
+  const topIds = filteredRides.slice(0, MAX_VISIBLE_SUBS).map((ride) => ride.id);
+  topIds.forEach((id) => {
+    fetchCountForRide(id);
+    subscribeFor(id);
+    visibleSetRef.current.add(id);
+  });
+}, [filteredRides, fetchCountForRide, subscribeFor]);
+
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Ride }> }) => {
     const newlyVisible = new Set(viewableItems.map((vi) => vi.item.id));
     // subscribe new
@@ -327,6 +384,16 @@ export default function UsciteList() {
         : "—";
 
     const isCancelled = item.status === "cancelled";
+    const isArchived = !!item.archived;
+    const participantTotal = counts[item.id] ?? (item.participantsCount ?? item.manualCount ?? 0);
+
+    const statusBadge = isArchived ? (
+      <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
+    ) : isCancelled ? (
+      <StatusBadge text="Annullata" icon="✖" bg="#FEE2E2" fg="#991B1B" />
+    ) : (
+      <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
+    );
 
     return (
       <TouchableOpacity
@@ -338,46 +405,31 @@ export default function UsciteList() {
           })
         }
       >
-        <View style={{ flex: 1 }}>
-          {/* Data e ora */}
-          <Text style={styles.dateLine} numberOfLines={1}>
-            {when}
-          </Text>
-
-          {/* Titolo + stato */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text
-              style={[
-                styles.title,
-                isCancelled && {
-                  textDecorationLine: "line-through",
-                  color: "#991B1B",
-                },
-              ]}
-              numberOfLines={1}
-            >
-              {item.title || "Uscita"}
-            </Text>
-            {isCancelled && (
-              <View style={styles.cancelPill}>
-                <Text style={styles.cancelPillText}>Annullata</Text>
-              </View>
-            )}
-            {item.archived && (
-              <View
-                style={[
-                  styles.cancelPill,
-                  { backgroundColor: "#E5E7EB", borderColor: "#D1D5DB" },
-                ]}
-              >
-                <Text style={[styles.cancelPillText, { color: "#374151" }]}>
-                  Archiviata
+        <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.dateLine} numberOfLines={1}>
+                {when}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Text
+                  style={[
+                    styles.title,
+                    isCancelled && {
+                      textDecorationLine: "line-through",
+                      color: "#991B1B",
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.title || "Uscita"}
                 </Text>
+                {statusBadge}
               </View>
-            )}
+            </View>
+            <ParticipantsBadge count={participantTotal} max={item.maxParticipants ?? null} />
           </View>
 
-          {/* Guida */}
           <Text style={styles.row}>
             <Text style={styles.label}>Guida: </Text>
             <Text style={styles.value} numberOfLines={1}>
@@ -385,7 +437,6 @@ export default function UsciteList() {
             </Text>
           </Text>
 
-          {/* Tipo bici */}
           <Text style={styles.row}>
             <Text style={styles.label}>Tipo bici: </Text>
             <Text style={styles.value} numberOfLines={1}>
@@ -393,7 +444,6 @@ export default function UsciteList() {
             </Text>
           </Text>
 
-          {/* Difficoltà */}
           <Text style={styles.row}>
             <Text style={styles.label}>Difficoltà: </Text>
             <Text style={styles.value} numberOfLines={1}>
@@ -401,7 +451,6 @@ export default function UsciteList() {
             </Text>
           </Text>
 
-          {/* Ritrovo */}
           <Text style={styles.row}>
             <Text style={styles.label}>Ritrovo: </Text>
             <Text style={styles.value} numberOfLines={1}>
@@ -409,11 +458,6 @@ export default function UsciteList() {
             </Text>
           </Text>
         </View>
-
-        {/* Badge partecipanti (Aggregate → fallback a participantsCount del doc) */}
-        <ParticipantsBadge
-          count={counts[item.id] ?? (item.participantsCount ?? item.manualCount ?? 0)}
-        />
       </TouchableOpacity>
     );
   };
@@ -447,7 +491,7 @@ export default function UsciteList() {
             {isAdmin ? "Crea, gestisci e partecipa" : "Elenco uscite e prenotazioni"}
           </Text>
         </LinearGradient>
-        {/* Toggle Attive / Archivio (pillole compatte, non invadono l’header) */}
+        {/* Toggle Attive / Archivio */}
         <View style={styles.toggleRow}>
           <Pressable
             onPress={() => setShowArchived(false)}
@@ -465,16 +509,46 @@ export default function UsciteList() {
               Archivio
             </Text>
           </Pressable>
-          <Text style={styles.toggleCount}>{rides.length}</Text>
+          <Text style={styles.toggleCount}>{filteredRides.length}</Text>
         </View>
 
-        {rides.length === 0 ? (
-          <View style={[styles.center, { padding: 16 }]}>
-            <Text style={{ marginBottom: 12 }}>
-              {showArchived ? "Nessuna uscita archiviata." : "Nessuna uscita disponibile."}
+        {/* Barra ricerca */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color="#6B7280" style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Cerca per titolo o luogo"
+            placeholderTextColor="#9CA3AF"
+            value={searchText}
+            onChangeText={setSearchText}
+            returnKeyType="search"
+          />
+          {searchText.trim().length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText("")} accessibilityLabel="Pulisci ricerca">
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {filterChips.length > 0 && (
+          <ActiveFiltersBanner chips={filterChips} onClear={clearFilters} />
+        )}
+
+        {filteredRides.length === 0 ? (
+          <View style={[styles.center, { padding: 16 }]}> 
+            <Text style={{ marginBottom: 12, textAlign: "center" }}>
+              {normalizedSearch
+                ? "Nessuna uscita corrisponde ai filtri attivi."
+                : showArchived
+                ? "Nessuna uscita archiviata."
+                : "Nessuna uscita disponibile."}
             </Text>
 
-            {isAdmin && !showArchived && (
+            {filterChips.length > 0 ? (
+              <Pressable onPress={clearFilters} style={styles.clearFiltersBtn}>
+                <Text style={styles.clearFiltersText}>Rimuovi filtri</Text>
+              </Pressable>
+            ) : isAdmin && !showArchived ? (
               <>
                 <TouchableOpacity
                   style={styles.fab}
@@ -488,11 +562,12 @@ export default function UsciteList() {
                   Tocca il “+” per creare la prima uscita.
                 </Text>
               </>
-            )}
+            ) : null}
           </View>
         ) : (
           <FlatList
-            data={rides}
+            ref={listRef}
+            data={filteredRides}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
@@ -548,6 +623,21 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: "#fff" },
   toggleCount: { marginLeft: 6, color: "#6b7280", fontWeight: "700" },
 
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+    backgroundColor: "#fff",
+  },
+  searchInput: { flex: 1, color: "#111", fontSize: 14 },
+
   card: {
     flexDirection: "row",
     alignItems: "center",
@@ -567,14 +657,23 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#111",
+    paddingVertical: 4,
+    backgroundColor: "#0F172A",
     alignSelf: "flex-start",
   },
-  badgeIcon: { color: "#fff", marginRight: 6, fontSize: 12 },
-  badgeText: { color: "#fff", fontWeight: "700" },
+  badgeIcon: { color: "#fff", fontSize: 12 },
+  badgeText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+
+  clearFiltersBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "#111",
+  },
+  clearFiltersText: { color: "#fff", fontWeight: "700" },
 
   // Header button (solo Admin)
   headerBtn: {
@@ -604,15 +703,4 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   fabPlus: { color: "#fff", fontSize: 28, lineHeight: 28, marginTop: -2 },
-
-  // Pill "Annullata" / "Archiviata"
-  cancelPill: {
-    backgroundColor: "#FEE2E2",
-    borderColor: "#FCA5A5",
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  cancelPillText: { color: "#991B1B", fontWeight: "800", fontSize: 12 },
 });

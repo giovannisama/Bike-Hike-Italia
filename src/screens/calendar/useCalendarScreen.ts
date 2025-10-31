@@ -11,6 +11,7 @@ import {
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LayoutAnimation } from "react-native";
 import { DateData } from "react-native-calendars";
 import { db } from "../../firebase";
 import {
@@ -47,6 +48,13 @@ export type CalendarState = {
   onDayPress: (day: DateData) => void;
   onMonthChange: (day: DateData) => void;
   collapsed: boolean;
+  quickTargets: {
+    today: string;
+    nextRide?: {
+      dateString: string;
+      label: string;
+    };
+  };
 };
 
 export type KeywordState = {
@@ -71,6 +79,8 @@ export type CalendarActions = {
   closeSearch: () => void;
   openRide: (ride: Ride) => void;
   toggleCalendar: () => void;
+  clearFilters: () => void;
+  goToDate: (dateString: string) => void;
 };
 
 export type UseCalendarScreenResult = {
@@ -81,6 +91,8 @@ export type UseCalendarScreenResult = {
   rideLists: RideLists;
   loading: LoadingFlags;
   isSearchOpen: boolean;
+  filterSummary: string[];
+  hasActiveFilters: boolean;
 };
 
 export function useCalendarScreen(): UseCalendarScreenResult {
@@ -399,13 +411,13 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       /^\d{4}-(0[1-9]|1[0-2])$/.test(ym);
   }, [dateFromInput, dateToInput, yearMonthInput]);
 
-  const onDayPress = useCallback(
+  const applyDaySelection = useCallback(
     (d: DateData) => {
       clearSearch();
       setYmLocal("");
       setFromLocal("");
       setToLocal("");
-    setTextLocal("");
+      setTextLocal("");
 
     setSelectedDay(d.dateString);
 
@@ -421,6 +433,8 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     },
     [visibleMonth, currentMonth, clearSearch]
   );
+
+  const onDayPress = useCallback((d: DateData) => applyDaySelection(d), [applyDaySelection]);
 
   const onMonthChange = useCallback(
     (d: DateData) => {
@@ -460,10 +474,81 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     [navigation]
   );
 
+  const goToDate = useCallback(
+    (dateString: string) => {
+      const [year, month, day] = dateString.split("-").map((v) => Number(v));
+      if (!year || !month || !day) return;
+      const payload: DateData = {
+        dateString,
+        day,
+        month,
+        year,
+        timestamp: Date.UTC(year, month - 1, day),
+      };
+      applyDaySelection(payload);
+    },
+    [applyDaySelection]
+  );
+
   const selectedDayLabel = useMemo(
     () => format(new Date(selectedDay), "eeee d MMMM yyyy", { locale: it }),
     [selectedDay]
   );
+
+  const filterSummary = useMemo(() => {
+    const chips: string[] = [];
+    const term = searchText.trim();
+    const from = dateFromInput.trim();
+    const to = dateToInput.trim();
+    const ym = yearMonthInput.trim();
+
+    if (term) chips.push(`Testo: "${term}"`);
+    if (from || to) {
+      if (from && to) chips.push(`Dal ${from} al ${to}`);
+      else if (from) chips.push(`Da ${from}`);
+      else chips.push(`Fino al ${to}`);
+    }
+    if (ym) chips.push(`Mese: ${ym}`);
+
+    return chips;
+  }, [searchText, dateFromInput, dateToInput, yearMonthInput]);
+
+  const nowValue = useMemo(() => {
+    const now = new Date();
+    return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
+
+  const nextRide = useMemo(() => {
+    const candidates = new Map<string, { ride: Ride; value: number }>();
+
+    const addCandidate = (ride: Ride) => {
+      const value = rideDateValue(ride);
+      if (value == null || value < nowValue) return;
+      const existing = candidates.get(ride.id);
+      if (!existing || value < existing.value) {
+        candidates.set(ride.id, { ride, value });
+      }
+    };
+
+    rides.forEach(addCandidate);
+    allRides.forEach(addCandidate);
+
+    let best: { ride: Ride; value: number } | null = null;
+    candidates.forEach((entry) => {
+      if (!best || entry.value < best.value) {
+        best = entry;
+      }
+    });
+
+    const resolved = best as { ride: Ride; value: number } | null;
+    if (!resolved) return undefined;
+
+    const date = new Date(resolved.value);
+    return {
+      dateString: date.toISOString().slice(0, 10),
+      label: format(date, "d MMM", { locale: it }),
+    };
+  }, [rides, allRides, nowValue]);
 
   const searchModal: SearchModalState = {
     ymLocal,
@@ -488,6 +573,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     onDayPress,
     onMonthChange,
     collapsed: isCalendarCollapsed,
+    quickTargets: {
+      today: new Date().toISOString().slice(0, 10),
+    },
   };
 
   const keyword: KeywordState = {
@@ -511,7 +599,12 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     openSearch: () => setSearchOpen(true),
     closeSearch: () => setSearchOpen(false),
     openRide,
-    toggleCalendar: () => setCalendarCollapsed((prev) => !prev),
+    toggleCalendar: () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCalendarCollapsed((prev) => !prev);
+    },
+    clearFilters: () => clearSearch(),
+    goToDate,
   };
 
   return {
@@ -522,5 +615,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     rideLists,
     loading: loadingFlags,
     isSearchOpen,
+    filterSummary,
+    hasActiveFilters: filterSummary.length > 0,
   };
 }

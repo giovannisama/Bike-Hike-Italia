@@ -1,0 +1,57 @@
+import { StyleSheet } from "react-native";
+
+export const calendarStyles = StyleSheet.create({
+  legend: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  listTitle: { fontWeight: "700", color: "#111", lineHeight: 22 },
+  rideCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 12,
+  },
+  rideTitle: { fontWeight: "700", color: "#111" },
+  ridePlace: { color: "#374151", marginTop: 2 },
+  rideDate: { color: "#6B7280", fontSize: 12, marginBottom: 4 },
+  centerRow: { padding: 12, alignItems: "center", justifyContent: "center" },
+  searchTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  inputLabel: { fontSize: 12, color: "#6B7280", marginBottom: 4 },
+  textInput: {
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    color: "#111827",
+  },
+  goBtn: {
+    backgroundColor: "#111",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#111",
+  },
+  toggleText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+});

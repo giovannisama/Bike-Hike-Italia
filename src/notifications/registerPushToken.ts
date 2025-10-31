@@ -56,20 +56,12 @@ export async function registerPushToken() {
     }
 
     const expoPushToken = tokenData.data; // es. "ExponentPushToken[xxxxxxxxxxxxxx]"
-    console.log("Expo push token:", expoPushToken);
 
     // 3) Salva nel profilo utente
     const user = auth.currentUser;
     if (!user) return;
 
     const userRef = doc(db, "users", user.uid);
-    // Creazione/merge sicuro: mantiene un array di token (1 per dispositivo)
-    await setDoc(
-      userRef,
-      { expoPushTokens: [expoPushToken] },
-      { merge: true }
-    );
-    // In alternativa, per evitare duplicati multipli identici:
     await updateDoc(userRef, {
       expoPushTokens: arrayUnion(expoPushToken),
     });

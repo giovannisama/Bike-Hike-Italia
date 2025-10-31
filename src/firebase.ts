@@ -1,7 +1,7 @@
 // firebase.ts
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
 // Configurazione del tuo progetto Firebase
@@ -26,6 +26,3 @@ export const auth = getAuth(app);
 
 // Storage (file utente / tessere associative, ecc.)
 export const storage = getStorage(app);
-
-// Login anonimo automatico (così ogni utente ha un uid)
-signInAnonymously(auth).catch(console.error);

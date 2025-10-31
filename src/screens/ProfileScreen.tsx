@@ -15,7 +15,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { auth, db } from "../firebase";
-import { doc, setDoc, serverTimestamp, onSnapshot, deleteField, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, onSnapshot, deleteField, deleteDoc, getDoc } from "firebase/firestore";
 import { updateProfile as fbUpdateProfile, deleteUser } from "firebase/auth";
 import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
@@ -312,14 +312,15 @@ export default function ProfileScreen() {
       }
 
       // PUBBLICO: aggiorna l'indice (mergeUsersPublic ignora permission-denied lato client)
+      const publicRef = doc(db, "users_public", uid);
+      const publicSnap = await getDoc(publicRef);
       const publicPayload: Record<string, unknown> = {
         displayName: displayName || null,
         firstName: cleanFirst || null,
         lastName: cleanLast || null,
         nickname: cleanNick || null,
-        email: email || null,
       };
-      if (!hasProfile) {
+      if (!publicSnap.exists()) {
         publicPayload.createdAt = serverTimestamp();
       }
       await mergeUsersPublic(uid, publicPayload, "ProfileScreen.saveProfile");

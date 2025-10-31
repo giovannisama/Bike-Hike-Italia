@@ -304,7 +304,10 @@ function LoginScreen({
       }
     } catch (e: any) {
       let message = e?.message ?? "Impossibile effettuare il login";
-      if (e?.code === "auth/invalid-email") {
+      if (e?.code === "auth/network-request-failed") {
+        message =
+          "Connessione assente. Per accedere a Bike & Hike è necessaria una connessione Internet. Controlla la rete e riprova.";
+      } else if (e?.code === "auth/invalid-email") {
         message = "Email non valida. Controlla il formato dell'indirizzo.";
       } else if (
         e?.code === "auth/invalid-credential" ||
@@ -342,7 +345,10 @@ function LoginScreen({
       await signInWithEmailAndPassword(auth, saved.email, saved.password);
     } catch (e: any) {
       let message = e?.message ?? "Impossibile usare l'accesso rapido.";
-      if (e?.code === "auth/invalid-email") {
+      if (e?.code === "auth/network-request-failed") {
+        message =
+          "Connessione assente. Per accedere a Bike & Hike è necessaria una connessione Internet. Controlla la rete e riprova.";
+      } else if (e?.code === "auth/invalid-email") {
         message = "Email non valida. Controlla il formato dell'indirizzo.";
       } else if (
         e?.code === "auth/invalid-credential" ||
@@ -368,7 +374,12 @@ function LoginScreen({
       await sendPasswordResetEmail(auth, mail);
       Alert.alert("Email inviata", "Controlla la casella di posta per reimpostare la password.");
     } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile inviare l'email di reset.");
+      let message = e?.message ?? "Impossibile inviare l'email di reset.";
+      if (e?.code === "auth/network-request-failed") {
+        message =
+          "Connessione assente. Per accedere a Bike & Hike è necessaria una connessione Internet. Controlla la rete e riprova.";
+      }
+      Alert.alert("Errore", message);
     }
   };
 
@@ -520,7 +531,10 @@ function SignupScreen({
       Alert.alert("Registrazione completata", "Account creato. Puoi accedere.");
     } catch (e: any) {
       let message = e?.message ?? "Impossibile creare l'account";
-      if (e?.code === "auth/email-already-in-use") {
+      if (e?.code === "auth/network-request-failed") {
+        message =
+          "Connessione assente. Per accedere a Bike & Hike è necessaria una connessione Internet. Controlla la rete e riprova.";
+      } else if (e?.code === "auth/email-already-in-use") {
         try {
           const existingMethods = await fetchSignInMethodsForEmail(auth, email.trim().toLowerCase());
           const providerHint =

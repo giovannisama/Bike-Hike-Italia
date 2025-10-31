@@ -9,7 +9,7 @@ import { it } from "date-fns/locale";
 import { useNavigation } from "@react-navigation/native";
 
 import { Screen } from "../components/Screen";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Ride = {
   id: string;
@@ -70,6 +70,24 @@ function inputDateValue(raw: string): number | null {
 
 export default function CalendarScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const bottomInset = useMemo(() => Math.max(insets.bottom, 16), [insets.bottom]);
+  const keywordContentStyle = useMemo(
+    () => ({
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      paddingBottom: 32 + bottomInset,
+    }),
+    [bottomInset]
+  );
+  const listContentStyle = useMemo(
+    () => ({
+      paddingTop: 12,
+      paddingBottom: 32 + bottomInset,
+    }),
+    [bottomInset]
+  );
+  const indicatorInsets = useMemo(() => ({ bottom: bottomInset }), [bottomInset]);
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -650,7 +668,7 @@ export default function CalendarScreen() {
 
   return (
     <Screen title="Calendario" subtitle="Visualizza uscite per giorno" scroll={false} headerRight={headerRightBtn}>
-      <View style={{ flex: 1, minHeight: 600, justifyContent: "flex-start" }}>
+      <View style={{ flex: 1, minHeight: 600, justifyContent: "flex-start", paddingBottom: bottomInset }}>
         {/* 🔎 Modal Ricerca */}
         <Modal
           visible={isSearchOpen}
@@ -767,7 +785,8 @@ export default function CalendarScreen() {
               renderItem={renderKeywordItem}
               ListHeaderComponent={keywordHeader}
               ListEmptyComponent={keywordEmpty}
-              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 32, paddingTop: 12 }}
+              contentContainerStyle={keywordContentStyle}
+              scrollIndicatorInsets={indicatorInsets}
               showsVerticalScrollIndicator
             />
           )
@@ -812,7 +831,8 @@ export default function CalendarScreen() {
             windowSize={10}
             maxToRenderPerBatch={10}
             removeClippedSubviews={false}
-            contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}
+            contentContainerStyle={listContentStyle}
+            scrollIndicatorInsets={indicatorInsets}
             showsVerticalScrollIndicator
           />
         )}

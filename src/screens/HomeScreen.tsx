@@ -1,11 +1,10 @@
 // src/screens/HomeScreen.tsx
-import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, Image } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useMemo, useState } from "react";
+import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import { auth, db } from "../firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { Screen, UI } from "../components/Screen"; // ✔️ template condiviso
 
 // ---- LOGO ----
@@ -15,6 +14,8 @@ const logo = require("../../assets/images/logo.jpg");
 const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
   <View style={{ height: UI.spacing[size] }} />
 );
+const BOARD_PLACEHOLDER =
+  "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
 
 // ---- COMPONENTE: Tile (card/menu standard)
 function Tile({
@@ -123,6 +124,55 @@ function useActiveRidesCount() {
   return count;
 }
 
+type BoardPreviewItem = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  createdAt: Date | null;
+};
+
+function useBoardPreview() {
+  const [items, setItems] = useState<BoardPreviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(5));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const next: BoardPreviewItem[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          if (data?.archived === true) return;
+          next.push({
+            id: docSnap.id,
+            title: data?.title ?? "",
+            imageUrl: data?.imageUrl ?? null,
+            createdAt: data?.createdAt?.toDate?.() ?? null,
+          });
+        });
+        setItems(next);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("[Home] board preview error:", err);
+        setItems([]);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      try {
+        unsub();
+      } catch {}
+    };
+  }, []);
+
+  const latest = useMemo(() => items[0] ?? null, [items]);
+
+  return { latest, loading };
+}
+
 // ------------------------------------------------------------------
 // HOME SCREEN
 // ------------------------------------------------------------------
@@ -130,6 +180,7 @@ export default function HomeScreen({ navigation }: any) {
   const user = auth.currentUser;
   const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const { latest: latestBoard, loading: boardLoading } = useBoardPreview();
 
   const firstName = (profile?.firstName ?? "").trim();
   const lastName = (profile?.lastName ?? "").trim();
@@ -219,6 +270,53 @@ export default function HomeScreen({ navigation }: any) {
 
       <VSpace size="lg" />
 
+      <Pressable
+        onPress={() => navigation.navigate("Board")}
+        accessibilityRole="button"
+        accessibilityLabel="Apri la bacheca"
+        style={({ pressed }) => [
+          styles.boardCard,
+          { opacity: pressed ? 0.92 : 1 },
+        ]}
+      >
+        <Image
+          source={{ uri: latestBoard?.imageUrl || BOARD_PLACEHOLDER }}
+          style={styles.boardImage}
+        />
+        <View style={styles.boardOverlay}>
+          <Text style={styles.boardLabel}>Bacheca</Text>
+          {boardLoading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.boardLoadingText}>Carico le ultime news…</Text>
+            </View>
+          ) : latestBoard ? (
+            <>
+              <Text style={styles.boardTitle} numberOfLines={2}>
+                {latestBoard.title}
+              </Text>
+              {latestBoard.createdAt && (
+                <Text style={styles.boardDate}>
+                  {latestBoard.createdAt.toLocaleDateString("it-IT", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </Text>
+              )}
+            </>
+          ) : (
+            <Text style={styles.boardEmpty}>Nessuna news ancora pubblicata.</Text>
+          )}
+          <View style={styles.boardFooter}>
+            <Text style={styles.boardCta}>Apri la bacheca</Text>
+            <Ionicons name="arrow-forward-circle" size={22} color="#fff" />
+          </View>
+        </View>
+      </Pressable>
+
+      <VSpace size="lg" />
+
       {/* Suggerimento profilo incompleto */}
       {!loading && !(firstName || lastName || nickname) && (
         <Pressable
@@ -245,6 +343,12 @@ export default function HomeScreen({ navigation }: any) {
 
       {/* GRID MENU */}
       <View style={{ gap: UI.spacing.sm }}>
+        <Tile
+          title="Bacheca"
+          subtitle="News e comunicazioni"
+          onPress={() => navigation.navigate("Board")}
+          icon={<Ionicons name="newspaper-outline" size={28} color={UI.colors.primary} />}
+        />
         <Tile
           title="Uscite"
           subtitle={isAdmin ? "Crea, gestisci e partecipa" : "Elenco uscite e prenotazioni"}
@@ -290,4 +394,65 @@ export default function HomeScreen({ navigation }: any) {
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  boardCard: {
+    width: "100%",
+    borderRadius: UI.radius.xl,
+    overflow: "hidden",
+    backgroundColor: "#000",
+    shadowColor: UI.shadow.hero.shadowColor,
+    shadowOpacity: UI.shadow.hero.shadowOpacity,
+    shadowRadius: UI.shadow.hero.shadowRadius,
+    elevation: UI.shadow.hero.elevation,
+    minHeight: 200,
+  },
+  boardImage: {
+    width: "100%",
+    height: 200,
+  },
+  boardOverlay: {
+    position: "absolute",
+    inset: 0,
+    padding: UI.spacing.lg,
+    justifyContent: "space-between",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+  },
+  boardLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#fff",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  boardTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#fff",
+    marginTop: 6,
+  },
+  boardDate: {
+    marginTop: 4,
+    color: "#e0f2fe",
+    fontWeight: "600",
+  },
+  boardEmpty: {
+    marginTop: 8,
+    color: "#e2e8f0",
+    fontWeight: "600",
+  },
+  boardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: UI.spacing.md,
+  },
+  boardCta: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  boardLoadingText: {
+    color: "#e2e8f0",
+    fontWeight: "600",
+  },
+});

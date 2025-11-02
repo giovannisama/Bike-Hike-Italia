@@ -901,7 +901,7 @@ export default function RideDetails() {
                     style={{ marginTop: 6 }}
                   >
                     <Text style={{ color: UI.colors.primary, fontWeight: "600" }}>
-                      {showFullDescription ? "Mostra meno" : "Mostra di più"}
+                      {showFullDescription ? "Mostra meno..." : "Mostra di più..."}
                     </Text>
                   </TouchableOpacity>
                 )}

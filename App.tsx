@@ -9,7 +9,7 @@
 // - In Home: conteggio uscite attive nel tab "Uscite" (non archiviate e non annullate).
 // -------------------------------------------------------------
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef, useFocusEffect } from "@react-navigation/native";
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
@@ -53,8 +53,12 @@ import {
   setDoc,
   serverTimestamp,
   collection,
+  limit,
+  orderBy,
+  query,
 } from "firebase/firestore";
 import { auth, db } from "./src/firebase";
+import { loadBoardLastSeen } from "./src/utils/boardStorage";
 
 // 🔐 Face ID / Touch ID
 import * as LocalAuthentication from "expo-local-authentication";
@@ -69,6 +73,7 @@ import CreateRideScreen from "./src/screens/CreateRideScreen";
 import RideDetails from "./src/screens/RideDetails";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import CalendarScreen from "./src/screens/CalendarScreen";
+import BoardScreen from "./src/screens/BoardScreen";
 import AdminScreen from "./src/screens/AdminScreen";
 import UserListScreen from "./src/screens/admin/UserListScreen";
 import UserDetailScreen from "./src/screens/admin/UserDetailScreen";
@@ -113,6 +118,7 @@ export type RootStackParamList = {
   UserDetail: { uid: string; meRole?: string | null };
   UsciteList: undefined;
   Calendar: undefined;
+  Board: undefined;
   CreateRide: undefined;
   Create: undefined; // alias compatibilità
   RideDetails: { rideId: string; title?: string };
@@ -705,6 +711,69 @@ function useActiveRidesCount() {
   return count;
 }
 
+type BoardPreviewItem = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  createdAt: Date | null;
+};
+
+function useBoardPreview(lastSeen: Date | null) {
+  const [items, setItems] = useState<BoardPreviewItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(50));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const next: BoardPreviewItem[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          if (data?.archived === true) return;
+          next.push({
+            id: docSnap.id,
+            title: data?.title ?? "",
+            imageUrl: data?.imageUrl ?? null,
+            createdAt: data?.createdAt?.toDate?.() ?? null,
+          });
+        });
+        setItems(next);
+        setLoading(false);
+        if (!lastSeen) {
+          setUnread(next.length);
+        } else {
+          let count = 0;
+          next.forEach((item) => {
+            if (!item.createdAt) return;
+            if (item.createdAt.getTime() > lastSeen.getTime()) count += 1;
+          });
+          setUnread(count);
+        }
+      },
+      (err) => {
+        if (__DEV__) console.warn("[Home] board preview error:", err);
+        setItems([]);
+        setLoading(false);
+        setUnread(0);
+      }
+    );
+    return () => {
+      try {
+        unsub();
+      } catch {}
+    };
+  }, [lastSeen?.getTime()]);
+
+  const latest = useMemo(() => items[0] ?? null, [items]);
+
+  return { latest, loading, unreadCount: unread };
+}
+
+const truncate = (value: string, max = 38) =>
+  value.length > max ? `${value.slice(0, max - 1)}…` : value;
+
 // ------------------------------------------------------------------
 // Home: HERO + Menu (+ CTA Admin "Crea Uscita") + Contatore uscite attive
 // ------------------------------------------------------------------
@@ -911,6 +980,27 @@ function HomeScreen({ navigation }: HomeProps) {
   const user = auth.currentUser;
   const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
+  const userUid = auth.currentUser?.uid ?? null;
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => {
+        if (!userUid) {
+          if (mounted) setBoardLastSeen(null);
+          return;
+        }
+        const lastSeen = await loadBoardLastSeen(userUid);
+        if (mounted) setBoardLastSeen(lastSeen);
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [userUid])
+  );
+
+  const { latest: latestBoard, loading: boardLoading, unreadCount } = useBoardPreview(boardLastSeen);
 
   const firstName = (profile?.firstName ?? "").trim();
   const lastName = (profile?.lastName ?? "").trim();
@@ -1039,6 +1129,7 @@ function HomeScreen({ navigation }: HomeProps) {
           justifyContent: "space-between",
         }}
       >
+
         <ShortcutCard
           label="Uscite"
           caption="Calendario eventi"
@@ -1051,6 +1142,28 @@ function HomeScreen({ navigation }: HomeProps) {
           style={{ marginBottom: UI.spacing.md }}
         />
 
+        <ShortcutCard
+          label="Bacheca"
+          caption={
+            boardLoading
+              ? "Caricamento…"
+              : latestBoard
+              ? truncate(latestBoard.title, 36)
+              : "News e comunicazioni"
+          }
+          icon={
+            <MaterialCommunityIcons
+              name="newspaper-variant-outline"
+              size={32}
+              color={UI.colors.primary}
+            />
+          }
+          onPress={() => navigation.navigate("Board")}
+          iconContainerStyle={{ backgroundColor: "#E3F2FD" }}
+          style={{ marginBottom: UI.spacing.md }}
+          badgeCount={unreadCount > 0 ? unreadCount : undefined}
+        />
+        
         {isAdmin && (
           <ShortcutCard
             label="Nuova uscita"
@@ -1237,6 +1350,7 @@ export default function App() {
             <Stack.Screen name="UserList" component={UserListScreen} options={{ title: "Gestione Utenti" }} />
             <Stack.Screen name="UserDetail" component={UserDetailScreen} options={{ title: "Dettagli Utente" }} />
             <Stack.Screen name="UsciteList" component={UsciteList} options={{ title: "Uscite" }} />
+            <Stack.Screen name="Board" component={BoardScreen} options={{ title: "Bacheca" }} />
             <Stack.Screen
               name="Calendar"
               component={CalendarScreen}

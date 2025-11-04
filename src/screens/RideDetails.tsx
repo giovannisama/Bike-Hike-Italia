@@ -42,6 +42,25 @@ type RootStackParamList = {
   RideDetails: { rideId: string; title?: string };
 };
 
+type RideServiceKey = "lunch" | "dinner" | "overnight";
+type RideServiceChoice = "yes" | "no";
+type RideServiceConfig = {
+  enabled: boolean;
+  label?: string | null;
+};
+type RideExtraServices = Partial<Record<RideServiceKey, RideServiceConfig>>;
+type RideServiceResponseMap = Partial<Record<RideServiceKey, RideServiceChoice>>;
+type RideServiceSelectionMap = Record<RideServiceKey, RideServiceChoice | null>;
+
+const SERVICE_KEYS: RideServiceKey[] = ["lunch", "dinner", "overnight"];
+const SERVICE_LABELS: Record<RideServiceKey, string> = {
+  lunch: "Pranzo",
+  dinner: "Cena",
+  overnight: "Pernotto",
+};
+
+const emptySelection = (): RideServiceSelectionMap => ({ lunch: null, dinner: null, overnight: null });
+
 type Ride = {
   title: string;
   meetingPoint: string;
@@ -62,6 +81,7 @@ type Ride = {
   archiveYear?: number | null;
   archiveMonth?: number | null;
   manualParticipants?: ManualParticipant[] | null;
+  extraServices?: RideExtraServices | null;
 };
 
 type ManualParticipant = {
@@ -72,6 +92,7 @@ type ManualParticipant = {
   createdAt?: Timestamp | null;
   manual?: boolean;
   raw?: any;
+  services?: RideServiceResponseMap | null;
 };
 
 type Participant = {
@@ -83,6 +104,7 @@ type Participant = {
   manual?: boolean;
   manualRaw?: ManualParticipant;
   addedBy?: string | null;
+  services?: RideServiceResponseMap | null;
 };
 
 // Mini profilo pubblico per rendering elenco
@@ -118,6 +140,9 @@ export default function RideDetails() {
   const [manualName, setManualName] = useState("");
   const [manualNote, setManualNote] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
+
+  const [joinServices, setJoinServices] = useState<RideServiceSelectionMap>(() => emptySelection());
+  const [manualServices, setManualServices] = useState<RideServiceSelectionMap>(() => emptySelection());
 
   const currentUid = auth.currentUser?.uid || "";
 
@@ -225,6 +250,7 @@ export default function RideDetails() {
               createdAt: mp?.createdAt ?? null,
               manual: true,
               raw: mp,
+              services: (mp?.services as RideServiceResponseMap) ?? null,
             };
           })
           .filter(Boolean) as ManualParticipant[];
@@ -254,6 +280,7 @@ export default function RideDetails() {
           archiveYear: d?.archiveYear ?? null,
           archiveMonth: d?.archiveMonth ?? null,
           manualParticipants,
+          extraServices: (d?.extraServices as RideExtraServices) ?? null,
         });
         setLoadingRide(false);
       },
@@ -290,6 +317,7 @@ export default function RideDetails() {
             createdAt: x?.createdAt ?? null,
             manual: x?.manual === true,
             addedBy: x?.addedBy ?? null,
+            services: (x?.services as RideServiceResponseMap) ?? null,
           });
         });
         setParticipants(rows);
@@ -354,8 +382,8 @@ export default function RideDetails() {
 
   const manualParticipantsList = useMemo<Participant[]>(() => {
     if (!ride?.manualParticipants || ride.manualParticipants.length === 0) return [];
-    return ride.manualParticipants.map((mp) => ({
-      id: mp.id,
+    return ride.manualParticipants.map((mp, idx) => ({
+      id: mp.id ?? `manual_${idx}`,
       uid: null,
       name: mp.name,
       note: mp.note ?? null,
@@ -363,6 +391,7 @@ export default function RideDetails() {
       manual: true,
       manualRaw: (mp.raw ?? mp) as ManualParticipant,
       addedBy: mp.addedBy ?? null,
+      services: (mp.services as RideServiceResponseMap) ?? null,
     }));
   }, [ride?.manualParticipants]);
 
@@ -376,6 +405,52 @@ export default function RideDetails() {
     });
   }, [participants, manualParticipantsList]);
 
+  const serviceQuestions = useMemo<RideServiceKey[]>(
+    () => SERVICE_KEYS.filter((key) => ride?.extraServices?.[key]?.enabled),
+    [ride?.extraServices]
+  );
+  const serviceSummary = useMemo(() => {
+    const result: Record<RideServiceKey, { yes: number; no: number }> = {
+      lunch: { yes: 0, no: 0 },
+      dinner: { yes: 0, no: 0 },
+      overnight: { yes: 0, no: 0 },
+    };
+
+    if (!ride?.extraServices) return result;
+
+    combinedParticipants.forEach((participant) => {
+      SERVICE_KEYS.forEach((key) => {
+        if (!ride.extraServices?.[key]?.enabled) return;
+        const answer = participant.services?.[key];
+        if (answer === "yes") result[key].yes += 1;
+        else if (answer === "no") result[key].no += 1;
+      });
+    });
+
+    return result;
+  }, [combinedParticipants, ride?.extraServices]);
+
+  const getServiceLabel = useCallback(
+    (key: RideServiceKey) => ride?.extraServices?.[key]?.label?.trim() || SERVICE_LABELS[key],
+    [ride?.extraServices]
+  );
+
+  const isServiceSelectionComplete = useMemo(
+    () => serviceQuestions.every((key) => {
+      const answer = joinServices[key];
+      return answer === "yes" || answer === "no";
+    }),
+    [serviceQuestions, joinServices]
+  );
+
+  const isManualServiceSelectionComplete = useMemo(
+    () => serviceQuestions.every((key) => {
+      const answer = manualServices[key];
+      return answer === "yes" || answer === "no";
+    }),
+    [serviceQuestions, manualServices]
+  );
+
   const maxText =
     ride?.maxParticipants == null ? "Nessun limite" : String(ride.maxParticipants);
 
@@ -383,6 +458,7 @@ export default function RideDetails() {
     () => combinedParticipants.find((p) => p.uid === currentUid) || null,
     [combinedParticipants, currentUid]
   );
+
 
   const formatCognomeNome = useCallback(
     (uid?: string | null, fallback?: string) => {
@@ -545,12 +621,19 @@ export default function RideDetails() {
   // ─────────────────────────────────────────
   const openNoteModal = useCallback(() => {
     setNoteText(myParticipant?.note ?? "");
+    const next = emptySelection();
+    serviceQuestions.forEach((key) => {
+      const prevChoice = myParticipant?.services?.[key];
+      next[key] = prevChoice === "yes" || prevChoice === "no" ? prevChoice : null;
+    });
+    setJoinServices(next);
     setNoteModalVisible(true);
-  }, [myParticipant]);
+  }, [myParticipant, serviceQuestions]);
 
   const closeNoteModal = useCallback(() => {
     if (joinSaving) return;
     setNoteModalVisible(false);
+    setJoinServices(emptySelection());
   }, [joinSaving]);
 
   const openManualModal = useCallback(() => {
@@ -561,6 +644,7 @@ export default function RideDetails() {
     }
     setManualName("");
     setManualNote("");
+    setManualServices(emptySelection());
     setManualModalVisible(true);
   }, [isAdmin, ride?.archived]);
 
@@ -569,6 +653,7 @@ export default function RideDetails() {
     setManualModalVisible(false);
     setManualName("");
     setManualNote("");
+    setManualServices(emptySelection());
   }, [manualSaving]);
 
   const adjustParticipantsCount = useCallback(
@@ -612,6 +697,25 @@ export default function RideDetails() {
       return;
     }
 
+    const missingService = serviceQuestions.find((key) => {
+      if (!ride?.extraServices?.[key]?.enabled) return false;
+      const answer = joinServices[key];
+      return answer !== "yes" && answer !== "no";
+    });
+
+    if (missingService) {
+      Alert.alert("Attenzione", `Indica se aderirai a ${getServiceLabel(missingService)}.`);
+      return;
+    }
+
+    const servicesPayload: RideServiceResponseMap = {};
+    serviceQuestions.forEach((key) => {
+      const answer = joinServices[key];
+      if (answer === "yes" || answer === "no") {
+        servicesPayload[key] = answer;
+      }
+    });
+
     try {
       setJoinSaving(true);
 
@@ -628,12 +732,18 @@ export default function RideDetails() {
       const prev = await getDoc(participantRef);
 
       // ✍️ Scrivi SEMPRE il documento completo (compatibile con le regole di update)
-      await setDoc(participantRef, {
+      const participantData: Record<string, any> = {
         uid: u.uid,
         name: safeName,
         note: noteText.trim() || null,
         createdAt: prev.exists() ? prev.data()?.createdAt ?? serverTimestamp() : serverTimestamp(),
-      });
+      };
+
+      if (serviceQuestions.length > 0) {
+        participantData.services = Object.keys(servicesPayload).length > 0 ? servicesPayload : null;
+      }
+
+      await setDoc(participantRef, participantData);
 
       if (!prev.exists()) {
         await adjustParticipantsCount(1);
@@ -641,13 +751,27 @@ export default function RideDetails() {
 
       setNoteModalVisible(false);
       setNoteText("");
+      setJoinServices(emptySelection());
     } catch (e: any) {
       console.error("join error:", e);
       Alert.alert("Errore", e?.message ?? "Impossibile prenotarsi.");
     } finally {
       setJoinSaving(false);
     }
-  }, [rideId, noteText, joinSaving, ride, combinedParticipants.length, publicIndex, fetchPublicMini, buildPublicName, adjustParticipantsCount]);
+  }, [
+    rideId,
+    noteText,
+    joinSaving,
+    ride,
+    combinedParticipants.length,
+    publicIndex,
+    fetchPublicMini,
+    buildPublicName,
+    adjustParticipantsCount,
+    joinServices,
+    serviceQuestions,
+    getServiceLabel,
+  ]);
 
   useEffect(() => {
     setShowFullDescription(false);
@@ -666,6 +790,25 @@ export default function RideDetails() {
     }
     if (!rideId) return;
 
+    const missingService = serviceQuestions.find((key) => {
+      if (!ride?.extraServices?.[key]?.enabled) return false;
+      const answer = manualServices[key];
+      return answer !== "yes" && answer !== "no";
+    });
+
+    if (missingService) {
+      Alert.alert("Attenzione", `Indica se il partecipante aderisce a ${getServiceLabel(missingService)}.`);
+      return;
+    }
+
+    const servicesPayload: RideServiceResponseMap = {};
+    serviceQuestions.forEach((key) => {
+      const answer = manualServices[key];
+      if (answer === "yes" || answer === "no") {
+        servicesPayload[key] = answer;
+      }
+    });
+
     try {
       setManualSaving(true);
       const entryId = `manual_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
@@ -676,6 +819,7 @@ export default function RideDetails() {
         manual: true,
         addedBy: currentUid || null,
         createdAt: Timestamp.now(),
+        services: serviceQuestions.length > 0 && Object.keys(servicesPayload).length > 0 ? servicesPayload : null,
       } as ManualParticipant;
 
       await updateDoc(doc(db, "rides", rideId), {
@@ -685,13 +829,26 @@ export default function RideDetails() {
       setManualModalVisible(false);
       setManualName("");
       setManualNote("");
+      setManualServices(emptySelection());
     } catch (e: any) {
       console.error("manual add error:", e);
       Alert.alert("Errore", e?.message ?? "Impossibile aggiungere il partecipante.");
     } finally {
       setManualSaving(false);
     }
-  }, [isAdmin, manualSaving, manualName, manualNote, rideId, currentUid, adjustParticipantsCount, ride?.archived]);
+  }, [
+    isAdmin,
+    manualSaving,
+    manualName,
+    manualNote,
+    rideId,
+    currentUid,
+    adjustParticipantsCount,
+    ride?.archived,
+    serviceQuestions,
+    manualServices,
+    getServiceLabel,
+  ]);
 
   const leave = useCallback(async () => {
     const u = auth.currentUser;
@@ -786,7 +943,7 @@ export default function RideDetails() {
     [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount, ride?.archived, isCancelled]
   );
 
-  const canSubmitManual = manualName.trim().length > 0;
+  const canSubmitManual = manualName.trim().length > 0 && isManualServiceSelectionComplete;
 
   // ─────────────────────────────────────────
   // Rendering
@@ -926,6 +1083,17 @@ export default function RideDetails() {
           <Text style={{ color: "#DC2626" }}>Posti esauriti.</Text>
         )}
 
+        {serviceQuestions.length > 0 && (
+          <View style={styles.serviceSummaryBox}>
+            <Text style={styles.serviceBlockTitle}>Riepilogo servizi</Text>
+            {serviceQuestions.map((key) => (
+              <Text key={key} style={styles.serviceSummaryText}>
+                {SERVICE_LABELS[key]}: {serviceSummary[key].yes} sì / {serviceSummary[key].no} no
+              </Text>
+            ))}
+          </View>
+        )}
+
         {myParticipant ? (
           <>
             <Text style={{ color: "#0a0", fontWeight: "600" }}>
@@ -935,6 +1103,20 @@ export default function RideDetails() {
               <Text style={{ color: "#333" }}>Nota: {myParticipant.note}</Text>
             ) : (
               <Text style={{ color: "#666" }}>Nessuna nota</Text>
+            )}
+
+            {serviceQuestions.length > 0 && (
+              <View style={styles.myServicesBox}>
+                <Text style={styles.serviceBlockTitle}>Le tue scelte</Text>
+                {serviceQuestions.map((key) => {
+                  const answer = myParticipant.services?.[key];
+                  return (
+                    <Text key={key} style={styles.myServicesText}>
+                      {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : answer === "no" ? "No" : "—"}
+                    </Text>
+                  );
+                })}
+              </View>
             )}
 
             <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
@@ -993,6 +1175,36 @@ export default function RideDetails() {
                     <Text style={styles.participantManualTag}>Inserito manualmente</Text>
                   )}
                   {item.note ? <Text style={styles.participantNote}>Nota: {item.note}</Text> : null}
+                  {serviceQuestions.length > 0 && (
+                    (() => {
+                      const answered = serviceQuestions.filter((key) => {
+                        const answer = item.services?.[key];
+                        return answer === "yes" || answer === "no";
+                      });
+                      if (answered.length === 0) return null;
+                      return (
+                        <View style={styles.serviceChipRow}>
+                          {answered.map((key) => {
+                            const answer = item.services?.[key];
+                            if (answer !== "yes" && answer !== "no") return null;
+                            return (
+                              <View
+                                key={key}
+                                style={[
+                                  styles.serviceChip,
+                                  answer === "yes" ? styles.serviceChipYes : styles.serviceChipNo,
+                                ]}
+                              >
+                                <Text style={styles.serviceChipText}>
+                                  {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : "No"}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      );
+                    })()
+                  )}
                 </View>
                 {isAdmin && !isArchived && (
                   <TouchableOpacity
@@ -1025,6 +1237,50 @@ export default function RideDetails() {
             <Text style={{ color: "#475569" }}>
               Puoi aggiungere una nota per l'organizzatore (opzionale).
             </Text>
+            {serviceQuestions.length > 0 && (
+              <View style={styles.serviceModalBlock}>
+                <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
+                <Text style={styles.serviceHelperText}>Rispondi per ciascun servizio abilitato.</Text>
+                {serviceQuestions.map((key) => {
+                  const current = joinServices[key];
+                  return (
+                    <View key={key} style={styles.serviceQuestionRow}>
+                      <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
+                      <View style={styles.serviceQuestionButtons}>
+                        {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
+                          <TouchableOpacity
+                            key={choice}
+                            onPress={() =>
+                              setJoinServices((prev) => ({ ...prev, [key]: choice }))
+                            }
+                            style={[
+                              styles.serviceOptionBtn,
+                              current === choice && styles.serviceOptionBtnActive,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${getServiceLabel(key)}: ${
+                              choice === "yes" ? "Sì" : "No"
+                            }`}
+                          >
+                            <Text
+                              style={[
+                                styles.serviceOptionText,
+                                current === choice && styles.serviceOptionTextActive,
+                              ]}
+                            >
+                              {choice === "yes" ? "Sì" : "No"}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+                {!isServiceSelectionComplete && (
+                  <Text style={styles.serviceHelper}>Rispondi a tutte le domande per proseguire.</Text>
+                )}
+              </View>
+            )}
             <TextInput
               value={noteText}
               onChangeText={setNoteText}
@@ -1044,9 +1300,9 @@ export default function RideDetails() {
                 onPress={confirmJoin}
                 style={[
                   styles.modalActionPrimary,
-                  (joinSaving) && { opacity: 0.6 },
+                  (joinSaving || !isServiceSelectionComplete) && { opacity: 0.6 },
                 ]}
-                disabled={joinSaving}
+                disabled={joinSaving || !isServiceSelectionComplete}
               >
                 <Text style={styles.modalActionPrimaryText}>
                   {joinSaving ? "Salvo…" : "Conferma"}
@@ -1080,6 +1336,50 @@ export default function RideDetails() {
               placeholder="Nota (opzionale)"
               multiline
             />
+            {serviceQuestions.length > 0 && (
+              <View style={styles.serviceModalBlock}>
+                <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
+                <Text style={styles.serviceHelperText}>Segnala le scelte del partecipante.</Text>
+                {serviceQuestions.map((key) => {
+                  const current = manualServices[key];
+                  return (
+                    <View key={key} style={styles.serviceQuestionRow}>
+                      <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
+                      <View style={styles.serviceQuestionButtons}>
+                        {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
+                          <TouchableOpacity
+                            key={choice}
+                            onPress={() =>
+                              setManualServices((prev) => ({ ...prev, [key]: choice }))
+                            }
+                            style={[
+                              styles.serviceOptionBtn,
+                              current === choice && styles.serviceOptionBtnActive,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${getServiceLabel(key)}: ${
+                              choice === "yes" ? "Sì" : "No"
+                            }`}
+                          >
+                            <Text
+                              style={[
+                                styles.serviceOptionText,
+                                current === choice && styles.serviceOptionTextActive,
+                              ]}
+                            >
+                              {choice === "yes" ? "Sì" : "No"}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+                {!isManualServiceSelectionComplete && (
+                  <Text style={styles.serviceHelper}>Compila tutte le risposte per procedere.</Text>
+                )}
+              </View>
+            )}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 onPress={closeManualModal}
@@ -1176,6 +1476,96 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
+  },
+  serviceSummaryBox: {
+    marginTop: 4,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#f1f5f9",
+    gap: 4,
+  },
+  serviceSummaryText: {
+    color: "#1f2937",
+    fontWeight: "600",
+  },
+  serviceBlockTitle: {
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  serviceModalBlock: {
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: "#f8fafc",
+  },
+  serviceHelperText: {
+    fontSize: 12,
+    color: "#64748b",
+  },
+  serviceQuestionRow: {
+    gap: 8,
+  },
+  serviceQuestionLabel: {
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  serviceQuestionButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  serviceOptionBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#cbd5f5",
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  serviceOptionBtnActive: {
+    borderColor: UI.colors.primary,
+    backgroundColor: UI.colors.primary,
+  },
+  serviceOptionText: {
+    fontWeight: "600",
+    color: "#1f2937",
+  },
+  serviceOptionTextActive: {
+    color: "#fff",
+  },
+  serviceHelper: {
+    color: "#b91c1c",
+    fontSize: 12,
+  },
+  myServicesBox: {
+    marginTop: 8,
+    gap: 4,
+  },
+  myServicesText: {
+    color: "#1f2937",
+  },
+  serviceChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  serviceChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  serviceChipYes: {
+    backgroundColor: "#dcfce7",
+  },
+  serviceChipNo: {
+    backgroundColor: "#fee2e2",
+  },
+  serviceChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0f172a",
   },
   modalWrap: {
     flex: 1,

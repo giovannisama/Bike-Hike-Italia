@@ -1,0 +1,447 @@
+// Firestore security rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------
+    // Helpers
+    // -----------------------
+    function isAuthed() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function currentUserData() { return userDoc().data; }
+
+    function roleMatches(target, pattern) {
+      return target is string && target.matches(pattern);
+    }
+
+    function isAdmin() {
+      return isAuthed()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && roleMatches(userDoc().data.role, '(?i)^admin$');
+    }
+
+    function isOwner() {
+      return isAuthed()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (
+          roleMatches(userDoc().data.role, '(?i)^owner$') ||
+          userDoc().data.role == true
+        );
+    }
+
+    function approvedIsTrue() {
+      return currentUserData().keys().hasAny(['approved'])
+        && currentUserData().approved == true;
+    }
+
+    function notDisabledTrue() {
+      return !currentUserData().keys().hasAny(['disabled'])
+        || currentUserData().disabled != true;
+    }
+
+    function canReadRides() {
+      return isAuthed()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && approvedIsTrue()
+        && notDisabledTrue();
+    }
+
+    function has(k) { return request.resource.data.keys().hasAny([k]); }
+
+    function roleIsOneOf(target) {
+      return target == null
+        || roleMatches(target, '(?i)^member$')
+        || roleMatches(target, '(?i)^admin$')
+        || roleMatches(target, '(?i)^owner$');
+    }
+
+    // -----------------------
+    // /users/{uid}
+    // -----------------------
+    match /users/{uid} {
+      allow get:  if isAuthed() && (request.auth.uid == uid || isOwner());
+      allow list: if isAuthed() && isOwner();
+
+      allow create: if isAuthed() && request.auth.uid == uid && validUserCreateSelf();
+
+      allow update: if isAuthed() && (
+        (isOwner() && validUserUpdateAdmin()) ||
+        (request.auth.uid == uid && validUserUpdateSelf())
+      );
+
+      allow delete: if isAuthed() && isOwner() && validUserDelete();
+
+      function isValidMembershipCard(val) {
+        return val == null
+          || (
+            val is string &&
+            val.size() > 0 &&
+            val.size() <= 400000
+          )
+          || (
+            val is map &&
+            val.keys().hasOnly(['base64','updatedAt']) &&
+            val.base64 is string &&
+            val.base64.size() > 0 &&
+            val.base64.size() <= 400000 &&
+            (
+              !val.keys().hasAny(['updatedAt']) ||
+              (val.updatedAt is timestamp && val.updatedAt == request.time)
+            )
+          );
+      }
+
+      function allowedUserKeys() {
+        return [
+          'uid','email','displayName','firstName','lastName','nickname',
+          'role','approved','disabled','createdAt','expoPushToken','membershipCard',
+          'selfDeleted','selfDeletedAt'
+        ];
+      }
+
+      function validUserCreateSelf() {
+        return request.resource.data.keys().hasOnly(allowedUserKeys())
+          && request.resource.data.uid == uid
+          && request.resource.data.email is string
+          && (request.resource.data.displayName is string || request.resource.data.displayName == null)
+          && (request.resource.data.firstName is string || request.resource.data.firstName == null)
+          && (request.resource.data.lastName is string || request.resource.data.lastName == null)
+          && (request.resource.data.nickname is string || request.resource.data.nickname == null)
+          && roleMatches(request.resource.data.role, '(?i)^member$')
+          && request.resource.data.approved == false
+          && (!has('disabled') || request.resource.data.disabled == false)
+          && request.resource.data.createdAt is timestamp
+          && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
+          && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
+          && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null);
+      }
+
+      function validUserUpdateAdmin() {
+        let diff    = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added   = diff.addedKeys();
+        let removed = diff.removedKeys();
+
+        return changed.union(added).union(removed).hasOnly(allowedUserKeys())
+          && request.resource.data.uid == resource.data.uid
+          && (!changed.hasAny(['email'])        || request.resource.data.email is string)
+          && (!changed.hasAny(['displayName'])  || request.resource.data.displayName == null || request.resource.data.displayName is string)
+          && (!changed.hasAny(['firstName'])    || request.resource.data.firstName == null   || request.resource.data.firstName is string)
+          && (!changed.hasAny(['lastName'])     || request.resource.data.lastName == null    || request.resource.data.lastName is string)
+          && (!changed.hasAny(['nickname'])     || request.resource.data.nickname == null    || request.resource.data.nickname is string)
+          && (!changed.hasAny(['role'])         || roleIsOneOf(request.resource.data.role))
+          && (!changed.hasAny(['approved'])     || request.resource.data.approved is bool)
+          && (!changed.hasAny(['disabled'])     || request.resource.data.disabled is bool)
+          && (!changed.hasAny(['createdAt'])    || request.resource.data.createdAt is timestamp)
+          && (!changed.hasAny(['expoPushToken'])|| request.resource.data.expoPushToken == null || request.resource.data.expoPushToken is string)
+          && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
+          && (!changed.hasAny(['selfDeleted'])   || request.resource.data.selfDeleted is bool)
+          && (!changed.hasAny(['selfDeletedAt']) || request.resource.data.selfDeletedAt == null || request.resource.data.selfDeletedAt is timestamp);
+      }
+
+      function validUserUpdateSelf() {
+        let safeKeys = ['displayName','firstName','lastName','nickname','membershipCard'];
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+
+        return changed.hasOnly(safeKeys)
+          && (request.resource.data.displayName is string || request.resource.data.displayName == null)
+          && (request.resource.data.firstName is string || request.resource.data.firstName == null)
+          && (request.resource.data.lastName is string || request.resource.data.lastName == null)
+          && (request.resource.data.nickname is string || request.resource.data.nickname == null)
+          && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard));
+      }
+
+      function validUserDelete() {
+        return resource.data.uid == uid
+          && request.auth.uid != uid
+          && !roleMatches(resource.data.role, '(?i)^owner$')
+          && (
+            (resource.data.keys().hasAny(['disabled']) && resource.data.disabled == true) ||
+            (resource.data.keys().hasAny(['selfDeleted']) && resource.data.selfDeleted == true)
+          );
+      }
+    }
+
+    // -----------------------
+    // /users/{uid}/devices/{deviceId}
+    // -----------------------
+    match /users/{uid}/devices/{deviceId} {
+      allow read: if isAuthed() && (request.auth.uid == uid || isOwner());
+      allow create, update: if isAuthed() && request.auth.uid == uid && validDeviceUpsert();
+      allow delete: if isAuthed() && request.auth.uid == uid;
+
+      function deviceAllowedKeys() { return ['expoPushToken','platform','updatedAt']; }
+      function validDeviceUpsert() {
+        return request.resource.data.keys().hasOnly(deviceAllowedKeys())
+          && (request.resource.data.expoPushToken is string
+              && request.resource.data.expoPushToken.size() > 0
+              && request.resource.data.expoPushToken.size() <= 255)
+          && (request.resource.data.platform in ['ios','android'])
+          && (request.resource.data.updatedAt is timestamp);
+      }
+    }
+
+    // -----------------------
+    // /users_public/{uid}
+    // -----------------------
+    match /users_public/{uid} {
+      allow read: if true;
+
+      allow create: if isAuthed()
+        && (request.auth.uid == uid || isOwner())
+        && validPublicCreate();
+
+      allow update: if isAuthed()
+        && (request.auth.uid == uid || isOwner())
+        && validPublicUpdate();
+
+      function publicAllowedKeys() {
+        return [
+          'displayName','firstName','lastName','nickname','createdAt',
+          'email','role','approved','disabled'
+        ];
+      }
+
+      function validPublicCreate() {
+        return request.resource.data.keys().hasOnly(publicAllowedKeys())
+          && (request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 120))
+          && (request.resource.data.firstName == null || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 80))
+          && (request.resource.data.lastName == null || (request.resource.data.lastName is string && request.resource.data.lastName.size() <= 80))
+          && (request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() <= 80))
+          && (request.resource.data.createdAt is timestamp)
+          && (!has('email') || request.resource.data.email == null || request.resource.data.email is string)
+          && (!has('role') || roleIsOneOf(request.resource.data.role))
+          && (!has('approved') || request.resource.data.approved is bool)
+          && (!has('disabled') || request.resource.data.disabled is bool);
+      }
+
+      function validPublicUpdate() {
+        return request.resource.data.keys().hasOnly(publicAllowedKeys())
+          && (request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 120))
+          && (request.resource.data.firstName == null || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 80))
+          && (request.resource.data.lastName == null || (request.resource.data.lastName is string && request.resource.data.lastName.size() <= 80))
+          && (request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() <= 80))
+          && (!has('createdAt') || request.resource.data.createdAt is timestamp)
+          && (!has('email') || request.resource.data.email == null || request.resource.data.email is string)
+          && (!has('role') || roleIsOneOf(request.resource.data.role))
+          && (!has('approved') || request.resource.data.approved is bool)
+          && (!has('disabled') || request.resource.data.disabled is bool);
+      }
+    }
+
+    // -----------------------
+    // /boardPosts/{postId}
+    // -----------------------
+    match /boardPosts/{postId} {
+      function boardAllowedKeys() {
+        return [
+          'title','description','createdAt','createdBy','archived','archivedAt',
+          'imageUrl','imageStoragePath','imageBase64'
+        ];
+      }
+
+      function nonEmptyString(val, maxLen) {
+        return val is string && val.size() > 0 && val.size() <= maxLen;
+      }
+
+      function stringOrNull(val, maxLen) {
+        return val == null || (val is string && val.size() <= maxLen);
+      }
+
+      function timestampOrServer(val) {
+        return val is timestamp || val == request.time;
+      }
+
+      function boardHasAnyContent(data) {
+        let hasTitle = data.keys().hasAny(['title']) && nonEmptyString(data.title, 160);
+        let hasDescription = data.keys().hasAny(['description']) && nonEmptyString(data.description, 1000);
+        let hasImageUrl = data.keys().hasAny(['imageUrl']) && data.imageUrl is string && data.imageUrl.size() > 0;
+        let hasImageBase64 = data.keys().hasAny(['imageBase64']) && data.imageBase64 is string && data.imageBase64.size() > 0;
+        return hasTitle || hasDescription || hasImageUrl || hasImageBase64;
+      }
+
+      function validBoardPayload(data) {
+        return data.keys().hasOnly(boardAllowedKeys())
+          && (!data.keys().hasAny(['title']) || nonEmptyString(data.title, 160))
+          && (!data.keys().hasAny(['description']) || nonEmptyString(data.description, 1000))
+          && (!data.keys().hasAny(['createdAt']) || timestampOrServer(data.createdAt))
+          && (!data.keys().hasAny(['createdBy']) || stringOrNull(data.createdBy, 200))
+          && (!data.keys().hasAny(['archived']) || data.archived is bool)
+          && (!data.keys().hasAny(['archivedAt']) || timestampOrServer(data.archivedAt))
+          && (!data.keys().hasAny(['imageUrl']) || data.imageUrl == null || (data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() <= 2048))
+          && (!data.keys().hasAny(['imageStoragePath']) || data.imageStoragePath == null || (data.imageStoragePath is string && data.imageStoragePath.size() > 0 && data.imageStoragePath.size() <= 1024))
+          && (!data.keys().hasAny(['imageBase64']) || data.imageBase64 == null
+             || (data.imageBase64 is string && data.imageBase64.size() > 0 && data.imageBase64.size() <= 1048576))
+          && boardHasAnyContent(data);
+      }
+
+      function validBoardCreate() {
+        let data = request.resource.data;
+        return validBoardPayload(data)
+          && data.keys().hasAll(['createdAt','createdBy','archived'])
+          && timestampOrServer(data.createdAt)
+          && data.createdBy is string && data.createdBy.size() > 0 && data.createdBy.size() <= 200
+          && data.archived is bool;
+      }
+
+      function validBoardUpdate() {
+        return validBoardPayload(request.resource.data);
+      }
+
+      allow read: if canReadRides();
+
+      allow create: if (isAdmin() || isOwner()) && validBoardCreate();
+      allow update: if (isAdmin() || isOwner()) && validBoardUpdate();
+      allow delete: if isAdmin() || isOwner();
+    }
+
+    // -----------------------
+    // /rides/{rideId}
+    // -----------------------
+    match /rides/{rideId} {
+      allow read: if canReadRides();
+
+      allow create: if (isAdmin() || isOwner()) && validRideCreateFlexible();
+      allow update: if (isAdmin() || isOwner()) && validRideUpdatePartial();
+      allow delete: if (isAdmin() || isOwner());
+
+      function rideAllowedKeys() {
+        return [
+          'title','meetingPoint','description','bikes',
+          'date','dateTime',
+          'maxParticipants','participantsCount',
+          'createdBy','createdAt',
+          'status','archived','archiveYear','archiveMonth',
+          'guidaName','guidaNames','link','difficulty',
+          'manualParticipants','extraServices','serviceStats'
+        ];
+      }
+
+      function validManualParticipants(val) {
+        return val == null || (val is list && val.size() <= 50);
+      }
+
+      function validRideCreateFlexible() {
+        return request.resource.data.keys().hasOnly(rideAllowedKeys())
+          && has('title')        && request.resource.data.title is string        && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120
+          && has('meetingPoint') && request.resource.data.meetingPoint is string && request.resource.data.meetingPoint.size() > 0 && request.resource.data.meetingPoint.size() <= 200
+          && ((has('dateTime') && request.resource.data.dateTime is timestamp) || (has('date') && request.resource.data.date is timestamp))
+          && has('createdBy')    && request.resource.data.createdBy is string   && request.resource.data.createdBy.size() > 0
+          && has('createdAt')    && request.resource.data.createdAt is timestamp
+          && (!has('description') || request.resource.data.description == null || request.resource.data.description is string)
+          && (!has('bikes')      || request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20))
+          && (!has('date')       || request.resource.data.date == null || request.resource.data.date is timestamp)
+          && (!has('maxParticipants') || request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0))
+          && (!has('participantsCount') || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
+          && (!has('status')     || request.resource.data.status in ['active','cancelled'])
+          && (!has('archived')   || request.resource.data.archived is bool)
+          && (!has('archiveYear')|| request.resource.data.archiveYear == null || request.resource.data.archiveYear is int)
+          && (!has('archiveMonth')|| request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12))
+          && (!has('guidaName')  || request.resource.data.guidaName == null || request.resource.data.guidaName is string)
+          && (!has('guidaNames') || request.resource.data.guidaNames == null || request.resource.data.guidaNames is list)
+          && (!has('link')       || request.resource.data.link == null || request.resource.data.link is string)
+          && (!has('difficulty') || request.resource.data.difficulty == null || request.resource.data.difficulty is string)
+          && (!has('manualParticipants') || validManualParticipants(request.resource.data.manualParticipants))
+          && (!has('extraServices') || request.resource.data.extraServices == null || request.resource.data.extraServices is map)
+          && (!has('serviceStats') || request.resource.data.serviceStats == null || request.resource.data.serviceStats is map);
+      }
+
+      function validRideUpdatePartial() {
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added   = diff.addedKeys();
+        let removed = diff.removedKeys();
+
+        return changed.union(added).union(removed).hasOnly(rideAllowedKeys())
+          && (!(changed.hasAny(['title'])        || added.hasAny(['title']))        || (request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120))
+          && (!(changed.hasAny(['meetingPoint']) || added.hasAny(['meetingPoint'])) || (request.resource.data.meetingPoint is string && request.resource.data.meetingPoint.size() > 0 && request.resource.data.meetingPoint.size() <= 200))
+          && (!(changed.hasAny(['description']) || added.hasAny(['description'])) || (request.resource.data.description == null || request.resource.data.description is string))
+          && (!(changed.hasAny(['bikes'])        || added.hasAny(['bikes']))        || (request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20)))
+          && (!(changed.hasAny(['dateTime'])     || added.hasAny(['dateTime']))     || request.resource.data.dateTime is timestamp)
+          && (!(changed.hasAny(['date'])         || added.hasAny(['date']))         || (request.resource.data.date == null || request.resource.data.date is timestamp))
+          && (!(changed.hasAny(['maxParticipants']) || added.hasAny(['maxParticipants'])) || (request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0)))
+          && (!(changed.hasAny(['participantsCount']) || added.hasAny(['participantsCount'])) || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
+          && (!(changed.hasAny(['status'])       || added.hasAny(['status']))       || (request.resource.data.status in ['active','cancelled']))
+          && (!(changed.hasAny(['archived'])     || added.hasAny(['archived']))     || request.resource.data.archived is bool)
+          && (!(changed.hasAny(['archiveYear'])  || added.hasAny(['archiveYear']))  || (request.resource.data.archiveYear == null || request.resource.data.archiveYear is int))
+          && (!(changed.hasAny(['archiveMonth']) || added.hasAny(['archiveMonth'])) || (request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12)))
+          && (!(changed.hasAny(['createdBy'])    || added.hasAny(['createdBy']))    || request.resource.data.createdBy is string)
+          && (!(changed.hasAny(['createdAt'])    || added.hasAny(['createdAt']))    || request.resource.data.createdAt is timestamp)
+          && (!(changed.hasAny(['guidaName'])    || added.hasAny(['guidaName']))    || (request.resource.data.guidaName == null || request.resource.data.guidaName is string))
+          && (!(changed.hasAny(['guidaNames'])   || added.hasAny(['guidaNames']))   || (request.resource.data.guidaNames == null || request.resource.data.guidaNames is list))
+          && (!(changed.hasAny(['link'])         || added.hasAny(['link']))         || (request.resource.data.link == null || request.resource.data.link is string))
+          && (!(changed.hasAny(['difficulty'])   || added.hasAny(['difficulty']))   || (request.resource.data.difficulty == null || request.resource.data.difficulty is string))
+          && (!(changed.hasAny(['manualParticipants']) || added.hasAny(['manualParticipants'])) || validManualParticipants(request.resource.data.manualParticipants))
+          && (!(changed.hasAny(['extraServices']) || added.hasAny(['extraServices'])) || request.resource.data.extraServices == null || request.resource.data.extraServices is map)
+          && (!(changed.hasAny(['serviceStats'])  || added.hasAny(['serviceStats']))  || request.resource.data.serviceStats == null || request.resource.data.serviceStats is map);
+      }
+
+      match /participants/{uid} {
+        allow read: if canReadRides();
+
+        allow create: if
+          canReadRides()
+          && request.auth.uid == uid
+          && parentRideIsBookable()
+          && validParticipantCreate();
+
+        allow update: if
+          canReadRides()
+          && request.auth.uid == uid
+          && parentRideIsBookable()
+          && validParticipantUpdatePartial();
+
+        allow delete: if
+          canReadRides()
+          && request.auth.uid == uid;
+
+        function parentRideIsBookable() {
+          let ride = get(/databases/$(database)/documents/rides/$(rideId)).data;
+          return !(ride.status == 'cancelled') && !(ride.archived == true);
+        }
+
+        function validServiceResponses(val) {
+          return val == null
+            || (
+              val is map
+              && val.keys().hasOnly(['lunch','dinner','overnight'])
+              && (!val.keys().hasAny(['lunch'])     || val['lunch'] == null     || val['lunch'] in ['yes','no'])
+              && (!val.keys().hasAny(['dinner'])    || val['dinner'] == null    || val['dinner'] in ['yes','no'])
+              && (!val.keys().hasAny(['overnight']) || val['overnight'] == null || val['overnight'] in ['yes','no'])
+            );
+        }
+
+        function validParticipantCreate() {
+          let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
+          return request.resource.data.keys().hasOnly(allowed)
+            && request.resource.data.uid == uid
+            && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+            && (!has('displayName') || request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120))
+            && (!has('nickname') || request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120))
+            && (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500))
+            && request.resource.data.createdAt is timestamp
+            && (!has('services') || validServiceResponses(request.resource.data.services));
+        }
+
+        function validParticipantUpdatePartial() {
+          let diff = request.resource.data.diff(resource.data);
+          let changed = diff.changedKeys();
+          let added   = diff.addedKeys();
+          let removed = diff.removedKeys();
+
+          let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
+
+          return changed.union(added).union(removed).hasOnly(allowed)
+            && (!(changed.hasAny(['uid']) || added.hasAny(['uid'])) || request.resource.data.uid == resource.data.uid)
+            && (!(changed.hasAny(['name']) || added.hasAny(['name'])) || (request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120))
+            && (!(changed.hasAny(['displayName']) || added.hasAny(['displayName'])) || (request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120)))
+            && (!(changed.hasAny(['nickname']) || added.hasAny(['nickname'])) || (request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120)))
+            && (!(changed.hasAny(['note']) || added.hasAny(['note'])) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
+            && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || request.resource.data.createdAt is timestamp)
+            && (!(changed.hasAny(['services']) || added.hasAny(['services'])) || validServiceResponses(request.resource.data.services));
+        }
+      }
+    }
+  }
+}

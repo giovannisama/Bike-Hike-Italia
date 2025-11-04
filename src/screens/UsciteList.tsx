@@ -109,7 +109,15 @@ export default function UsciteList() {
   const filteredRides = useMemo(() => {
     if (!normalizedSearch) return rides;
     return rides.filter((ride) => {
-      const haystack = `${normalizeForSearch(ride.title)} ${normalizeForSearch(ride.meetingPoint)}`;
+      const bikesLabel = Array.isArray(ride.bikes) ? ride.bikes.join(" ") : ride.bikes ?? "";
+      const haystackSource = [
+        ride.title,
+        ride.meetingPoint,
+        bikesLabel,
+        ride.difficulty ?? "",
+      ]
+        .join(" ");
+      const haystack = normalizeForSearch(haystackSource);
       return haystack.includes(normalizedSearch);
     });
   }, [rides, normalizedSearch]);
@@ -517,7 +525,7 @@ useEffect(() => {
           <Ionicons name="search" size={18} color="#6B7280" style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Cerca per titolo o luogo"
+            placeholder="Cerca per titolo, luogo, bici o difficoltà"
             placeholderTextColor="#9CA3AF"
             value={searchText}
             onChangeText={setSearchText}

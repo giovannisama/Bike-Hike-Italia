@@ -4,6 +4,7 @@ export const calendarStyles = StyleSheet.create({
   legend: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     paddingHorizontal: 10,
     paddingVertical: 6,
   },

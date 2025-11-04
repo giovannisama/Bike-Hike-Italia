@@ -6,10 +6,14 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  Modal,
+  Platform,
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  TouchableWithoutFeedback,
+  Switch,
 } from "react-native";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -18,11 +22,18 @@ import {
   Timestamp,
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   onSnapshot,
   setDoc,
   collection,
+  query,
+  limit,
 } from "firebase/firestore";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { Screen, UI } from "../components/Screen";
 
 type FieldErrors = {
@@ -42,6 +53,49 @@ const DIFFICULTY_OPTIONS = [
   "Difficile/Impegnativo",
   "Estremo",
 ] as const;
+
+type ExtraServiceKey = "lunch" | "dinner" | "overnight";
+
+type ExtraServiceState = {
+  enabled: boolean;
+  label: string;
+};
+
+const EXTRA_SERVICE_KEYS: ExtraServiceKey[] = ["lunch", "dinner", "overnight"];
+
+const EXTRA_SERVICE_DEFINITIONS: Array<{ key: ExtraServiceKey; label: string; helper: string }> = [
+  { key: "lunch", label: "Pranzo", helper: "Richiedi se il partecipante aderisce al pranzo." },
+  { key: "dinner", label: "Cena", helper: "Richiedi se il partecipante aderisce alla cena." },
+  { key: "overnight", label: "Pernotto", helper: "Richiedi se il partecipante necessita del pernottamento." },
+];
+
+const createDefaultExtraServices = (): Record<ExtraServiceKey, ExtraServiceState> => ({
+  lunch: { enabled: false, label: "" },
+  dinner: { enabled: false, label: "" },
+  overnight: { enabled: false, label: "" },
+});
+
+const createEnabledMap = (): Record<ExtraServiceKey, boolean> => ({
+  lunch: false,
+  dinner: false,
+  overnight: false,
+});
+
+const extractExtraServices = (raw: any): Record<ExtraServiceKey, ExtraServiceState> => {
+  const base = createDefaultExtraServices();
+  EXTRA_SERVICE_KEYS.forEach((key) => {
+    const node = raw?.[key];
+    if (!node) {
+      base[key] = { enabled: false, label: "" };
+      return;
+    }
+    base[key] = {
+      enabled: !!node.enabled,
+      label: typeof node.label === "string" ? node.label : "",
+    };
+  });
+  return base;
+};
 
 // Spaziatore verticale
 const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
@@ -72,10 +126,19 @@ export default function CreateRideScreen() {
   const [bikes, setBikes] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<string>(""); // opzionale
   const [maxParticipants, setMaxParticipants] = useState<string>("");
+  const [extraServices, setExtraServices] = useState<Record<ExtraServiceKey, ExtraServiceState>>(
+    () => createDefaultExtraServices()
+  );
+  const [initialEnabledServices, setInitialEnabledServices] = useState<Record<ExtraServiceKey, boolean>>(
+    () => createEnabledMap()
+  );
+  const [servicesLocked, setServicesLocked] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
   const [loadingPrefill, setLoadingPrefill] = useState<boolean>(!!rideId);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [iosPickerMode, setIosPickerMode] = useState<"date" | "time" | null>(null);
+  const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
 
   useEffect(() => {
     if (!feedback) return;
@@ -88,6 +151,38 @@ export default function CreateRideScreen() {
   const [archived, setArchived] = useState<boolean>(false);
 
   // --------- util ---------
+  const toggleExtraService = useCallback(
+    (key: ExtraServiceKey, enabled: boolean) => {
+      if (enabled && servicesLocked && !initialEnabledServices[key]) {
+        Alert.alert(
+          "Servizio non disponibile",
+          "Non puoi attivare nuovi servizi mentre sono già presenti partecipanti prenotati."
+        );
+        return;
+      }
+      setExtraServices((prev) => {
+        const next = { ...prev };
+        const current = prev[key] ?? { enabled: false, label: "" };
+        next[key] = {
+          enabled,
+          label: enabled ? current.label : "",
+        };
+        return next;
+      });
+    },
+    [initialEnabledServices, servicesLocked]
+  );
+
+  const updateExtraServiceLabel = useCallback((key: ExtraServiceKey, value: string) => {
+    setExtraServices((prev) => ({
+      ...prev,
+      [key]: {
+        ...(prev[key] ?? { enabled: false, label: "" }),
+        label: value,
+      },
+    }));
+  }, []);
+
   const toggleBike = (b: string) => {
     setBikes((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]));
     if (errors.bikes) setErrors((prev) => ({ ...prev, bikes: undefined }));
@@ -102,27 +197,69 @@ export default function CreateRideScreen() {
     return isNaN(dt.getTime()) ? null : dt;
   };
 
-  const handleDateChange = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 8);
-    let formatted = digits;
-    if (digits.length > 4) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    }
-    if (digits.length > 6) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-    }
-    setDate(formatted);
-    if (errors.date) setErrors((prev) => ({ ...prev, date: undefined }));
+  const pad2 = (value: number) => String(value).padStart(2, "0");
+  const formatDateValue = (value: Date) =>
+    `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
+  const formatTimeValue = (value: Date) => `${pad2(value.getHours())}:${pad2(value.getMinutes())}`;
+
+  const clearError = (field: keyof FieldErrors) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
-  const handleTimeChange = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 4);
-    let formatted = digits;
-    if (digits.length > 2) {
-      formatted = `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  const applyPickerValue = (mode: "date" | "time", value: Date) => {
+    if (mode === "date") {
+      setDate(formatDateValue(value));
+      clearError("date");
+      if (!/^\d{2}:\d{2}$/.test(time)) {
+        setTime(formatTimeValue(value));
+        clearError("time");
+      }
+      return;
     }
-    setTime(formatted);
-    if (errors.time) setErrors((prev) => ({ ...prev, time: undefined }));
+    setTime(formatTimeValue(value));
+    clearError("time");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setDate(formatDateValue(value));
+      clearError("date");
+    }
+  };
+
+  const openNativePicker = (mode: "date" | "time") => {
+    const base = parseDateTime() ?? new Date();
+    if (mode === "time") {
+      base.setSeconds(0, 0);
+    }
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        mode,
+        display: mode === "date" ? "calendar" : "spinner",
+        value: base,
+        is24Hour: true,
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type !== "set" || !selectedDate) return;
+          const next = new Date(selectedDate);
+          if (mode === "time") {
+            next.setSeconds(0, 0);
+          }
+          applyPickerValue(mode, next);
+        },
+      });
+      return;
+    }
+    setIosPickerValue(base);
+    setIosPickerMode(mode);
+  };
+
+  const closeIosPicker = () => setIosPickerMode(null);
+  const confirmIosPicker = () => {
+    if (!iosPickerMode) return;
+    applyPickerValue(iosPickerMode, iosPickerValue);
+    setIosPickerMode(null);
   };
 
   const isEdit = !!rideId;
@@ -145,7 +282,14 @@ export default function CreateRideScreen() {
 
   // ---------- prefill in modalità EDIT ----------
   useEffect(() => {
-    if (!rideId) return;
+    if (!rideId) {
+      setInitialEnabledServices(createEnabledMap());
+      setServicesLocked(false);
+      return;
+    }
+    let cancelled = false;
+    setInitialEnabledServices(createEnabledMap());
+    setServicesLocked(false);
     (async () => {
       try {
         const snap = await getDoc(doc(db, "rides", rideId));
@@ -155,6 +299,7 @@ export default function CreateRideScreen() {
           return;
         }
         const d = snap.data() as any;
+        if (cancelled) return;
         setTitle(d?.title ?? "");
         setGuidaText(
           Array.isArray(d?.guidaNames) && d.guidaNames.length
@@ -183,12 +328,43 @@ export default function CreateRideScreen() {
         );
         setStatus((d?.status as any) === "cancelled" ? "cancelled" : "active");
         setArchived(!!d?.archived);
+        const servicesFromDb = extractExtraServices(d?.extraServices);
+        setExtraServices(servicesFromDb);
+        setInitialEnabledServices({
+          lunch: servicesFromDb.lunch.enabled,
+          dinner: servicesFromDb.dinner.enabled,
+          overnight: servicesFromDb.overnight.enabled,
+        });
+        const manualCount = Array.isArray(d?.manualParticipants) ? d.manualParticipants.length : 0;
+        const bookedCount =
+          typeof d?.participantsCount === "number" && !Number.isNaN(d.participantsCount)
+            ? d.participantsCount
+            : 0;
+        let hasParticipants = (manualCount ?? 0) > 0 || bookedCount > 0;
+        if (!hasParticipants) {
+          try {
+            const participantsSnap = await getDocs(
+              query(collection(db, "rides", rideId, "participants"), limit(1))
+            );
+            hasParticipants = !participantsSnap.empty;
+          } catch (err) {
+            console.warn("Impossibile verificare i partecipanti prenotati:", err);
+          }
+        }
+        if (!cancelled) {
+          setServicesLocked(hasParticipants);
+        }
       } catch (e: any) {
         Alert.alert("Errore", e?.message ?? "Impossibile caricare i dati.");
       } finally {
-        setLoadingPrefill(false);
+        if (!cancelled) {
+          setLoadingPrefill(false);
+        }
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [rideId, navigation]);
 
   // ---------- validazione semplice ----------
@@ -210,10 +386,10 @@ export default function CreateRideScreen() {
     }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      errs.date = "Formato atteso YYYY-MM-DD";
+      errs.date = "Seleziona una data valida";
     }
     if (!/^\d{2}:\d{2}$/.test(time)) {
-      errs.time = "Formato atteso HH:MM";
+      errs.time = "Seleziona un orario valido";
     }
     const dt = parseDateTime();
     if (!dt) {
@@ -282,6 +458,30 @@ export default function CreateRideScreen() {
         ? null
         : Number(maxParticipants);
 
+    const extraServicesPayload: Record<string, any> = {};
+    EXTRA_SERVICE_KEYS.forEach((key) => {
+      const conf = extraServices[key];
+      if (conf?.enabled) {
+        extraServicesPayload[key] = {
+          enabled: true,
+          label: conf.label.trim() || null,
+        };
+      }
+    });
+
+    if (servicesLocked) {
+      const newlyEnabledKeys = EXTRA_SERVICE_KEYS.filter(
+        (key) => extraServices[key]?.enabled && !initialEnabledServices[key]
+      );
+      if (newlyEnabledKeys.length > 0) {
+        Alert.alert(
+          "Servizio non disponibile",
+          "Non puoi attivare nuovi servizi mentre sono già presenti partecipanti prenotati."
+        );
+        return;
+      }
+    }
+
     // guidaName (singolo) + guidaNames (lista) dai testi separati da virgola
     const names = guidaText
       .split(",")
@@ -312,6 +512,11 @@ export default function CreateRideScreen() {
     };
 
     const payload = sanitizeCreatePayload(basePayload);
+    if (Object.keys(extraServicesPayload).length > 0) {
+      payload.extraServices = extraServicesPayload;
+    } else if (isEdit) {
+      payload.extraServices = null;
+    }
 
     setSaving(true);
     try {
@@ -385,13 +590,14 @@ export default function CreateRideScreen() {
   const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
   return (
-    <Screen
-      title={titleScreen}
-      subtitle={isAdmin ? "Solo Admin o Owner possono salvare" : "Compila i dettagli dell'uscita"}
-      scroll={true}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={{ gap: UI.spacing.md }}>
+    <>
+      <Screen
+        title={titleScreen}
+        subtitle={isAdmin ? "Solo Admin o Owner possono salvare" : "Compila i dettagli dell'uscita"}
+        scroll={true}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ gap: UI.spacing.md }}>
         {feedback && (
           <View
             style={[
@@ -492,30 +698,32 @@ export default function CreateRideScreen() {
         </View>
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Data (YYYY-MM-DD) *</Text>
-          <TextInput
-            value={date}
-            onChangeText={handleDateChange}
-            placeholder="2025-10-10"
-            keyboardType="number-pad"
-            inputMode="numeric"
-            autoCapitalize="none"
-            style={[styles.input, errors.date && styles.inputError]}
-          />
+          <Text style={styles.label}>Data *</Text>
+          <Pressable
+            onPress={() => openNativePicker("date")}
+            style={[styles.input, styles.fakeInput, errors.date && styles.inputError]}
+            accessibilityRole="button"
+            accessibilityLabel="Seleziona la data dell'uscita"
+          >
+            <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+              {date || "Seleziona data"}
+            </Text>
+          </Pressable>
           {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
         </View>
 
         <View style={styles.formBlock}>
-          <Text style={styles.label}>Ora (HH:MM) *</Text>
-          <TextInput
-            value={time}
-            onChangeText={handleTimeChange}
-            placeholder="08:30"
-            keyboardType="number-pad"
-            inputMode="numeric"
-            autoCapitalize="none"
-            style={[styles.input, errors.time && styles.inputError]}
-          />
+          <Text style={styles.label}>Ora *</Text>
+          <Pressable
+            onPress={() => openNativePicker("time")}
+            style={[styles.input, styles.fakeInput, errors.time && styles.inputError]}
+            accessibilityRole="button"
+            accessibilityLabel="Seleziona l'orario di partenza"
+          >
+            <Text style={time ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+              {time || "Seleziona orario"}
+            </Text>
+          </Pressable>
           {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
         </View>
 
@@ -577,6 +785,54 @@ export default function CreateRideScreen() {
           {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
         </View>
 
+        <View style={styles.formBlock}>
+          <Text style={styles.label}>Servizi extra</Text>
+          <Text style={styles.helperText}>
+            Attiva le richieste aggiuntive: i partecipanti dovranno rispondere Sì/No durante la prenotazione.
+          </Text>
+          {servicesLocked && (
+            <Text style={styles.warningText}>
+              Non è possibile attivare nuovi servizi perché l'uscita ha già prenotati.
+            </Text>
+          )}
+          <View style={{ gap: UI.spacing.sm, marginTop: UI.spacing.xs }}>
+            {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }) => {
+              const state = extraServices[key];
+              return (
+                <View
+                  key={key}
+                  style={[
+                    styles.serviceToggleBlock,
+                    servicesLocked && !initialEnabledServices[key] && styles.serviceToggleDisabled,
+                  ]}
+                >
+                  <View style={styles.serviceToggleRow}>
+                    <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
+                      <Text style={styles.serviceToggleLabel}>{label}</Text>
+                      <Text style={styles.serviceToggleHelper}>{helper}</Text>
+                    </View>
+                    <Switch
+                      value={state.enabled}
+                      onValueChange={(value) => toggleExtraService(key, value)}
+                      disabled={servicesLocked && !initialEnabledServices[key]}
+                      trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
+                      thumbColor={Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined}
+                    />
+                  </View>
+                  {state.enabled && (
+                    <TextInput
+                      value={state.label}
+                      onChangeText={(value) => updateExtraServiceLabel(key, value)}
+                      style={styles.serviceLabelInput}
+                      placeholder={`Dettagli ${label.toLowerCase()} (facoltativo)`}
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
         {isEdit && isAdmin && (
           <View style={[styles.formBlock, { gap: UI.spacing.sm }]}>
             <Text style={styles.label}>Azioni amministrative</Text>
@@ -636,8 +892,45 @@ export default function CreateRideScreen() {
         <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
 
         <VSpace size="xl" />
-      </View>
-    </Screen>
+        </View>
+      </Screen>
+      {Platform.OS === "ios" && (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={iosPickerMode !== null}
+          onRequestClose={closeIosPicker}
+        >
+          <View style={styles.pickerWrapper}>
+            <TouchableWithoutFeedback onPress={closeIosPicker}>
+              <View style={styles.pickerOverlay} />
+            </TouchableWithoutFeedback>
+            <View style={styles.pickerContainer}>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
+                  <Text style={styles.pickerHeaderText}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
+                  <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>Fatto</Text>
+                </TouchableOpacity>
+              </View>
+              {iosPickerMode && (
+                <DateTimePicker
+                  value={iosPickerValue}
+                  mode={iosPickerMode}
+                  display="spinner"
+                  onChange={(_, selected) => {
+                    if (selected) setIosPickerValue(selected);
+                  }}
+                  minuteInterval={iosPickerMode === "time" ? 1 : undefined}
+                  locale="it-IT"
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -657,6 +950,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: UI.colors.text,
   },
+  fakeInput: {
+    justifyContent: "center",
+  },
+  fakeInputValue: {
+    fontSize: 16,
+    color: UI.colors.text,
+  },
+  fakeInputPlaceholder: {
+    fontSize: 16,
+    color: "#9ca3af",
+  },
   inputError: {
     borderColor: "#f87171",
   },
@@ -672,6 +976,11 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 12,
     color: UI.colors.muted,
+  },
+  warningText: {
+    fontSize: 12,
+    color: "#b91c1c",
+    marginTop: 4,
   },
   chipsScrollContent: {
     flexDirection: "row",
@@ -693,6 +1002,78 @@ const styles = StyleSheet.create({
   },
   chipText: { color: UI.colors.text, fontWeight: "600" },
   chipTextActive: { color: "#fff" },
+
+  serviceToggleBlock: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: UI.radius.md,
+    padding: UI.spacing.sm,
+    backgroundColor: "#f8fafc",
+    gap: UI.spacing.xs,
+  },
+  serviceToggleDisabled: {
+    opacity: 0.55,
+  },
+  serviceToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI.spacing.sm,
+  },
+  serviceToggleLabel: {
+    fontWeight: "700",
+    color: UI.colors.text,
+  },
+  serviceToggleHelper: {
+    fontSize: 12,
+    color: UI.colors.muted,
+    marginTop: 2,
+  },
+  serviceLabelInput: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: UI.radius.md,
+    paddingHorizontal: UI.spacing.sm,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    fontSize: 15,
+    color: UI.colors.text,
+  },
+
+  pickerWrapper: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  pickerContainer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: UI.radius.lg,
+    borderTopRightRadius: UI.radius.lg,
+    paddingBottom: UI.spacing.md,
+  },
+  pickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: UI.spacing.md,
+    paddingVertical: UI.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  pickerHeaderBtn: {
+    paddingVertical: UI.spacing.xs,
+  },
+  pickerHeaderText: {
+    fontSize: 16,
+    color: UI.colors.text,
+  },
+  pickerHeaderTextPrimary: {
+    color: UI.colors.primary,
+    fontWeight: "700",
+  },
 
   adminBtn: {
     backgroundColor: UI.colors.primary,

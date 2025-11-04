@@ -1340,7 +1340,7 @@ export default function App() {
             <Stack.Screen
               name="Home"
               component={HomeScreen}
-              options={{ title: "Home", headerTransparent: true, headerTintColor: "#fff" }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="Amministrazione"

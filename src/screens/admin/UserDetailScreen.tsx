@@ -16,6 +16,36 @@ import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
 
+type UserRole = "member" | "admin" | "owner";
+
+const ROLE_TRANSITIONS: Record<UserRole, UserRole[]> = {
+  owner: ["admin", "member"],
+  admin: ["owner", "member"],
+  member: ["admin", "owner"],
+};
+
+const ROLE_WEIGHTS: Record<UserRole, number> = {
+  member: 1,
+  admin: 2,
+  owner: 3,
+};
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  member: "Member",
+  admin: "Admin",
+  owner: "Owner",
+};
+
+const getRoleActionLabel = (current: UserRole, target: UserRole): string => {
+  if (target === "owner") {
+    return "Promuovi a Owner";
+  }
+  if (target === "admin") {
+    return current === "member" ? "Promuovi a Admin" : "Declassa a Admin";
+  }
+  return "Declassa a Member";
+};
+
 type Params = { uid: string; meRole?: string | null };
 
 type UserDoc = {
@@ -25,7 +55,7 @@ type UserDoc = {
   lastName?: string | null;
   displayName?: string | null;
   nickname?: string | null;
-  role?: "member" | "admin" | "owner";
+  role?: UserRole;
   approved?: boolean;
   disabled?: boolean;
   createdAt?: any;
@@ -165,10 +195,16 @@ export default function UserDetailScreen() {
   const canApprove   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === false && user?.disabled !== true;
   const canActivate  = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.disabled === true;
   const canDeactivate= isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
-  const canPromote   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === true && user?.disabled !== true;
-  const canDemote    = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "admin"  && user?.approved === true && user?.disabled !== true;
   const canDelete    = isCurrentOwner && !isOwner && !isSelf && (user?.disabled === true || isSelfDeleted);
   const canEditProfile = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
+  const currentRole: UserRole = (user?.role ?? "member") as UserRole;
+  const canChangeRole =
+    isCurrentOwner &&
+    !isSelf &&
+    !isSelfDeleted &&
+    user?.approved === true &&
+    user?.disabled !== true;
+  const availableRoleTargets: UserRole[] = canChangeRole ? ROLE_TRANSITIONS[currentRole] : [];
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
@@ -260,39 +296,45 @@ export default function UserDetailScreen() {
     ]);
   };
 
-  const handlePromote = async () => {
-    if (!user || !canPromote) return;
-    try {
-      setActionLoading("promote");
-      await updateDoc(doc(db, "users", user.uid), { role: "admin" });
-      await mergeUsersPublic(user.uid, { role: "admin" }, "UserDetail");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile promuovere l'utente.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  const handleChangeRole = (targetRole: UserRole) => {
+    if (!user || !canChangeRole) return;
+    const fromRole: UserRole = (user.role ?? "member") as UserRole;
+    if (!ROLE_TRANSITIONS[fromRole].includes(targetRole)) return;
 
-  const handleDemote = () => {
-    if (!user || !canDemote) return;
-    Alert.alert("Conferma", "Rimuovere i permessi Admin da questo utente?", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Rimuovi Admin",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setActionLoading("demote");
-            await updateDoc(doc(db, "users", user.uid), { role: "member" });
-            await mergeUsersPublic(user.uid, { role: "member" }, "UserDetail");
-          } catch (e: any) {
-            Alert.alert("Errore", e?.message ?? "Impossibile rimuovere i permessi Admin.");
-          } finally {
-            setActionLoading(null);
-          }
-        },
-      },
-    ]);
+    const performChange = async () => {
+      try {
+        setActionLoading(`role:${targetRole}`);
+        await updateDoc(doc(db, "users", user.uid), { role: targetRole });
+        await mergeUsersPublic(user.uid, { role: targetRole }, "UserDetail");
+      } catch (e: any) {
+        Alert.alert("Errore", e?.message ?? "Impossibile aggiornare il ruolo.");
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    const fromWeight = ROLE_WEIGHTS[fromRole];
+    const toWeight = ROLE_WEIGHTS[targetRole];
+
+    if (toWeight < fromWeight) {
+      Alert.alert(
+        "Conferma",
+        `Declassare questo utente da ${ROLE_LABELS[fromRole]} a ${ROLE_LABELS[targetRole]}?`,
+        [
+          { text: "Annulla", style: "cancel" },
+          {
+            text: "Conferma",
+            style: "destructive",
+            onPress: () => {
+              void performChange();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    void performChange();
   };
 
   const handleDelete = () => {
@@ -550,21 +592,23 @@ export default function UserDetailScreen() {
                   {canEditProfile && (
                     <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading} />
                   )}
-                  {canPromote && (
-                    <Button
-                      title={actionLoading === "promote" ? "Promozione…" : "Rendi Admin"}
-                      onPress={handlePromote}
-                      disabled={!!actionLoading}
-                    />
-                  )}
-                  {canDemote && (
-                    <Button
-                      title={actionLoading === "demote" ? "Rimozione…" : "Rimuovi Admin"}
-                      onPress={handleDemote}
-                      disabled={!!actionLoading}
-                      danger
-                    />
-                  )}
+                  {availableRoleTargets.map((targetRole) => {
+                    const loadingKey = `role:${targetRole}`;
+                    const isDemotion = ROLE_WEIGHTS[targetRole] < ROLE_WEIGHTS[currentRole];
+                    const buttonTitle =
+                      actionLoading === loadingKey
+                        ? "Aggiornamento ruolo…"
+                        : getRoleActionLabel(currentRole, targetRole);
+                    return (
+                      <Button
+                        key={`role-${targetRole}`}
+                        title={buttonTitle}
+                        onPress={() => handleChangeRole(targetRole)}
+                        disabled={!!actionLoading}
+                        danger={isDemotion}
+                      />
+                    );
+                  })}
                   {canDeactivate && (
                     <Button
                       title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}

@@ -61,9 +61,9 @@ export function RideList({
             {isArchived ? (
               <StatusBadge text="Arch." icon="📦" bg="#E5E7EB" fg="#374151" />
             ) : isCancelled ? (
-              <StatusBadge text="No" icon="✖" bg="#FEE2E2" fg="#991B1B" />
+              <StatusBadge text="Annul." icon="✖" bg="#FEE2E2" fg="#991B1B" />
             ) : (
-              <StatusBadge text="OK" icon="✓" bg="#111" fg="#fff" />
+              <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
             )}
           </TouchableOpacity>
         );

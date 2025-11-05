@@ -11,6 +11,9 @@ import {
   StyleSheet,
   Alert,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -1231,86 +1234,97 @@ export default function RideDetails() {
         animationType="fade"
         onRequestClose={closeNoteModal}
       >
-        <View style={styles.modalWrap}>
-          <View style={[styles.modalCard, { gap: 12 }]}>
-            <Text style={styles.modalTitle}>Conferma partecipazione</Text>
-            <Text style={{ color: "#475569" }}>
-              Puoi aggiungere una nota per l'organizzatore (opzionale).
-            </Text>
-            {serviceQuestions.length > 0 && (
-              <View style={styles.serviceModalBlock}>
-                <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
-                <Text style={styles.serviceHelperText}>Rispondi per ciascun servizio abilitato.</Text>
-                {serviceQuestions.map((key) => {
-                  const current = joinServices[key];
-                  return (
-                    <View key={key} style={styles.serviceQuestionRow}>
-                      <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
-                      <View style={styles.serviceQuestionButtons}>
-                        {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
-                          <TouchableOpacity
-                            key={choice}
-                            onPress={() =>
-                              setJoinServices((prev) => ({ ...prev, [key]: choice }))
-                            }
-                            style={[
-                              styles.serviceOptionBtn,
-                              current === choice && styles.serviceOptionBtnActive,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${getServiceLabel(key)}: ${
-                              choice === "yes" ? "Sì" : "No"
-                            }`}
-                          >
-                            <Text
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+          style={styles.modalWrap}
+        >
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <View style={[styles.modalCard, { gap: 12 }]}>
+              <Text style={styles.modalTitle}>Conferma partecipazione</Text>
+              <Text style={{ color: "#475569" }}>
+                Puoi aggiungere una nota per l'organizzatore (opzionale).
+              </Text>
+              {serviceQuestions.length > 0 && (
+                <View style={styles.serviceModalBlock}>
+                  <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
+                  <Text style={styles.serviceHelperText}>Rispondi per ciascun servizio abilitato.</Text>
+                  {serviceQuestions.map((key) => {
+                    const current = joinServices[key];
+                    return (
+                      <View key={key} style={styles.serviceQuestionRow}>
+                        <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
+                        <View style={styles.serviceQuestionButtons}>
+                          {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
+                            <TouchableOpacity
+                              key={choice}
+                              onPress={() =>
+                                setJoinServices((prev) => ({ ...prev, [key]: choice }))
+                              }
                               style={[
-                                styles.serviceOptionText,
-                                current === choice && styles.serviceOptionTextActive,
+                                styles.serviceOptionBtn,
+                                current === choice && styles.serviceOptionBtnActive,
                               ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${getServiceLabel(key)}: ${
+                                choice === "yes" ? "Sì" : "No"
+                              }`}
                             >
-                              {choice === "yes" ? "Sì" : "No"}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
+                              <Text
+                                style={[
+                                  styles.serviceOptionText,
+                                  current === choice && styles.serviceOptionTextActive,
+                                ]}
+                              >
+                                {choice === "yes" ? "Sì" : "No"}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
-                {!isServiceSelectionComplete && (
-                  <Text style={styles.serviceHelper}>Rispondi a tutte le domande per proseguire.</Text>
-                )}
+                    );
+                  })}
+                  {!isServiceSelectionComplete && (
+                    <Text style={styles.serviceHelper}>Rispondi a tutte le domande per proseguire.</Text>
+                  )}
+                </View>
+              )}
+              <TextInput
+                value={noteText}
+                onChangeText={setNoteText}
+                style={styles.modalInput}
+                placeholder="Nota (opzionale)"
+                multiline
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={closeNoteModal}
+                  style={styles.modalActionSecondary}
+                  disabled={joinSaving}
+                >
+                  <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmJoin}
+                  style={[
+                    styles.modalActionPrimary,
+                    (joinSaving || !isServiceSelectionComplete) && { opacity: 0.6 },
+                  ]}
+                  disabled={joinSaving || !isServiceSelectionComplete}
+                >
+                  <Text style={styles.modalActionPrimaryText}>
+                    {joinSaving ? "Salvo…" : "Conferma"}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            )}
-            <TextInput
-              value={noteText}
-              onChangeText={setNoteText}
-              style={styles.modalInput}
-              placeholder="Nota (opzionale)"
-              multiline
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={closeNoteModal}
-                style={styles.modalActionSecondary}
-                disabled={joinSaving}
-              >
-                <Text style={styles.modalActionSecondaryText}>Annulla</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmJoin}
-                style={[
-                  styles.modalActionPrimary,
-                  (joinSaving || !isServiceSelectionComplete) && { opacity: 0.6 },
-                ]}
-                disabled={joinSaving || !isServiceSelectionComplete}
-              >
-                <Text style={styles.modalActionPrimaryText}>
-                  {joinSaving ? "Salvo…" : "Conferma"}
-                </Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1319,90 +1333,101 @@ export default function RideDetails() {
         animationType="fade"
         onRequestClose={closeManualModal}
       >
-        <View style={styles.modalWrap}>
-          <View style={[styles.modalCard, { gap: 12 }]}>
-            <Text style={styles.modalTitle}>Aggiungi partecipante manuale</Text>
-            <TextInput
-              value={manualName}
-              onChangeText={setManualName}
-              style={styles.modalField}
-              placeholder="Nome e cognome"
-              autoCapitalize="words"
-            />
-            <TextInput
-              value={manualNote}
-              onChangeText={setManualNote}
-              style={styles.modalInput}
-              placeholder="Nota (opzionale)"
-              multiline
-            />
-            {serviceQuestions.length > 0 && (
-              <View style={styles.serviceModalBlock}>
-                <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
-                <Text style={styles.serviceHelperText}>Segnala le scelte del partecipante.</Text>
-                {serviceQuestions.map((key) => {
-                  const current = manualServices[key];
-                  return (
-                    <View key={key} style={styles.serviceQuestionRow}>
-                      <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
-                      <View style={styles.serviceQuestionButtons}>
-                        {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
-                          <TouchableOpacity
-                            key={choice}
-                            onPress={() =>
-                              setManualServices((prev) => ({ ...prev, [key]: choice }))
-                            }
-                            style={[
-                              styles.serviceOptionBtn,
-                              current === choice && styles.serviceOptionBtnActive,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${getServiceLabel(key)}: ${
-                              choice === "yes" ? "Sì" : "No"
-                            }`}
-                          >
-                            <Text
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+          style={styles.modalWrap}
+        >
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <View style={[styles.modalCard, { gap: 12 }]}>
+              <Text style={styles.modalTitle}>Aggiungi partecipante manuale</Text>
+              <TextInput
+                value={manualName}
+                onChangeText={setManualName}
+                style={styles.modalField}
+                placeholder="Nome e cognome"
+                autoCapitalize="words"
+              />
+              <TextInput
+                value={manualNote}
+                onChangeText={setManualNote}
+                style={styles.modalInput}
+                placeholder="Nota (opzionale)"
+                multiline
+              />
+              {serviceQuestions.length > 0 && (
+                <View style={styles.serviceModalBlock}>
+                  <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
+                  <Text style={styles.serviceHelperText}>Segnala le scelte del partecipante.</Text>
+                  {serviceQuestions.map((key) => {
+                    const current = manualServices[key];
+                    return (
+                      <View key={key} style={styles.serviceQuestionRow}>
+                        <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
+                        <View style={styles.serviceQuestionButtons}>
+                          {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
+                            <TouchableOpacity
+                              key={choice}
+                              onPress={() =>
+                                setManualServices((prev) => ({ ...prev, [key]: choice }))
+                              }
                               style={[
-                                styles.serviceOptionText,
-                                current === choice && styles.serviceOptionTextActive,
+                                styles.serviceOptionBtn,
+                                current === choice && styles.serviceOptionBtnActive,
                               ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${getServiceLabel(key)}: ${
+                                choice === "yes" ? "Sì" : "No"
+                              }`}
                             >
-                              {choice === "yes" ? "Sì" : "No"}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
+                              <Text
+                                style={[
+                                  styles.serviceOptionText,
+                                  current === choice && styles.serviceOptionTextActive,
+                                ]}
+                              >
+                                {choice === "yes" ? "Sì" : "No"}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
-                {!isManualServiceSelectionComplete && (
-                  <Text style={styles.serviceHelper}>Compila tutte le risposte per procedere.</Text>
-                )}
+                    );
+                  })}
+                  {!isManualServiceSelectionComplete && (
+                    <Text style={styles.serviceHelper}>Compila tutte le risposte per procedere.</Text>
+                  )}
+                </View>
+              )}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={closeManualModal}
+                  style={styles.modalActionSecondary}
+                  disabled={manualSaving}
+                >
+                  <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmManualAdd}
+                  style={[
+                    styles.modalActionPrimary,
+                    (!canSubmitManual || manualSaving) && { opacity: 0.6 },
+                  ]}
+                  disabled={!canSubmitManual || manualSaving}
+                >
+                  <Text style={styles.modalActionPrimaryText}>
+                    {manualSaving ? "Salvo…" : "Aggiungi"}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            )}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={closeManualModal}
-                style={styles.modalActionSecondary}
-                disabled={manualSaving}
-              >
-                <Text style={styles.modalActionSecondaryText}>Annulla</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmManualAdd}
-                style={[
-                  styles.modalActionPrimary,
-                  (!canSubmitManual || manualSaving) && { opacity: 0.6 },
-                ]}
-                disabled={!canSubmitManual || manualSaving}
-              >
-                <Text style={styles.modalActionPrimaryText}>
-                  {manualSaving ? "Salvo…" : "Aggiungi"}
-                </Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -1579,6 +1604,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#fff",
     padding: 16,
+  },
+  modalScroll: { flex: 1, width: "100%" },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 16,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
   modalField: {

@@ -240,6 +240,11 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       monthChangeTimer.current = null;
     }
     setCurrentMonth(month);
+    setCalendarCollapsed((prev) => {
+      if (!prev) return prev;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      return false;
+    });
     setSearchOpen(false);
   }, [clearSearch]);
 
@@ -472,6 +477,12 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     const from = fromLocal.trim();
     const to = toLocal.trim();
     const txt = textLocal.trim();
+
+    const hasDateFilters =
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(ym) ||
+      /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(from) ||
+      /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(to);
+
     setYearMonthInput(ym);
     setDateFromInput(from);
     setDateToInput(to);
@@ -483,6 +494,15 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       monthChangeTimer.current = setTimeout(() => setCurrentMonth(ym), 120);
       setSelectedDay(`${ym}-01`);
     }
+
+    if (hasDateFilters) {
+      setCalendarCollapsed((prev) => {
+        if (prev) return prev;
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        return true;
+      });
+    }
+
     setSearchOpen(false);
   }, [ymLocal, fromLocal, toLocal, textLocal]);
 
@@ -650,7 +670,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setCalendarCollapsed((prev) => !prev);
     },
-    clearFilters: () => clearSearch(),
+    clearFilters: () => resetFiltersAndView(),
     goToDate,
   };
 

@@ -35,6 +35,8 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { Screen, UI } from "../components/Screen";
+import { format } from "date-fns";
+import { it } from "date-fns/locale";
 
 type FieldErrors = {
   title?: string;
@@ -80,6 +82,37 @@ const createEnabledMap = (): Record<ExtraServiceKey, boolean> => ({
   dinner: false,
   overnight: false,
 });
+
+const capitalizeWords = (value: string) =>
+  value
+    .split(" ")
+    .map((segment) => (segment ? segment.charAt(0).toLocaleUpperCase("it-IT") + segment.slice(1) : segment))
+    .join(" ");
+
+const formatDisplayDateLabel = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  const dateObj = new Date(year, month - 1, day);
+  if (Number.isNaN(dateObj.getTime())) return value;
+  const hasIntl = typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function";
+  if (hasIntl) {
+    try {
+      const intl = new Intl.DateTimeFormat("it-IT", {
+        weekday: "short",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      const intlValue = intl.format(dateObj).replace(/\.$/, "");
+      return capitalizeWords(intlValue);
+    } catch {
+      // fall through to date-fns formatting below
+    }
+  }
+  const raw = format(dateObj, "EEE d MMMM yyyy", { locale: it });
+  return capitalizeWords(raw);
+};
 
 const extractExtraServices = (raw: any): Record<ExtraServiceKey, ExtraServiceState> => {
   const base = createDefaultExtraServices();
@@ -263,6 +296,7 @@ export default function CreateRideScreen() {
   };
 
   const isEdit = !!rideId;
+  const displayDateValue = formatDisplayDateLabel(date);
 
   // ---------- leggi ruolo utente ----------
   useEffect(() => {
@@ -706,7 +740,7 @@ export default function CreateRideScreen() {
             accessibilityLabel="Seleziona la data dell'uscita"
           >
             <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-              {date || "Seleziona data"}
+              {date ? displayDateValue : "Seleziona data"}
             </Text>
           </Pressable>
           {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
@@ -906,19 +940,26 @@ export default function CreateRideScreen() {
               <View style={styles.pickerOverlay} />
             </TouchableWithoutFeedback>
             <View style={styles.pickerContainer}>
-              <View style={styles.pickerHeader}>
-                <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
-                  <Text style={styles.pickerHeaderText}>Annulla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
-                  <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>Fatto</Text>
-                </TouchableOpacity>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
+                <Text style={styles.pickerHeaderText}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
+                <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>Fatto</Text>
+              </TouchableOpacity>
+            </View>
+            {iosPickerMode === "date" ? (
+              <View style={styles.pickerPreviewRow}>
+                <Text style={styles.pickerPreviewLabel}>
+                  {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
+                </Text>
               </View>
-              {iosPickerMode && (
-                <DateTimePicker
-                  value={iosPickerValue}
-                  mode={iosPickerMode}
-                  display="spinner"
+            ) : null}
+            {iosPickerMode && (
+              <DateTimePicker
+                value={iosPickerValue}
+                mode={iosPickerMode}
+                display="spinner"
                   onChange={(_, selected) => {
                     if (selected) setIosPickerValue(selected);
                   }}
@@ -1073,6 +1114,16 @@ const styles = StyleSheet.create({
   pickerHeaderTextPrimary: {
     color: UI.colors.primary,
     fontWeight: "700",
+  },
+  pickerPreviewRow: {
+    paddingHorizontal: UI.spacing.lg,
+    paddingVertical: UI.spacing.xs,
+    alignItems: "center",
+  },
+  pickerPreviewLabel: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: UI.colors.text,
   },
 
   adminBtn: {

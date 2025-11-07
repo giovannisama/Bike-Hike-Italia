@@ -1058,7 +1058,7 @@ const styles = StyleSheet.create({
   },
   cardImageWrapper: {
     height: 320,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     marginTop: UI.spacing.sm,

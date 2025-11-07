@@ -1,5 +1,5 @@
 // src/screens/ProfileScreen.tsx
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -27,6 +28,9 @@ import {
   clearCredsSecurely,
 } from "../utils/biometricHelpers";
 import { mergeUsersPublic, deleteUsersPublic } from "../utils/usersPublicSync";
+import { MedicalCertificateSection } from "./profile/MedicalCertificateSection";
+import useMedicalCertificate from "../hooks/useMedicalCertificate";
+import { getCertificateStatus } from "../utils/medicalCertificate";
 
 const logo = require("../../assets/images/logo.jpg");
 const SELF_DELETED_SENTINEL = "__self_deleted__";
@@ -38,6 +42,12 @@ type LocalCard = {
   width?: number | null;
   height?: number | null;
 };
+
+const PROFILE_TABS: { key: "personal" | "documents" | "security"; label: string }[] = [
+  { key: "personal", label: "Dati Personali" },
+  { key: "documents", label: "Documenti" },
+  { key: "security", label: "Sicurezza" },
+];
 
 export default function ProfileScreen() {
   const user = auth.currentUser;
@@ -61,6 +71,13 @@ export default function ProfileScreen() {
   const toastTimer = useRef<NodeJS.Timeout | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<"personal" | "documents" | "security">("personal");
+  const [expandedDocument, setExpandedDocument] = useState<"membership" | "certificate" | null>("membership");
+  const medicalCertificateHook = useMedicalCertificate();
+  const certificateStatus = useMemo(
+    () => getCertificateStatus(medicalCertificateHook.certificate),
+    [medicalCertificateHook.certificate]
+  );
 
   const showToast = useCallback((message: string, tone: "success" | "error") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -487,6 +504,7 @@ export default function ProfileScreen() {
   };
   const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
   const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
+  const membershipActive = !!cardUri;
 
   useEffect(() => {
     if (!cardUri) {
@@ -510,153 +528,260 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <Text style={styles.label}>Nome</Text>
-      <TextInput
-        style={styles.input}
-        value={firstName}
-        onChangeText={setFirstName}
-        placeholder="Mario"
-      />
-
-      <Text style={styles.label}>Cognome</Text>
-      <TextInput
-        style={styles.input}
-        value={lastName}
-        onChangeText={setLastName}
-        placeholder="Rossi"
-      />
-
-      <Text style={styles.label}>Nickname</Text>
-      <TextInput
-        style={styles.input}
-        value={nickname}
-        onChangeText={setNickname}
-        placeholder="SuperBiker"
-      />
-
-      <View style={styles.cardSection}>
-        <Text style={styles.label}>Tessera associato</Text>
-        <Text style={styles.helperText}>
-          Centra la tessera e poi utilizza l’editor per ritagliarla con precisione lungo i bordi.
-        </Text>
-        <Pressable
-          style={styles.cardPreviewWrapper}
-          onPress={() => {
-            if (cardUri) setCardModalVisible(true);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Anteprima tessera associato"
-        >
-          <View style={styles.cardPreviewInner}>
-            {cardUri ? (
-              <>
-                <Image
-                  source={{ uri: cardUri }}
-                  style={styles.cardPreview}
-                  onLoad={() => setCardPreviewLoading(false)}
-                  onLoadEnd={() => setCardPreviewLoading(false)}
-                  onError={() => setCardPreviewLoading(false)}
-                />
-                {cardPreviewLoading && (
-                  <View style={styles.cardLoadingOverlay}>
-                    <ActivityIndicator size="small" color="#0B3D2E" />
-                    <Text style={styles.cardLoadingText}>Caricamento tessera…</Text>
-                  </View>
-                )}
-              </>
-            ) : (
-              <View style={styles.cardPlaceholder}>
-                <Text style={styles.placeholderText}>Nessuna tessera caricata</Text>
-                <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
-              </View>
-            )}
-          </View>
-        </Pressable>
-        {cardUri && (
-          <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
-        )}
-        {cardImageLocal && (
-          <Text style={styles.helperTextSmall}>Nuova tessera pronta: ricordati di premere "Salva".</Text>
-        )}
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={handleCaptureCard}
-            style={[styles.secondaryButton, { marginRight: 10 }]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>Scansiona tessera</Text>
-          </Pressable>
-          <Pressable
-            onPress={handlePickCard}
-            style={[styles.secondaryButton, { marginLeft: 10 }]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.secondaryButtonText}>Carica da galleria</Text>
-          </Pressable>
-        </View>
-        {cardUri && (
-          <Pressable
-            onPress={handleRemoveCard}
-            style={[
-              styles.removeButton,
-              (saving || removingCard) && { opacity: 0.6 },
-            ]}
-            disabled={saving || removingCard}
-            accessibilityRole="button"
-          >
-            <Text style={styles.removeButtonText}>
-              {removingCard
-                ? "Rimozione in corso..."
-                : cardImageLocal
-                ? "Scarta nuova tessera"
-                : "Rimuovi tessera"}
-            </Text>
-          </Pressable>
-        )}
+      <View style={styles.tabBar}>
+        {PROFILE_TABS.map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={[styles.tabButton, active && styles.tabButtonActive]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>{tab.label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
 
-      <View style={{ marginTop: 24 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={styles.label}>Face ID / Touch ID</Text>
-          <Switch
-            value={bioEnabled}
-            onValueChange={onToggleBiometrics}
-            disabled={!bioAvailable}
-            accessibilityRole="switch"
-            accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
+      {activeTab === "personal" && (
+        <>
+          <Text style={styles.label}>Nome</Text>
+          <TextInput
+            style={styles.input}
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholder="Mario"
           />
+
+          <Text style={styles.label}>Cognome</Text>
+          <TextInput
+            style={styles.input}
+            value={lastName}
+            onChangeText={setLastName}
+            placeholder="Rossi"
+          />
+
+          <Text style={styles.label}>Nickname</Text>
+          <TextInput
+            style={styles.input}
+            value={nickname}
+            onChangeText={setNickname}
+            placeholder="SuperBiker"
+          />
+        </>
+      )}
+
+      {activeTab === "documents" && (
+        <>
+          <View style={styles.documentHighlightStack}>
+            <View>
+              <Pressable
+                onPress={() =>
+                  setExpandedDocument((prev) => (prev === "membership" ? null : "membership"))
+                }
+                style={[
+                  styles.documentHighlightCard,
+                  styles.membershipHighlight,
+                  expandedDocument === "membership" && styles.documentHighlightActive,
+                ]}
+                accessibilityRole="button"
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.documentHighlightTitle}>Tessera Associato</Text>
+                  <Text style={styles.documentHighlightSubtitle}>
+                    Visualizza e aggiorna la tessera associativa digitale.
+                  </Text>
+                </View>
+                <View style={styles.documentBadge}>
+                  <Text style={styles.documentBadgeText}>{membershipActive ? "Attivo" : "Non caricato"}</Text>
+                </View>
+              </Pressable>
+
+              {expandedDocument === "membership" && (
+                <View style={styles.documentInlineCard}>
+                  <Text style={styles.label}>Tessera associato</Text>
+                  <Text style={styles.helperText}>
+                    Centra la tessera e poi utilizza l’editor per ritagliarla con precisione lungo i bordi.
+                  </Text>
+                  <Pressable
+                    style={styles.cardPreviewWrapper}
+                    onPress={() => {
+                      if (cardUri) setCardModalVisible(true);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Anteprima tessera associato"
+                  >
+                    <View style={styles.cardPreviewInner}>
+                      {cardUri ? (
+                        <>
+                          <Image
+                            source={{ uri: cardUri }}
+                            style={styles.cardPreview}
+                            onLoad={() => setCardPreviewLoading(false)}
+                            onLoadEnd={() => setCardPreviewLoading(false)}
+                            onError={() => setCardPreviewLoading(false)}
+                          />
+                          {cardPreviewLoading && (
+                            <View style={styles.cardLoadingOverlay}>
+                              <ActivityIndicator size="small" color="#0B3D2E" />
+                              <Text style={styles.cardLoadingText}>Caricamento tessera…</Text>
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <View style={styles.cardPlaceholder}>
+                          <Text style={styles.placeholderText}>Nessuna tessera caricata</Text>
+                          <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
+                        </View>
+                      )}
+                    </View>
+                  </Pressable>
+                  {cardUri && (
+                    <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
+                  )}
+                  {cardImageLocal && (
+                    <Text style={styles.helperTextSmall}>Nuova tessera pronta: ricordati di premere "Salva".</Text>
+                  )}
+                  <View style={styles.cardActions}>
+                    <Pressable
+                      onPress={handleCaptureCard}
+                      style={[styles.secondaryButton, { marginRight: 10 }]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.secondaryButtonText}>Scansiona tessera</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handlePickCard}
+                      style={[styles.secondaryButton, { marginLeft: 10 }]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.secondaryButtonText}>Carica da galleria</Text>
+                    </Pressable>
+                  </View>
+                  {cardUri && (
+                    <Pressable
+                      onPress={handleRemoveCard}
+                      style={[
+                        styles.removeButton,
+                        (saving || removingCard) && { opacity: 0.6 },
+                      ]}
+                      disabled={saving || removingCard}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.removeButtonText}>
+                        {removingCard
+                          ? "Rimozione in corso..."
+                          : cardImageLocal
+                          ? "Scarta nuova tessera"
+                          : "Rimuovi tessera"}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            </View>
+            <Pressable
+              onPress={() =>
+                setExpandedDocument((prev) => (prev === "certificate" ? null : "certificate"))
+              }
+              style={[
+                styles.documentHighlightCard,
+                styles.certificateHighlight,
+                expandedDocument === "certificate" && styles.documentHighlightActive,
+              ]}
+              accessibilityRole="button"
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.documentHighlightTitle}>Certificato Medico</Text>
+                <Text style={styles.documentHighlightSubtitle}>
+                  Carica, gestisci e tieni sotto controllo il certificato medico.
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.documentBadge,
+                  certificateStatus.kind === "warning"
+                    ? styles.documentBadgeWarning
+                    : certificateStatus.kind === "expired"
+                    ? styles.documentBadgeDanger
+                    : styles.documentBadgeSuccess,
+                ]}
+              >
+                <Text style={styles.documentBadgeText}>
+                  {certificateStatus.kind === "missing"
+                    ? "Non caricato"
+                    : certificateStatus.kind === "expired"
+                    ? "Scaduto"
+                    : certificateStatus.kind === "warning"
+                    ? "In scadenza"
+                    : "Attivo"}
+                </Text>
+              </View>
+            </Pressable>
+          </View>
+
+          {expandedDocument === "certificate" && (
+            <View style={styles.documentInlineCard}>
+              <MedicalCertificateSection showToast={showToast} hookProps={medicalCertificateHook} />
+            </View>
+          )}
+        </>
+      )}
+
+      {activeTab === "security" && (
+        <View style={styles.securityCard}>
+          <View style={styles.securityPanel}>
+            <View style={styles.securityRow}>
+              <Text style={styles.label}>Face ID / Touch ID</Text>
+              <Switch
+                value={bioEnabled}
+                onValueChange={onToggleBiometrics}
+                disabled={!bioAvailable}
+                accessibilityRole="switch"
+                accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
+              />
+            </View>
+            <Text style={styles.helperTextSmall}>
+              {bioAvailable
+                ? bioEnabled
+                  ? "Accederai più velocemente usando le credenziali salvate sul dispositivo."
+                  : "Salva le credenziali durante il prossimo login per attivare l'accesso rapido."
+                : "Il dispositivo non supporta Face ID / Touch ID."}
+            </Text>
+          </View>
+
+          <View style={styles.securityPanel}>
+            <Text style={styles.label}>Cancellazione account</Text>
+            <Text style={styles.helperTextSmall}>
+              Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
+            </Text>
+            <Pressable
+              onPress={handleDeleteAccount}
+              style={[
+                styles.deleteAccountButton,
+                (saving || deleting) && { opacity: 0.6 },
+              ]}
+              disabled={saving || deleting}
+              accessibilityRole="button"
+            >
+              <Text style={styles.deleteAccountText}>
+                {deleting ? "Eliminazione in corso..." : "Elimina account"}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-        <Text style={styles.helperTextSmall}>
-          {bioAvailable
-            ? bioEnabled
-              ? "Accederai più velocemente usando le credenziali salvate sul dispositivo."
-              : "Salva le credenziali durante il prossimo login per attivare l'accesso rapido."
-            : "Il dispositivo non supporta Face ID / Touch ID."}
-        </Text>
-      </View>
-      <PrimaryButton
-        label="Salva"
-        onPress={handleSave}
-        loading={saving}
-        disabled={deleting}
-        style={{ marginTop: 24, marginBottom: 16 }}
-      />
-      <Pressable
-        onPress={handleDeleteAccount}
-        style={[
-          styles.deleteAccountButton,
-          (saving || deleting) && { opacity: 0.6 },
-        ]}
-        disabled={saving || deleting}
-        accessibilityRole="button"
-      >
-        <Text style={styles.deleteAccountText}>
-          {deleting ? "Eliminazione in corso..." : "Elimina account"}
-        </Text>
-      </Pressable>
-      <Text style={styles.deleteAccountHint}>
-        Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
-      </Text>
+      )}
+
+      {(activeTab === "personal" || activeTab === "documents") && (
+        <PrimaryButton
+          label="Salva"
+          onPress={handleSave}
+          loading={saving}
+          disabled={deleting}
+          style={{ marginTop: 24, marginBottom: 16 }}
+        />
+      )}
 
       <Modal
         visible={cardModalVisible}
@@ -671,7 +796,16 @@ export default function ProfileScreen() {
           accessibilityLabel="Chiudi anteprima tessera"
         >
           {cardUri && (
-            <Image source={{ uri: cardUri }} style={styles.cardModalImage} resizeMode="contain" />
+            <ScrollView
+              style={{ flex: 1, width: "100%" }}
+              contentContainerStyle={styles.zoomContent}
+              minimumZoomScale={1}
+              maximumZoomScale={3}
+              centerContent
+              bouncesZoom
+            >
+              <Image source={{ uri: cardUri }} style={styles.cardModalImage} resizeMode="contain" />
+            </ScrollView>
           )}
         </Pressable>
       </Modal>
@@ -716,6 +850,24 @@ const styles = StyleSheet.create({
   logo: { width: 64, height: 64, marginRight: 12, borderRadius: 12 },
   title: { fontSize: 20, fontWeight: "700" },
   subtitle: { fontSize: 14, color: "#666" },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#E5F3EB",
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  tabButtonActive: {
+    backgroundColor: "#0B3D2E",
+  },
+  tabButtonText: { color: "#0B3D2E", fontWeight: "600" },
+  tabButtonTextActive: { color: "#fff" },
   label: { marginTop: 12, fontWeight: "600", color: "#374151" },
   input: {
     borderWidth: 1,
@@ -765,6 +917,62 @@ const styles = StyleSheet.create({
   cardHint: { marginTop: 8, fontSize: 12, color: "#64748b" },
   helperText: { marginTop: 4, fontSize: 13, color: "#6b7280" },
   helperTextSmall: { marginTop: 6, fontSize: 12, color: "#64748b" },
+  documentHighlightStack: {
+    gap: 12,
+    marginBottom: 12,
+  },
+  documentHighlightCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  documentInlineCard: {
+    marginTop: 8,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#fff",
+  },
+  documentHighlightActive: {
+    borderWidth: 2,
+    shadowColor: "#0B3D2E",
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  membershipHighlight: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#93C5FD",
+  },
+  certificateHighlight: {
+    backgroundColor: "#DCFCE7",
+    borderColor: "#86EFAC",
+  },
+  documentHighlightTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0B3D2E",
+  },
+  documentHighlightSubtitle: {
+    marginTop: 4,
+    color: "#475569",
+    fontSize: 13,
+  },
+  documentBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#0B3D2E",
+  },
+  documentBadgeText: { color: "#fff", fontWeight: "700" },
+  documentBadgeSuccess: { backgroundColor: "#16a34a" },
+  documentBadgeWarning: { backgroundColor: "#f59e0b" },
+  documentBadgeDanger: { backgroundColor: "#dc2626" },
   cardActions: {
     flexDirection: "row",
     marginTop: 12,
@@ -798,6 +1006,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
   },
+  zoomContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   cardModalImage: { width: "100%", height: "80%" },
   deleteAccountButton: {
     marginTop: 12,
@@ -810,7 +1023,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   deleteAccountText: { color: "#b91c1c", fontWeight: "700" },
-  deleteAccountHint: { marginTop: 8, fontSize: 12, color: "#64748b", textAlign: "center" },
+  securityCard: {
+    gap: 16,
+    marginTop: 12,
+  },
+  securityPanel: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  securityRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   toastBase: {
     position: "absolute",
     left: 20,

@@ -1,105 +1,113 @@
-// src/screens/HomeScreen.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { View, Text, Pressable, StyleSheet, Image, ViewStyle } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+
+import { Screen, UI } from "../components/Screen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import { auth, db } from "../firebase";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { Screen, UI } from "../components/Screen"; // ✔️ template condiviso
+import { loadBoardLastSeen } from "../utils/boardStorage";
+import useMedicalCertificate from "../hooks/useMedicalCertificate";
+import { getCertificateStatus } from "../utils/medicalCertificate";
 
-// ---- LOGO ----
 const logo = require("../../assets/images/logo.jpg");
 
-// ---- Spaziatore verticale (riuso semplice)
 const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
   <View style={{ height: UI.spacing[size] }} />
 );
-const BOARD_PLACEHOLDER =
-  "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
 
-// ---- COMPONENTE: Tile (card/menu standard)
-function Tile({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  badgeCount,
-  danger = false,
-}: {
-  title: string;
-  subtitle?: string;
+type ShortcutCardProps = {
+  label: string;
+  caption?: string;
   icon: React.ReactNode;
   onPress: () => void;
+  disabled?: boolean;
   badgeCount?: number | null;
   danger?: boolean;
-}) {
+  style?: ViewStyle;
+  iconContainerStyle?: ViewStyle;
+  statusBadge?: React.ReactNode;
+};
+
+function ShortcutCard({
+  label,
+  caption,
+  icon,
+  onPress,
+  disabled = false,
+  badgeCount,
+  danger = false,
+  style,
+  iconContainerStyle,
+  statusBadge,
+}: ShortcutCardProps) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        if (!disabled) onPress();
+      }}
       style={({ pressed }) => [
         {
-          width: "100%",
+          width: "48%",
           backgroundColor: UI.colors.card,
-          borderRadius: UI.radius.lg,
-          padding: UI.spacing.md,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: UI.spacing.sm,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
-          shadowColor: UI.shadow.card.shadowColor,
-          shadowOpacity: UI.shadow.card.shadowOpacity,
-          shadowRadius: UI.shadow.card.shadowRadius,
-          elevation: UI.shadow.card.elevation,
-        },
-      ]}
-    >
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: UI.radius.md,
-          backgroundColor: UI.colors.tint,
+          borderRadius: UI.radius.xl,
+          paddingVertical: UI.spacing.md,
+          paddingHorizontal: UI.spacing.sm,
           alignItems: "center",
           justifyContent: "center",
+          gap: UI.spacing.sm,
+          opacity: disabled ? 0.5 : 1,
+          transform: [{ scale: pressed && !disabled ? 0.96 : 1 }],
+          minHeight: 140,
+        },
+        style,
+        UI.shadow.card,
+      ]}
+    >
+      <View style={[styles.cardIconWrapper, iconContainerStyle]}>
+        {icon}
+        {statusBadge && <View style={styles.statusBadgeAnchor}>{statusBadge}</View>}
+      </View>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+        style={{
+          width: "100%",
+          fontSize: 16,
+          fontWeight: "800",
+          color: danger ? UI.colors.danger : UI.colors.text,
+          textAlign: "center",
         }}
       >
-        {icon}
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: danger ? UI.colors.danger : UI.colors.text }}>
-            {title}
+        {label}
+      </Text>
+      {!!caption && (
+        <Text style={{ fontSize: 12, fontWeight: "600", color: UI.colors.muted, textAlign: "center" }}>
+          {caption}
+        </Text>
+      )}
+      {typeof badgeCount === "number" && (
+        <View style={styles.cardBadgeCount}>
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12, textAlign: "center" }}>
+            {badgeCount}
           </Text>
-          {typeof badgeCount === "number" && (
-            <View
-              style={{
-                minWidth: 22,
-                height: 22,
-                paddingHorizontal: 6,
-                borderRadius: 11,
-                backgroundColor: UI.colors.primary,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12, lineHeight: 12 }}>
-                {badgeCount}
-              </Text>
-            </View>
-          )}
         </View>
-        {!!subtitle && <Text style={{ marginTop: 2, color: UI.colors.muted }}>{subtitle}</Text>}
-      </View>
-
-      <Ionicons name="chevron-forward" size={22} />
+      )}
     </Pressable>
   );
 }
 
-// -------------------------------------------------------------------------------------
-// Hook locale: conta uscite attive (archived == false e status !== 'cancelled')
-// -------------------------------------------------------------------------------------
+type BoardPreviewItem = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  createdAt: Date | null;
+};
+
 function useActiveRidesCount() {
   const [count, setCount] = useState<number | null>(null);
 
@@ -110,7 +118,7 @@ function useActiveRidesCount() {
         let c = 0;
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
-          const archived = d?.archived === true; // se manca -> false
+          const archived = d?.archived === true;
           const status = (d?.status ?? "active") as string;
           if (!archived && status !== "cancelled") c += 1;
         });
@@ -124,19 +132,13 @@ function useActiveRidesCount() {
   return count;
 }
 
-type BoardPreviewItem = {
-  id: string;
-  title: string;
-  imageUrl: string | null;
-  createdAt: Date | null;
-};
-
-function useBoardPreview() {
+function useBoardPreview(lastSeen: Date | null) {
   const [items, setItems] = useState<BoardPreviewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unread, setUnread] = useState(0);
 
   useEffect(() => {
-    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(5));
+    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(50));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -153,34 +155,91 @@ function useBoardPreview() {
         });
         setItems(next);
         setLoading(false);
+        if (!lastSeen) {
+          setUnread(next.length);
+        } else {
+          let count = 0;
+          next.forEach((item) => {
+            if (!item.createdAt) return;
+            if (item.createdAt.getTime() > lastSeen.getTime()) count += 1;
+          });
+          setUnread(count);
+        }
       },
       (err) => {
-        console.error("[Home] board preview error:", err);
+        if (__DEV__) console.warn("[Home] board preview error:", err);
         setItems([]);
         setLoading(false);
+        setUnread(0);
       }
     );
-
     return () => {
       try {
         unsub();
       } catch {}
     };
-  }, []);
+  }, [lastSeen?.getTime()]);
 
   const latest = useMemo(() => items[0] ?? null, [items]);
 
-  return { latest, loading };
+  return { latest, loading, unreadCount: unread };
 }
 
-// ------------------------------------------------------------------
-// HOME SCREEN
-// ------------------------------------------------------------------
+const truncate = (value: string, max = 38) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+
+type CertificateBadgeTone = "warning" | "danger";
+
+function CertificateStatusBadge({ tone }: { tone: CertificateBadgeTone }) {
+  const label = tone === "warning" ? "Certificato medico in scadenza" : "Certificato medico scaduto";
+  const toneStyle = tone === "warning" ? styles.certificateBadgeWarning : styles.certificateBadgeDanger;
+  return (
+    <View style={styles.certificateBadge} accessibilityRole="image" accessibilityLabel={label}>
+      <View style={[styles.certificateBadgeDot, toneStyle]} />
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }: any) {
   const user = auth.currentUser;
   const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
-  const { latest: latestBoard, loading: boardLoading } = useBoardPreview();
+
+  const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
+  const userUid = user?.uid ?? null;
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => {
+        if (!userUid) {
+          if (mounted) setBoardLastSeen(null);
+          return;
+        }
+        const lastSeen = await loadBoardLastSeen(userUid);
+        if (mounted) setBoardLastSeen(lastSeen);
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [userUid])
+  );
+
+  const { latest: latestBoard, loading: boardLoading, unreadCount } = useBoardPreview(boardLastSeen);
+
+  const { certificate } = useMedicalCertificate();
+  const certificateStatus = useMemo(() => getCertificateStatus(certificate), [certificate]);
+  const profileCaption =
+    certificateStatus.kind === "warning"
+      ? "Certificato medico in scadenza"
+      : certificateStatus.kind === "expired"
+      ? "Certificato medico scaduto"
+      : "I tuoi dati";
+  const profileBadge =
+    certificateStatus.kind === "warning" ? (
+      <CertificateStatusBadge tone="warning" />
+    ) : certificateStatus.kind === "expired" ? (
+      <CertificateStatusBadge tone="danger" />
+    ) : null;
 
   const firstName = (profile?.firstName ?? "").trim();
   const lastName = (profile?.lastName ?? "").trim();
@@ -192,132 +251,71 @@ export default function HomeScreen({ navigation }: any) {
     (user?.email ? user.email.split("@")[0] : "") ||
     "Ciclista";
 
-  const saluto = fullName || fallbackDisplay;
-  const nickPart = nickname ? ` (${nickname})` : "";
-  const headerSubtitle = loading ? "Caricamento profilo..." : `Ciao, ${saluto}${nickPart}`;
+  const formattedName = firstName && lastName ? `${lastName}, ${firstName}` : fullName || fallbackDisplay;
+  const secondaryLine = nickname || user?.email || "";
 
   return (
-    <Screen
-      title="Bike & Hike Italia"
-      subtitle={headerSubtitle}
-      scroll={true}
-      headerRight={
-        isAdmin ? (
-          <View
-            style={{
-              backgroundColor: isOwner ? "#1D4ED8" : "#FDE68A",
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              borderRadius: UI.radius.round,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "800",
-                color: isOwner ? "#EFF6FF" : "#92400E",
-              }}
-            >
-              {isOwner ? "OWNER" : "ADMIN"}
-            </Text>
-          </View>
-        ) : undefined
-      }
-    >
-      {/* Hero compatto (logo + icona) */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: UI.spacing.md,
-          backgroundColor: UI.colors.card,
-          padding: UI.spacing.md,
-          borderRadius: UI.radius.xl,
-          shadowColor: UI.shadow.hero.shadowColor,
-          shadowOpacity: UI.shadow.hero.shadowOpacity,
-          shadowRadius: UI.shadow.hero.shadowRadius,
-          elevation: UI.shadow.hero.elevation,
-        }}
+    <Screen useNativeHeader scroll keyboardShouldPersistTaps="handled">
+      <LinearGradient
+        colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
       >
-        <Image
-          source={logo}
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: UI.radius.md,
-            resizeMode: "contain",
-            backgroundColor: "#fff",
-          }}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: "900", color: UI.colors.text }}>Benvenuto!</Text>
-          <Text style={{ marginTop: 4, color: UI.colors.muted }}>Pronto per la prossima uscita?</Text>
-        </View>
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: UI.radius.round,
-            padding: 10,
-            shadowColor: UI.shadow.card.shadowColor,
-            shadowOpacity: UI.shadow.card.shadowOpacity,
-            shadowRadius: UI.shadow.card.shadowRadius,
-            elevation: UI.shadow.card.elevation,
-          }}
-        >
-          <MaterialCommunityIcons name="bike-fast" size={28} color={UI.colors.primary} />
-        </View>
-      </View>
-
-      <VSpace size="lg" />
-
-      <Pressable
-        onPress={() => navigation.navigate("Board")}
-        accessibilityRole="button"
-        accessibilityLabel="Apri la bacheca"
-        style={({ pressed }) => [
-          styles.boardCard,
-          { opacity: pressed ? 0.92 : 1 },
-        ]}
-      >
-        <Image
-          source={{ uri: latestBoard?.imageUrl || BOARD_PLACEHOLDER }}
-          style={styles.boardImage}
-        />
-        <View style={styles.boardOverlay}>
-          <Text style={styles.boardLabel}>Bacheca</Text>
-          {boardLoading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.boardLoadingText}>Carico le ultime news…</Text>
+        <View style={{ gap: UI.spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: UI.spacing.md }}>
+            <View style={styles.heroLogoWrapper}>
+              <Image source={logo} style={{ width: 48, height: 48, resizeMode: "contain" }} />
             </View>
-          ) : latestBoard ? (
-            <>
-              <Text style={styles.boardTitle} numberOfLines={2}>
-                {latestBoard.title}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>Bike and Hike</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  letterSpacing: 2,
+                  fontWeight: "700",
+                  color: UI.colors.accentWarm,
+                }}
+              >
+                ITALIA
               </Text>
-              {latestBoard.createdAt && (
-                <Text style={styles.boardDate}>
-                  {latestBoard.createdAt.toLocaleDateString("it-IT", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 24, fontWeight: "900", color: "#fff" }}>{formattedName}</Text>
+              {!!secondaryLine && (
+                <Text
+                  style={{
+                    marginTop: 4,
+                    fontSize: 16,
+                    fontWeight: "600",
+                    color: "#EAF7F0",
+                  }}
+                >
+                  {secondaryLine}
                 </Text>
               )}
-            </>
-          ) : (
-            <Text style={styles.boardEmpty}>Nessuna news ancora pubblicata.</Text>
-          )}
-          <View style={styles.boardFooter}>
-            <Text style={styles.boardCta}>Apri la bacheca</Text>
-            <Ionicons name="arrow-forward-circle" size={22} color="#fff" />
+            </View>
+            {isAdmin && (
+              <View
+                style={{
+                  backgroundColor: isOwner ? "#1D4ED8" : UI.colors.accent,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: UI.radius.round,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>
+                  {isOwner ? "OWNER" : "ADMIN"}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
-      </Pressable>
+      </LinearGradient>
 
-      <VSpace size="lg" />
-
-      {/* Suggerimento profilo incompleto */}
       {!loading && !(firstName || lastName || nickname) && (
         <Pressable
           onPress={() => navigation.navigate("Profile")}
@@ -325,9 +323,9 @@ export default function HomeScreen({ navigation }: any) {
             {
               padding: 12,
               borderRadius: UI.radius.md,
-              backgroundColor: "#FFF7ED",
+              backgroundColor: UI.colors.warningBg,
               borderWidth: 1,
-              borderColor: "#FED7AA",
+              borderColor: UI.colors.warningBorder,
               opacity: pressed ? 0.95 : 1,
             },
           ]}
@@ -339,120 +337,162 @@ export default function HomeScreen({ navigation }: any) {
         </Pressable>
       )}
 
-      <VSpace size="md" />
+      <VSpace size="lg" />
 
-      {/* GRID MENU */}
-      <View style={{ gap: UI.spacing.sm }}>
-        <Tile
-          title="Bacheca"
-          subtitle="News e comunicazioni"
-          onPress={() => navigation.navigate("Board")}
-          icon={<Ionicons name="newspaper-outline" size={28} color={UI.colors.primary} />}
-        />
-        <Tile
-          title="Uscite"
-          subtitle={isAdmin ? "Crea, gestisci e partecipa" : "Elenco uscite e prenotazioni"}
+      <View style={styles.grid}>
+        <ShortcutCard
+          label="Uscite"
+          caption="Calendario eventi"
           badgeCount={activeCount ?? undefined}
+          icon={<MaterialCommunityIcons name="bike" size={32} color={UI.colors.primary} />}
           onPress={() => navigation.navigate("UsciteList")}
-          icon={<Ionicons name="calendar-outline" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#E2F2E8" }}
+          style={{ marginBottom: UI.spacing.md }}
+        />
+
+        <ShortcutCard
+          label="Bacheca"
+          caption={
+            boardLoading ? "Caricamento…" : latestBoard ? truncate(latestBoard.title, 36) : "News e comunicazioni"
+          }
+          icon={
+            <MaterialCommunityIcons
+              name="newspaper-variant-outline"
+              size={32}
+              color={UI.colors.primary}
+            />
+          }
+          onPress={() => navigation.navigate("Board")}
+          iconContainerStyle={{ backgroundColor: "#E3F2FD" }}
+          style={{ marginBottom: UI.spacing.md }}
+          badgeCount={unreadCount > 0 ? unreadCount : undefined}
         />
 
         {isAdmin && (
-          <Tile
-            title="Crea nuova uscita"
-            subtitle="Solo Admin o Owner"
+          <ShortcutCard
+            label="Nuova uscita"
+            caption="Admin e Owner"
+            icon={<MaterialCommunityIcons name="plus-circle-outline" size={32} color={UI.colors.accent} />}
             onPress={() => navigation.navigate("CreateRide")}
-            icon={<Ionicons name="add-circle-outline" size={28} color={UI.colors.primary} />}
+            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+            style={{ marginBottom: UI.spacing.md }}
           />
         )}
 
-        <Tile
-          title="Calendario"
-          subtitle="Visualizza uscite per giorno"
+        <ShortcutCard
+          label="Calendario"
+          caption="Vista mensile"
+          icon={<MaterialCommunityIcons name="calendar-month" size={32} color={UI.colors.accentWarm} />}
           onPress={() => navigation.navigate("Calendar")}
-          icon={<Ionicons name="calendar" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#FFF4DC" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
 
-        <Tile
-          title="Profilo"
-          subtitle="Gestisci i tuoi dati"
+        {isOwner && (
+          <ShortcutCard
+            label="Amministrazione"
+            caption="Solo Owner"
+            icon={<MaterialCommunityIcons name="shield-lock-outline" size={32} color={UI.colors.accent} />}
+            onPress={() => navigation.navigate("Amministrazione")}
+            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
+            style={{ marginBottom: UI.spacing.md }}
+          />
+        )}
+
+        <ShortcutCard
+          label="Profilo Utente"
+          caption={profileCaption}
+          icon={<MaterialCommunityIcons name="account" size={32} color={UI.colors.primary} />}
           onPress={() => navigation.navigate("Profile")}
-          icon={<Ionicons name="person-circle-outline" size={28} color={UI.colors.primary} />}
+          iconContainerStyle={{ backgroundColor: "#E6F0FA" }}
+          style={{ marginBottom: UI.spacing.md }}
+          statusBadge={profileBadge}
         />
 
-        <Tile
-          title="Esci"
-          subtitle="Chiudi la sessione"
-          onPress={() => navigation.navigate("Home") /* placeholder: gestito da App con signOut */}
-          icon={<Ionicons name="exit-outline" size={28} color={UI.colors.danger} />}
+        <ShortcutCard
+          label="Esci"
+          caption="Chiudi la sessione"
+          icon={<MaterialCommunityIcons name="logout" size={32} color={UI.colors.danger} />}
+          onPress={() => signOut(auth)}
           danger
+          iconContainerStyle={{ backgroundColor: "#FDE8E8" }}
+          style={{ marginBottom: UI.spacing.md }}
         />
       </View>
-
-      <VSpace size="xl" />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  boardCard: {
-    width: "100%",
+  heroCard: {
     borderRadius: UI.radius.xl,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    shadowColor: UI.shadow.hero.shadowColor,
-    shadowOpacity: UI.shadow.hero.shadowOpacity,
-    shadowRadius: UI.shadow.hero.shadowRadius,
-    elevation: UI.shadow.hero.elevation,
-    minHeight: 200,
-  },
-  boardImage: {
-    width: "100%",
-    height: 200,
-  },
-  boardOverlay: {
-    position: "absolute",
-    inset: 0,
     padding: UI.spacing.lg,
-    justifyContent: "space-between",
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    paddingBottom: UI.spacing.lg + 4,
+    marginBottom: UI.spacing.lg,
   },
-  boardLabel: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#fff",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  boardTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#fff",
-    marginTop: 6,
-  },
-  boardDate: {
-    marginTop: 4,
-    color: "#e0f2fe",
-    fontWeight: "600",
-  },
-  boardEmpty: {
-    marginTop: 8,
-    color: "#e2e8f0",
-    fontWeight: "600",
-  },
-  boardFooter: {
-    flexDirection: "row",
+  heroLogoWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: "#fff",
     alignItems: "center",
-    gap: 8,
-    marginTop: UI.spacing.md,
+    justifyContent: "center",
+    shadowColor: "rgba(0,0,0,0.25)",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  boardCta: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 14,
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
-  boardLoadingText: {
-    color: "#e2e8f0",
-    fontWeight: "600",
+  cardIconWrapper: {
+    width: 62,
+    height: 62,
+    borderRadius: UI.radius.md,
+    backgroundColor: UI.colors.tint,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  cardBadgeCount: {
+    position: "absolute",
+    top: 12,
+    right: 16,
+    minWidth: 24,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: UI.colors.accent,
+  },
+  statusBadgeAnchor: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    zIndex: 2,
+    pointerEvents: "none",
+  },
+  certificateBadge: {
+    backgroundColor: "#fff",
+    borderRadius: UI.radius.round,
+    padding: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: UI.shadow.card.shadowColor,
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: UI.shadow.card.elevation,
+  },
+  certificateBadgeDot: {
+    width: 16,
+    height: 16,
+    borderRadius: UI.radius.round,
+  },
+  certificateBadgeWarning: {
+    backgroundColor: "#F97316",
+  },
+  certificateBadgeDanger: {
+    backgroundColor: "#DC2626",
   },
 });

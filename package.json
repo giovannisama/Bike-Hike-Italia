@@ -38,7 +38,8 @@
   },
   "devDependencies": {
     "@react-native-community/cli": "^20.0.2",
-    "@react-native/metro-config": "^0.82.0"
+    "@react-native/metro-config": "^0.82.0",
+    "@types/react": "~19.1.10"
   },
   "private": true
 }

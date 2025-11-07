@@ -22,6 +22,7 @@ import { updateProfile as fbUpdateProfile, deleteUser } from "firebase/auth";
 import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { CardCropperModal } from "../components/CardCropperModal";
+import { ZoomableImageModal } from "../components/ZoomableImageModal";
 import {
   deviceSupportsBiometrics,
   loadCredsSecurely,
@@ -783,32 +784,11 @@ export default function ProfileScreen() {
         />
       )}
 
-      <Modal
+      <ZoomableImageModal
         visible={cardModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCardModalVisible(false)}
-      >
-        <Pressable
-          style={styles.cardModalBackdrop}
-          onPress={() => setCardModalVisible(false)}
-          accessibilityRole="button"
-          accessibilityLabel="Chiudi anteprima tessera"
-        >
-          {cardUri && (
-            <ScrollView
-              style={{ flex: 1, width: "100%" }}
-              contentContainerStyle={styles.zoomContent}
-              minimumZoomScale={1}
-              maximumZoomScale={3}
-              centerContent
-              bouncesZoom
-            >
-              <Image source={{ uri: cardUri }} style={styles.cardModalImage} resizeMode="contain" />
-            </ScrollView>
-          )}
-        </Pressable>
-      </Modal>
+        uri={cardUri}
+        onClose={() => setCardModalVisible(false)}
+      />
 
       <CardCropperModal
         visible={!!cropSource}
@@ -999,19 +979,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   removeButtonText: { color: "#dc2626", fontWeight: "700" },
-  cardModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  zoomContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cardModalImage: { width: "100%", height: "80%" },
   deleteAccountButton: {
     marginTop: 12,
     paddingVertical: 12,

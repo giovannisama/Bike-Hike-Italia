@@ -27,6 +27,7 @@ import { CardCropperModal } from "../../components/CardCropperModal";
 import { autoCropDocument, compressImageToMaxSize } from "../../utils/imageProcessing";
 import { UI } from "../../components/Screen";
 import { getCertificateStatus } from "../../utils/medicalCertificate";
+import { ZoomableImageModal } from "../../components/ZoomableImageModal";
 
 type ToastFn = (message: string, tone: "success" | "error") => void;
 
@@ -834,36 +835,12 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
         </Modal>
       )}
 
-      <Modal
+      <ZoomableImageModal
         visible={previewModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewModalVisible(false)}
-      >
-        <Pressable
-          style={styles.previewModalBackdrop}
-          onPress={() => setPreviewModalVisible(false)}
-          accessibilityRole="button"
-          accessibilityLabel="Chiudi anteprima certificato"
-        >
-          {previewUri && (
-            <ScrollView
-              style={{ flex: 1, width: "100%" }}
-              contentContainerStyle={styles.previewZoomContent}
-              minimumZoomScale={1}
-              maximumZoomScale={3}
-              centerContent
-              bouncesZoom
-            >
-              <Image
-                source={{ uri: previewUri }}
-                style={[styles.previewModalImage, { transform: [{ rotate: `${pendingImage ? 0 : previewRotation}deg` }] }]}
-                resizeMode="contain"
-              />
-            </ScrollView>
-          )}
-        </Pressable>
-      </Modal>
+        uri={previewUri}
+        onClose={() => setPreviewModalVisible(false)}
+        rotationDeg={pendingImage ? 0 : previewRotation}
+      />
     </View>
   );
 }
@@ -1158,21 +1135,5 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     padding: UI.spacing.md,
-  },
-  previewModalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: UI.spacing.md,
-  },
-  previewZoomContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  previewModalImage: {
-    width: "100%",
-    height: "80%",
   },
 });

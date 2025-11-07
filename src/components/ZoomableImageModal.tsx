@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, Image, Modal, Pressable, StyleSheet, Text } from "react-native";
-import { GestureHandlerRootView, PinchGestureHandler, State } from "react-native-gesture-handler";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Dimensions, Image, Modal, Pressable, StyleSheet, Text } from "react-native";
+import { GestureHandlerRootView, PanGestureHandler, PinchGestureHandler, State } from "react-native-gesture-handler";
+
+const viewport = Dimensions.get("window");
 
 type ZoomableImageModalProps = {
   visible: boolean;
@@ -14,55 +16,121 @@ const AnimatedImage = Animated.createAnimatedComponent(Image);
 export function ZoomableImageModal({ visible, uri, onClose, rotationDeg = 0 }: ZoomableImageModalProps) {
   const baseScale = useRef(new Animated.Value(1)).current;
   const pinchScale = useRef(new Animated.Value(1)).current;
-  const scale = Animated.multiply(baseScale, pinchScale);
-  const lastScale = useRef(1);
+  const scaledValue = useMemo(() => Animated.multiply(baseScale, pinchScale), [baseScale, pinchScale]);
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const lastScaleRef = useRef(1);
+  const lastPanRef = useRef({ x: 0, y: 0 });
+  const [canPan, setCanPan] = useState(false);
+  const pinchRef = useRef<PinchGestureHandler>(null);
+  const panRef = useRef<PanGestureHandler>(null);
 
-  const resetScale = () => {
-    lastScale.current = 1;
+  const resetTransforms = useCallback(() => {
+    lastScaleRef.current = 1;
     baseScale.setValue(1);
     pinchScale.setValue(1);
-  };
+    lastPanRef.current = { x: 0, y: 0 };
+    pan.setValue({ x: 0, y: 0 });
+    pan.setOffset({ x: 0, y: 0 });
+    setCanPan(false);
+  }, [baseScale, pan, pinchScale]);
 
   useEffect(() => {
-    if (!visible) {
-      resetScale();
-    }
-  }, [visible]);
+    if (!visible) resetTransforms();
+  }, [visible, resetTransforms]);
 
-  const onPinchEvent = Animated.event([{ nativeEvent: { scale: pinchScale } }], {
-    useNativeDriver: true,
-  });
+  const handlePinchEvent = useMemo(
+    () => Animated.event([{ nativeEvent: { scale: pinchScale } }], { useNativeDriver: true }),
+    [pinchScale]
+  );
 
-  const onPinchStateChange = (event: any) => {
-    if (event.nativeEvent.oldState === State.ACTIVE) {
-      lastScale.current = Math.min(Math.max(lastScale.current * event.nativeEvent.scale, 1), 4);
-      baseScale.setValue(lastScale.current);
-      pinchScale.setValue(1);
-    }
-  };
+  const handlePinchStateChange = useCallback(
+    (event: any) => {
+      const { state, scale } = event.nativeEvent;
+      if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+        lastScaleRef.current = Math.min(Math.max(lastScaleRef.current * scale, 1), 4);
+        baseScale.setValue(lastScaleRef.current);
+        pinchScale.setValue(1);
+        if (lastScaleRef.current <= 1.01) {
+          lastPanRef.current = { x: 0, y: 0 };
+          pan.setValue({ x: 0, y: 0 });
+          pan.setOffset({ x: 0, y: 0 });
+        }
+        setCanPan(lastScaleRef.current > 1.01);
+      } else if (state === State.BEGAN) {
+        pinchScale.setValue(1);
+      }
+    },
+    [baseScale, pan, pinchScale]
+  );
+
+  const handlePanEvent = useMemo(
+    () => Animated.event([{ nativeEvent: { translationX: pan.x, translationY: pan.y } }], { useNativeDriver: true }),
+    [pan.x, pan.y]
+  );
+
+  const handlePanStateChange = useCallback(
+    (event: any) => {
+      const { state, translationX, translationY } = event.nativeEvent;
+      if (state === State.BEGAN) {
+        pan.setOffset(lastPanRef.current);
+        pan.setValue({ x: 0, y: 0 });
+      } else if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+        lastPanRef.current = {
+          x: lastPanRef.current.x + translationX,
+          y: lastPanRef.current.y + translationY,
+        };
+        pan.setOffset(lastPanRef.current);
+        pan.setValue({ x: 0, y: 0 });
+      }
+    },
+    [pan]
+  );
 
   if (!uri) return null;
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Animated.View style={styles.backdrop}>
-        <Pressable style={styles.closeButton} onPress={onClose}>
+        <Pressable
+          style={styles.closeButton}
+          onPress={() => {
+            resetTransforms();
+            onClose();
+          }}
+        >
           <Text style={styles.closeText}>Chiudi</Text>
         </Pressable>
-        <PinchGestureHandler onGestureEvent={onPinchEvent} onHandlerStateChange={onPinchStateChange}>
-          <Animated.View style={styles.imageWrapper}>
-            <AnimatedImage
-              source={{ uri }}
-              style={[
-                styles.image,
-                {
-                  transform: [{ scale }, { rotate: `${rotationDeg}deg` }],
-                },
-              ]}
-              resizeMode="contain"
-            />
+        <PanGestureHandler
+          ref={panRef}
+          simultaneousHandlers={pinchRef}
+          onGestureEvent={handlePanEvent}
+          onHandlerStateChange={handlePanStateChange}
+          minPointers={1}
+          enabled={canPan}
+          minDist={canPan ? 2 : 20}
+        >
+          <Animated.View style={{ transform: [...pan.getTranslateTransform()] }}>
+            <PinchGestureHandler
+              ref={pinchRef}
+              simultaneousHandlers={panRef}
+              onGestureEvent={handlePinchEvent}
+              onHandlerStateChange={handlePinchStateChange}
+            >
+              <Animated.View style={[styles.imageWrapper, { transform: [{ scale: scaledValue }] }]}>
+                <AnimatedImage
+                  source={{ uri }}
+                  style={[
+                    styles.image,
+                    {
+                      transform: [{ rotate: `${rotationDeg}deg` }],
+                    },
+                  ]}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+            </PinchGestureHandler>
           </Animated.View>
-        </PinchGestureHandler>
+        </PanGestureHandler>
       </Animated.View>
     </GestureHandlerRootView>
   );
@@ -83,14 +151,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   imageWrapper: {
-    width: "100%",
-    maxHeight: "90%",
+    width: viewport.width * 0.9,
+    height: viewport.height * 0.75,
     alignItems: "center",
     justifyContent: "center",
   },
   image: {
-    width: "100%",
-    height: "100%",
+    width: viewport.width * 0.9,
+    height: viewport.height * 0.75,
   },
   closeButton: {
     position: "absolute",

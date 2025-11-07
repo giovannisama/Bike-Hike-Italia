@@ -1,4 +1,4 @@
-import differenceInCalendarDays from "date-fns/differenceInCalendarDays";
+import { differenceInCalendarDays } from "date-fns/differenceInCalendarDays";
 import { MedicalCertificateRecord } from "../hooks/useMedicalCertificate";
 
 export type CertificateStatus =

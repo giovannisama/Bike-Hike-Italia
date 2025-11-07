@@ -52,6 +52,7 @@ type ScreenProps = {
   scroll?: boolean;
   useNativeHeader?: boolean;
   keyboardShouldPersistTaps?: "always" | "handled" | "never";
+  headerContent?: React.ReactNode;
 };
 
 export function Screen({
@@ -63,6 +64,7 @@ export function Screen({
   scroll = true,
   useNativeHeader = false,
   keyboardShouldPersistTaps = "always",
+  headerContent,
 }: ScreenProps) {
   // render tree kept inline so we don't recreate components each render (avoids TextInput blur)
   const content = (
@@ -79,44 +81,55 @@ export function Screen({
           }}
         >
           <SafeAreaView edges={["top"]}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: headerContent ? "flex-start" : "center",
+              }}
+            >
               <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
-                {(!!title || !!titleMeta) && (
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexWrap: "wrap" }}>
-                    {!!title && (
+                {headerContent ? (
+                  headerContent
+                ) : (
+                  <>
+                    {(!!title || !!titleMeta) && (
+                      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexWrap: "wrap" }}>
+                        {!!title && (
+                          <Text
+                            style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.85}
+                          >
+                            {title}
+                          </Text>
+                        )}
+                        {!!titleMeta && (
+                          <Text
+                            style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.85}
+                          >
+                            {titleMeta}
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                    {!!subtitle && (
                       <Text
-                        style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}
+                        style={{
+                          fontSize: 16,
+                          fontWeight: "700",
+                          color: UI.colors.accentWarm,
+                          marginTop: 4,
+                          letterSpacing: 0.4,
+                        }}
                       >
-                        {title}
+                        {subtitle}
                       </Text>
                     )}
-                    {!!titleMeta && (
-                      <Text
-                        style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}
-                      >
-                        {titleMeta}
-                      </Text>
-                    )}
-                  </View>
-                )}
-                {!!subtitle && (
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: UI.colors.accentWarm,
-                      marginTop: 4,
-                      letterSpacing: 0.4,
-                    }}
-                  >
-                    {subtitle}
-                  </Text>
+                  </>
                 )}
               </View>
               {!!headerRight && <View style={{ marginLeft: UI.spacing.sm }}>{headerRight}</View>}

@@ -73,7 +73,8 @@ export default function ProfileScreen() {
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<"personal" | "documents" | "security">("personal");
-  const [expandedDocument, setExpandedDocument] = useState<"membership" | "certificate" | null>("membership");
+  const [expandedDocument, setExpandedDocument] = useState<"membership" | "certificate" | null>(null);
+  const [roleLabel, setRoleLabel] = useState<string | null>(null);
   const medicalCertificateHook = useMedicalCertificate();
   const certificateStatus = useMemo(
     () => getCertificateStatus(medicalCertificateHook.certificate),
@@ -106,6 +107,7 @@ export default function ProfileScreen() {
       setFirstName(data.firstName || "");
       setLastName(data.lastName || "");
       setNickname(data.nickname || "");
+      setRoleLabel(typeof data.role === "string" ? data.role : null);
 
       if (data.membershipCard && typeof data.membershipCard === "object") {
         const base64 = data.membershipCard.base64;
@@ -506,6 +508,21 @@ export default function ProfileScreen() {
   const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
   const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
   const membershipActive = !!cardUri;
+  const displayName =
+    [lastName, firstName].filter(Boolean).join(lastName && firstName ? ", " : "") ||
+    user?.displayName ||
+    "Utente";
+  const roleDisplay = roleLabel ? roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1) : "Membro";
+  const headerContent = (
+    <View style={styles.heroHeader}>
+      <Image source={logo} style={styles.heroLogo} />
+      <View style={styles.heroText}>
+        <Text style={styles.heroTitle}>Profilo Utente di</Text>
+        <Text style={styles.heroName}>{displayName}</Text>
+        <Text style={styles.heroRole}>{roleDisplay}</Text>
+      </View>
+    </View>
+  );
 
   useEffect(() => {
     if (!cardUri) {
@@ -520,14 +537,7 @@ export default function ProfileScreen() {
   }, [cardUri]);
 
   return (
-    <Screen title="Profilo" subtitle="Gestisci i tuoi dati">
-      <View style={styles.header}>
-        <Image source={logo} style={styles.logo} />
-        <View>
-          <Text style={styles.title}>Bike & Hike Italia</Text>
-          <Text style={styles.subtitle}>Account</Text>
-        </View>
-      </View>
+    <Screen headerContent={headerContent}>
 
       <View style={styles.tabBar}>
         {PROFILE_TABS.map((tab) => {
@@ -826,10 +836,16 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-  logo: { width: 64, height: 64, marginRight: 12, borderRadius: 12 },
-  title: { fontSize: 20, fontWeight: "700" },
-  subtitle: { fontSize: 14, color: "#666" },
+  heroHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  heroLogo: { width: 60, height: 60, borderRadius: 16 },
+  heroText: { flex: 1 },
+  heroTitle: { fontSize: 16, fontWeight: "700", color: "#fff", letterSpacing: 0.4 },
+  heroName: { fontSize: 22, fontWeight: "900", color: "#fff", marginTop: 2 },
+  heroRole: { fontSize: 16, fontWeight: "700", color: "#F7B32B", marginTop: 2 },
   tabBar: {
     flexDirection: "row",
     backgroundColor: "#E5F3EB",

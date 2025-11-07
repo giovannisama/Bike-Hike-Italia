@@ -144,9 +144,9 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
       return;
     }
     setTypeValue(certificate.type);
-    setExpiryDate(certificate.expiresAt ?? null);
+    setExpiryDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null);
     setAlertDaysInput(String(certificate.alertDays ?? DEFAULT_ALERT_DAYS));
-    setIosDateDraft(certificate.expiresAt ?? new Date());
+    setIosDateDraft(certificate.expiresAt ? new Date(certificate.expiresAt) : new Date());
   }, [certificate?.type, certificate?.expiresAt, certificate?.alertDays]);
 
   const onSelectType = (next: MedicalCertificateType) => {
@@ -172,18 +172,18 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
         value: current,
         onChange: (event: DateTimePickerEvent, selected?: Date) => {
           if (event.type === "dismissed") return;
-          if (selected) setExpiryDate(selected);
+          if (selected) setExpiryDate(new Date(selected));
         },
       });
     } else {
       Keyboard.dismiss();
-      setIosDateDraft(current);
+      setIosDateDraft(new Date(current));
       setIosDateModal(true);
     }
   };
 
   const confirmIosDate = () => {
-    setExpiryDate(iosDateDraft);
+    setExpiryDate(new Date(iosDateDraft));
     setIosDateModal(false);
   };
 
@@ -394,9 +394,9 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
     setIosDateModal(false);
     if (certificate) {
       setTypeValue(certificate.type);
-      setExpiryDate(certificate.expiresAt ?? null);
+      setExpiryDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null);
       setAlertDaysInput(String(certificate.alertDays ?? DEFAULT_ALERT_DAYS));
-      setIosDateDraft(certificate.expiresAt ?? new Date());
+      setIosDateDraft(certificate.expiresAt ? new Date(certificate.expiresAt) : new Date());
     }
   };
 
@@ -507,7 +507,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                     return;
                   }
                   if (selected) {
-                    setExpiryDate(selected);
+                    setExpiryDate(new Date(selected));
                     setMetadataPickerVisible(false);
                   }
                 }}
@@ -707,7 +707,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                             return;
                           }
                           if (selected) {
-                            setExpiryDate(selected);
+                            setExpiryDate(new Date(selected));
                             setMetadataPickerVisible(false);
                           }
                         }}
@@ -727,7 +727,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                         display="spinner"
                         locale="it-IT"
                         onChange={(_, next) => {
-                          if (next) setIosDateDraft(next);
+                          if (next) setIosDateDraft(new Date(next));
                         }}
                       />
                       <View style={[styles.inlineDateActions, { justifyContent: "space-between" }]}>
@@ -736,7 +736,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                         </Pressable>
                         <Pressable
                           onPress={() => {
-                            setExpiryDate(iosDateDraft);
+                            setExpiryDate(new Date(iosDateDraft));
                             setIosMetadataPickerVisible(false);
                           }}
                           style={styles.inlineDateClose}

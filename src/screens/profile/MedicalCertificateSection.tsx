@@ -5,7 +5,6 @@ import {
   Alert,
   Dimensions,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,10 +16,9 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import DateTimePicker, { DateTimePickerAndroid, DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import { format } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
 import useMedicalCertificate, { MedicalCertificateType } from "../../hooks/useMedicalCertificate";
 import { CardCropperModal } from "../../components/CardCropperModal";
@@ -52,10 +50,22 @@ const CERT_TYPES: { value: MedicalCertificateType; label: string }[] = [
   { value: "agonistico", label: "Agonistico" },
 ];
 
+const DATE_INPUT_FORMAT = "yyyy-MM-dd";
+const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 const formatDate = (date: Date | null | undefined) => {
   if (!date) return "";
   try {
     return format(date, "dd MMM yyyy", { locale: it });
+  } catch {
+    return "";
+  }
+};
+
+const formatInputDate = (date: Date | null | undefined) => {
+  if (!date) return "";
+  try {
+    return format(date, DATE_INPUT_FORMAT);
   } catch {
     return "";
   }
@@ -118,7 +128,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const { certificate, loading, uploadCertificate, deleteCertificate, updateMetadata } = hook;
 
   const [typeValue, setTypeValue] = useState<MedicalCertificateType | null>(null);
-  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
+  const [expiryInput, setExpiryInput] = useState<string>("");
   const [alertDaysInput, setAlertDaysInput] = useState<string>(String(DEFAULT_ALERT_DAYS));
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -130,61 +140,30 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const [autoCropNote, setAutoCropNote] = useState<string | null>(null);
   const [manualCropCandidate, setManualCropCandidate] = useState<CropCandidate | null>(null);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
-  const [metadataPickerVisible, setMetadataPickerVisible] = useState(false);
-  const [iosMetadataPickerVisible, setIosMetadataPickerVisible] = useState(false);
 
-  const [iosDateModal, setIosDateModal] = useState(false);
-  const [iosDateDraft, setIosDateDraft] = useState<Date>(new Date());
+  const normalizedExpiryInput = expiryInput.trim();
+  const parsedExpiryDate = useMemo(() => {
+    if (!normalizedExpiryInput || !DATE_INPUT_REGEX.test(normalizedExpiryInput)) {
+      return null;
+    }
+    const parsed = parseISO(normalizedExpiryInput);
+    return isValid(parsed) ? parsed : null;
+  }, [normalizedExpiryInput]);
 
   useEffect(() => {
     if (!certificate) {
       setTypeValue(null);
-      setExpiryDate(null);
+      setExpiryInput("");
       setAlertDaysInput(String(DEFAULT_ALERT_DAYS));
       return;
     }
     setTypeValue(certificate.type);
-    setExpiryDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null);
+    setExpiryInput(formatInputDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null));
     setAlertDaysInput(String(certificate.alertDays ?? DEFAULT_ALERT_DAYS));
-    setIosDateDraft(certificate.expiresAt ? new Date(certificate.expiresAt) : new Date());
   }, [certificate?.type, certificate?.expiresAt, certificate?.alertDays]);
 
   const onSelectType = (next: MedicalCertificateType) => {
     setTypeValue(next);
-  };
-
-  const openDatePicker = () => {
-    const current = expiryDate ?? new Date();
-    if (editingMetadata) {
-      Keyboard.dismiss();
-      if (Platform.OS === "android") {
-        setMetadataPickerVisible(true);
-      } else {
-        setIosDateDraft(current);
-        setIosMetadataPickerVisible(true);
-      }
-      return;
-    }
-
-    if (Platform.OS === "android") {
-      DateTimePickerAndroid.open({
-        mode: "date",
-        value: current,
-        onChange: (event: DateTimePickerEvent, selected?: Date) => {
-          if (event.type === "dismissed") return;
-          if (selected) setExpiryDate(new Date(selected));
-        },
-      });
-    } else {
-      Keyboard.dismiss();
-      setIosDateDraft(new Date(current));
-      setIosDateModal(true);
-    }
-  };
-
-  const confirmIosDate = () => {
-    setExpiryDate(new Date(iosDateDraft));
-    setIosDateModal(false);
   };
 
   const resetPendingState = () => {
@@ -302,21 +281,28 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   };
 
   const typeError = !typeValue ? "Seleziona il tipo di certificato" : null;
-  const expiryError = !expiryDate ? "Indica la data di scadenza" : null;
+  const expiryError = !normalizedExpiryInput
+    ? "Indica la data di scadenza (YYYY-MM-DD)"
+    : !DATE_INPUT_REGEX.test(normalizedExpiryInput)
+    ? "Formato non valido. Usa YYYY-MM-DD"
+    : !parsedExpiryDate
+    ? "Data non valida"
+    : null;
   const alertValue = parseInt(alertDaysInput, 10);
   const alertError = Number.isNaN(alertValue) || alertValue <= 0 ? "Inserisci un numero positivo" : null;
 
-  const canSave = !!typeValue && !!expiryDate && !alertError && !!pendingImage && !uploading;
+  const canSave =
+    !!typeValue && !!parsedExpiryDate && !alertError && !expiryError && !!pendingImage && !uploading;
 
   const handleSave = async () => {
-    if (!pendingImage || !typeValue || !expiryDate || alertError) return;
+    if (!pendingImage || !typeValue || !parsedExpiryDate || alertError || expiryError) return;
     try {
       setUploading(true);
       await uploadCertificate({
         base64: pendingImage.base64,
         mimeType: pendingImage.mimeType,
         type: typeValue,
-        expiresAt: expiryDate,
+        expiresAt: parsedExpiryDate,
         alertDays: alertValue,
         size: pendingImage.size,
         width: pendingImage.width ?? undefined,
@@ -389,19 +375,17 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
 
   const closeMetadataEditor = () => {
     setEditingMetadata(false);
-    setMetadataPickerVisible(false);
-    setIosMetadataPickerVisible(false);
-    setIosDateModal(false);
     if (certificate) {
       setTypeValue(certificate.type);
-      setExpiryDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null);
+      setExpiryInput(formatInputDate(certificate.expiresAt ? new Date(certificate.expiresAt) : null));
       setAlertDaysInput(String(certificate.alertDays ?? DEFAULT_ALERT_DAYS));
-      setIosDateDraft(certificate.expiresAt ? new Date(certificate.expiresAt) : new Date());
+    } else {
+      setExpiryInput("");
     }
   };
 
   const submitMetadataChanges = async () => {
-    if (!certificate || !typeValue || !expiryDate || alertError) {
+    if (!certificate || !typeValue || !parsedExpiryDate || alertError || expiryError) {
       showToast("Compila correttamente i metadati.", "error");
       return;
     }
@@ -409,7 +393,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
       setModifyingMeta(true);
       await updateMetadata({
         type: typeValue,
-        expiresAt: expiryDate,
+        expiresAt: parsedExpiryDate,
         alertDays: alertValue,
       });
       setEditingMetadata(false);
@@ -487,41 +471,18 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Data di scadenza</Text>
-            <Pressable onPress={openDatePicker} style={styles.fakeInput}>
-              <Text style={expiryDate ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-                {expiryDate ? formatDate(expiryDate) : "Seleziona una data"}
-              </Text>
-            </Pressable>
+            <TextInput
+              value={expiryInput}
+              onChangeText={setExpiryInput}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
+              style={[styles.input, expiryError && styles.inputError]}
+            />
+            <Text style={styles.helperText}>Formato richiesto: YYYY-MM-DD</Text>
             {!!expiryError && <Text style={styles.errorText}>{expiryError}</Text>}
           </View>
-
-          {Platform.OS === "android" && metadataPickerVisible && (
-            <View style={styles.inlineDatePicker}>
-              <DateTimePicker
-                value={expiryDate ?? new Date()}
-                mode="date"
-                display="calendar"
-                onChange={(event, selected) => {
-                  if (event.type === "dismissed") {
-                    setMetadataPickerVisible(false);
-                    return;
-                  }
-                  if (selected) {
-                    setExpiryDate(new Date(selected));
-                    setMetadataPickerVisible(false);
-                  }
-                }}
-              />
-              <View style={styles.inlineDateActions}>
-                <Pressable
-                  onPress={() => setMetadataPickerVisible(false)}
-                  style={styles.inlineDateClose}
-                >
-                  <Text style={styles.inlineDateCloseText}>Chiudi</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Giorni di preavviso</Text>
@@ -689,63 +650,17 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
 
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>Data di scadenza</Text>
-                  <Pressable onPress={openDatePicker} style={styles.fakeInput}>
-                    <Text style={expiryDate ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-                      {expiryDate ? formatDate(expiryDate) : "Seleziona una data"}
-                    </Text>
-                  </Pressable>
+                  <TextInput
+                    value={expiryInput}
+                    onChangeText={setExpiryInput}
+                    placeholder="YYYY-MM-DD"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
+                    style={[styles.input, expiryError && styles.inputError]}
+                  />
+                  <Text style={styles.helperText}>Formato richiesto: YYYY-MM-DD</Text>
                   {!!expiryError && <Text style={styles.errorText}>{expiryError}</Text>}
-                  {Platform.OS === "android" && metadataPickerVisible && (
-                    <View style={styles.inlineDatePicker}>
-                      <DateTimePicker
-                        value={expiryDate ?? new Date()}
-                        mode="date"
-                        display="calendar"
-                        onChange={(event, selected) => {
-                          if (event.type === "dismissed") {
-                            setMetadataPickerVisible(false);
-                            return;
-                          }
-                          if (selected) {
-                            setExpiryDate(new Date(selected));
-                            setMetadataPickerVisible(false);
-                          }
-                        }}
-                      />
-                      <View style={styles.inlineDateActions}>
-                        <Pressable onPress={() => setMetadataPickerVisible(false)} style={styles.inlineDateClose}>
-                          <Text style={styles.inlineDateCloseText}>Chiudi</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
-                  {Platform.OS === "ios" && iosMetadataPickerVisible && (
-                    <View style={styles.inlineDatePicker}>
-                      <DateTimePicker
-                        value={iosDateDraft}
-                        mode="date"
-                        display="spinner"
-                        locale="it-IT"
-                        onChange={(_, next) => {
-                          if (next) setIosDateDraft(new Date(next));
-                        }}
-                      />
-                      <View style={[styles.inlineDateActions, { justifyContent: "space-between" }]}>
-                        <Pressable onPress={() => setIosMetadataPickerVisible(false)} style={styles.inlineDateClose}>
-                          <Text style={styles.inlineDateCloseText}>Annulla</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => {
-                            setExpiryDate(new Date(iosDateDraft));
-                            setIosMetadataPickerVisible(false);
-                          }}
-                          style={styles.inlineDateClose}
-                        >
-                          <Text style={styles.inlineDateCloseText}>Fatto</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
                 </View>
 
                 <View style={styles.formGroup}>
@@ -772,9 +687,9 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                     style={[
                       styles.primaryButton,
                       styles.metaModalActionButton,
-                      (modifyingMeta || alertError) && styles.primaryButtonDisabled,
+                      (modifyingMeta || alertError || expiryError) && styles.primaryButtonDisabled,
                     ]}
-                    disabled={modifyingMeta || !!alertError}
+                    disabled={modifyingMeta || !!alertError || !!expiryError}
                   >
                     {modifyingMeta ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Salva</Text>}
                   </Pressable>
@@ -803,37 +718,6 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
           setCropSource(null);
         }}
       />
-
-      {Platform.OS === "ios" && (
-        <Modal
-          visible={iosDateModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setIosDateModal(false)}
-        >
-          <Pressable style={styles.dateModalOverlay} onPress={() => setIosDateModal(false)}>
-            <View style={styles.dateModalSheet}>
-              <View style={styles.dateModalHeader}>
-                <Pressable onPress={() => setIosDateModal(false)}>
-                  <Text style={styles.secondaryButtonText}>Annulla</Text>
-                </Pressable>
-                <Pressable onPress={confirmIosDate}>
-                  <Text style={[styles.secondaryButtonText, { color: UI.colors.primary }]}>Fatto</Text>
-                </Pressable>
-              </View>
-              <DateTimePicker
-                value={iosDateDraft}
-                onChange={(_, next) => {
-                  if (next) setIosDateDraft(next);
-                }}
-                mode="date"
-                display="spinner"
-                locale="it-IT"
-              />
-            </View>
-          </Pressable>
-        </Modal>
-      )}
 
       <ZoomableImageModal
         visible={previewModalVisible}
@@ -915,22 +799,6 @@ const styles = StyleSheet.create({
   },
   segmentTextSelected: {
     color: "#fff",
-  },
-  fakeInput: {
-    borderWidth: 1,
-    borderColor: "#CBD5F5",
-    borderRadius: UI.radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: UI.spacing.sm,
-    backgroundColor: "#F8FAFC",
-  },
-  fakeInputValue: {
-    fontSize: 16,
-    color: UI.colors.text,
-  },
-  fakeInputPlaceholder: {
-    fontSize: 16,
-    color: "#64748b",
   },
   input: {
     borderWidth: 1,
@@ -1096,44 +964,5 @@ const styles = StyleSheet.create({
   },
   metaModalActionButton: {
     flex: 1,
-  },
-  inlineDatePicker: {
-    marginTop: UI.spacing.sm,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: UI.radius.md,
-    backgroundColor: "#fff",
-    overflow: "hidden",
-  },
-  inlineDateActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingHorizontal: UI.spacing.sm,
-    paddingBottom: UI.spacing.sm,
-  },
-  inlineDateClose: {
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: 8,
-  },
-  inlineDateCloseText: {
-    color: UI.colors.primary,
-    fontWeight: "700",
-  },
-  dateModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-end",
-  },
-  dateModalSheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: UI.radius.lg,
-    borderTopRightRadius: UI.radius.lg,
-    paddingBottom: UI.spacing.lg,
-  },
-  dateModalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: UI.spacing.md,
   },
 });

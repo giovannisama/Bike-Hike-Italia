@@ -32,6 +32,7 @@ import { mergeUsersPublic, deleteUsersPublic } from "../utils/usersPublicSync";
 import { MedicalCertificateSection } from "./profile/MedicalCertificateSection";
 import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
+import { saveImageToDevice } from "../utils/saveImageToDevice";
 
 const logo = require("../../assets/images/logo.jpg");
 const SELF_DELETED_SENTINEL = "__self_deleted__";
@@ -69,6 +70,7 @@ export default function ProfileScreen() {
   const [cropSource, setCropSource] = useState<LocalCard | null>(null);
   const [removingCard, setRemovingCard] = useState(false);
   const [cardPreviewLoading, setCardPreviewLoading] = useState(false);
+  const [exportingCard, setExportingCard] = useState(false);
   const toastTimer = useRef<NodeJS.Timeout | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
@@ -80,6 +82,25 @@ export default function ProfileScreen() {
     () => getCertificateStatus(medicalCertificateHook.certificate),
     [medicalCertificateHook.certificate]
   );
+  const certificateBadgeText = useMemo(() => {
+    if (certificateStatus.kind === "missing") return "Non caricato";
+    if (certificateStatus.kind === "valid") return "Attivo";
+    if (certificateStatus.kind === "warning") {
+      const days = Math.max(0, certificateStatus.daysRemaining ?? 0);
+      const label = days === 1 ? "1 giorno" : `${days} giorni`;
+      return `In Scadenza:\n${label}`;
+    }
+    if (certificateStatus.kind === "expired") {
+      const days = Math.abs(certificateStatus.daysRemaining ?? 0);
+      const label = days === 1 ? "1 giorno" : `${days} giorni`;
+      return `Scaduto da:\n${label}`;
+    }
+    return "Attivo";
+  }, [certificateStatus]);
+
+  const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
+  const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
+  const membershipActive = !!cardUri;
 
   const showToast = useCallback((message: string, tone: "success" | "error") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -152,6 +173,29 @@ export default function ProfileScreen() {
       Alert.alert("Disattivato", "Accesso rapido disabilitato.");
     }
   };
+
+  const handleExportCard = useCallback(async () => {
+    if (!cardUri && !cardImageLocal?.uri && !cardImageLocal?.base64 && !cardImageRemote) {
+      Alert.alert("Nessuna tessera", "Carica o scansiona una tessera prima di salvarla sul dispositivo.");
+      return;
+    }
+
+    try {
+      setExportingCard(true);
+      await saveImageToDevice({
+        base64: cardImageLocal?.base64 ?? cardImageRemote,
+        uri: cardUri ?? cardImageLocal?.uri ?? null,
+        mimeType: cardImageLocal?.mimeType ?? "image/jpeg",
+        suggestedFileName: "tessera-associato",
+      });
+      showToast("Tessera salvata sul dispositivo.", "success");
+    } catch (err: any) {
+      const message = err?.message ?? "Impossibile salvare la tessera sul dispositivo.";
+      showToast(message, "error");
+    } finally {
+      setExportingCard(false);
+    }
+  }, [cardImageLocal?.base64, cardImageLocal?.mimeType, cardImageLocal?.uri, cardImageRemote, cardUri, showToast]);
 
   const ensureCameraPermission = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -505,9 +549,6 @@ export default function ProfileScreen() {
       ]
     );
   };
-  const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
-  const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
-  const membershipActive = !!cardUri;
   const displayName =
     [lastName, firstName].filter(Boolean).join(lastName && firstName ? ", " : "") ||
     user?.displayName ||
@@ -646,14 +687,28 @@ export default function ProfileScreen() {
                           <Text style={styles.placeholderHint}>Scatta una foto per aggiungerla</Text>
                         </View>
                       )}
-                    </View>
+                  </View>
+                </Pressable>
+                {cardUri && (
+                  <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
+                )}
+                {cardUri && (
+                  <Pressable
+                    onPress={handleExportCard}
+                    style={[styles.secondaryButton, styles.secondaryStandalone, (saving || exportingCard) && { opacity: 0.6 }]}
+                    accessibilityRole="button"
+                    disabled={saving || exportingCard}
+                  >
+                    {exportingCard ? (
+                      <ActivityIndicator size="small" color="#0B3D2E" />
+                    ) : (
+                      <Text style={styles.secondaryButtonText}>Salva sul dispositivo</Text>
+                    )}
                   </Pressable>
-                  {cardUri && (
-                    <Text style={styles.cardHint}>Tocca la foto per visualizzarla a tutto schermo.</Text>
-                  )}
-                  {cardImageLocal && (
-                    <Text style={styles.helperTextSmall}>Nuova tessera pronta: ricordati di premere "Salva".</Text>
-                  )}
+                )}
+                {cardImageLocal && (
+                  <Text style={styles.helperTextSmall}>Nuova tessera pronta: ricordati di premere "Salva".</Text>
+                )}
                   <View style={styles.cardActions}>
                     <Pressable
                       onPress={handleCaptureCard}
@@ -719,15 +774,7 @@ export default function ProfileScreen() {
                     : styles.documentBadgeSuccess,
                 ]}
               >
-                <Text style={styles.documentBadgeText}>
-                  {certificateStatus.kind === "missing"
-                    ? "Non caricato"
-                    : certificateStatus.kind === "expired"
-                    ? "Scaduto"
-                    : certificateStatus.kind === "warning"
-                    ? "In scadenza"
-                    : "Attivo"}
-                </Text>
+                <Text style={styles.documentBadgeText}>{certificateBadgeText}</Text>
               </View>
             </Pressable>
           </View>
@@ -964,8 +1011,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#0B3D2E",
+    alignItems: "center",
   },
-  documentBadgeText: { color: "#fff", fontWeight: "700" },
+  documentBadgeText: { color: "#fff", fontWeight: "700", textAlign: "center" },
   documentBadgeSuccess: { backgroundColor: "#16a34a" },
   documentBadgeWarning: { backgroundColor: "#f59e0b" },
   documentBadgeDanger: { backgroundColor: "#dc2626" },
@@ -982,6 +1030,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
+  },
+  secondaryStandalone: {
+    marginTop: 12,
+    width: "100%",
+    flex: undefined,
+    alignSelf: "stretch",
   },
   secondaryButtonText: { color: "#0B3D2E", fontWeight: "700" },
   removeButton: {

@@ -26,6 +26,7 @@ import { autoCropDocument, compressImageToMaxSize } from "../../utils/imageProce
 import { UI } from "../../components/Screen";
 import { getCertificateStatus } from "../../utils/medicalCertificate";
 import { ZoomableImageModal } from "../../components/ZoomableImageModal";
+import { saveImageToDevice } from "../../utils/saveImageToDevice";
 
 type ToastFn = (message: string, tone: "success" | "error") => void;
 
@@ -140,6 +141,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const [autoCropNote, setAutoCropNote] = useState<string | null>(null);
   const [manualCropCandidate, setManualCropCandidate] = useState<CropCandidate | null>(null);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const normalizedExpiryInput = expiryInput.trim();
   const parsedExpiryDate = useMemo(() => {
@@ -428,6 +430,27 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const previewUri = pendingImage?.uri ?? remotePreviewUri;
   const previewRotation = pendingImage ? 0 : certificate?.rotation ?? 0;
 
+  const handleExportCertificate = async () => {
+    if (!previewUri && !pendingImage?.base64 && !certificate?.imageBase64) {
+      Alert.alert("Nessun certificato", "Carica o seleziona un certificato prima di salvarlo sul dispositivo.");
+      return;
+    }
+    try {
+      setExporting(true);
+      await saveImageToDevice({
+        base64: pendingImage?.base64 ?? certificate?.imageBase64 ?? null,
+        uri: previewUri ?? pendingImage?.uri ?? null,
+        mimeType: pendingImage?.mimeType ?? certificate?.mimeType ?? "image/jpeg",
+        suggestedFileName: "certificato-medico",
+      });
+      showToast("Certificato salvato sul dispositivo.", "success");
+    } catch (err: any) {
+      showToast(err?.message ?? "Impossibile salvare il certificato sul dispositivo.", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading && !certificate && !pendingImage) {
     return (
       <View style={styles.loadingCard}>
@@ -593,6 +616,17 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
               disabled={deleting}
             >
               {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Sostituisci</Text>}
+            </Pressable>
+            <Pressable
+              onPress={handleExportCertificate}
+              style={[styles.secondaryButton, (exporting || deleting) && styles.secondaryButtonDisabled]}
+              disabled={exporting || deleting}
+            >
+              {exporting ? (
+                <ActivityIndicator color={UI.colors.primary} />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Salva sul dispositivo</Text>
+              )}
             </Pressable>
             <Pressable onPress={openMetadataEditor} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonText}>Modifica metadati</Text>
@@ -910,6 +944,9 @@ const styles = StyleSheet.create({
     borderRadius: UI.radius.md,
     paddingVertical: 14,
     alignItems: "center",
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.6,
   },
   secondaryButtonText: {
     color: UI.colors.primary,

@@ -93,22 +93,6 @@ export function CalendarHeaderSection({
           >
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>Oggi</Text>
           </TouchableOpacity>
-          {nextRideTarget ? (
-            <TouchableOpacity
-              onPress={() => onQuickSelect(nextRideTarget.dateString)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 5,
-                borderRadius: 999,
-                backgroundColor: "#111827",
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
-                Prossima ({nextRideTarget.label})
-              </Text>
-            </TouchableOpacity>
-          ) : null}
           {previousRideTarget ? (
             <TouchableOpacity
               onPress={() => onQuickSelect(previousRideTarget.dateString)}
@@ -122,6 +106,22 @@ export function CalendarHeaderSection({
             >
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
                 Precedente ({previousRideTarget.label})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          {nextRideTarget ? (
+            <TouchableOpacity
+              onPress={() => onQuickSelect(nextRideTarget.dateString)}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 5,
+                borderRadius: 999,
+                backgroundColor: "#111827",
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
+                Prossima ({nextRideTarget.label})
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -37,6 +37,7 @@ import DateTimePicker, {
 import { Screen, UI } from "../components/Screen";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
+import { splitGuideInput } from "../utils/guideHelpers";
 
 type FieldErrors = {
   title?: string;
@@ -335,10 +336,17 @@ export default function CreateRideScreen() {
         const d = snap.data() as any;
         if (cancelled) return;
         setTitle(d?.title ?? "");
-        setGuidaText(
+        const storedGuides =
           Array.isArray(d?.guidaNames) && d.guidaNames.length
-            ? d.guidaNames.join(", ")
-            : (d?.guidaName ?? "")
+            ? d.guidaNames
+            : d?.guidaName
+            ? [d.guidaName]
+            : [];
+        setGuidaText(
+          storedGuides
+            .map((name: string) => (name ?? "").toString().trim())
+            .filter(Boolean)
+            .join("; ")
         );
         setMeetingPoint(d?.meetingPoint ?? "");
         setLink(d?.link ?? "");
@@ -516,11 +524,8 @@ export default function CreateRideScreen() {
       }
     }
 
-    // guidaName (singolo) + guidaNames (lista) dai testi separati da virgola
-    const names = guidaText
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // guidaName (singolo) + guidaNames (lista) usando ; come separatore principale (fallback virgola legacy)
+    const names = splitGuideInput(guidaText);
     const guidaName = names.length > 0 ? names[0] : null;
     const guidaNames = names.length > 1 ? names : names.length === 1 ? [names[0]] : null;
 
@@ -678,11 +683,11 @@ export default function CreateRideScreen() {
           <TextInput
             value={guidaText}
             onChangeText={setGuidaText}
-            placeholder="Es. Mario Rossi, Anna Verdi"
+            placeholder="Es. Mario Rossi; Anna Verdi"
             style={styles.input}
           />
           <Text style={styles.helperText}>
-            Puoi inserire più nomi separati da virgola. Il primo sarà mostrato come “guida principale”.
+            Separa i nomi con il punto e virgola (;). Il primo sarà mostrato come “guida principale”.
           </Text>
         </View>
 

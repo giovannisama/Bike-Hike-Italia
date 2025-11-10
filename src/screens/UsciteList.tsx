@@ -31,6 +31,7 @@ import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
 import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
 import { StatusBadge } from "./calendar/StatusBadge";
+import { deriveGuideSummary } from "../utils/guideHelpers";
 
 // ---- Tipi ----
 type Ride = {
@@ -370,11 +371,11 @@ useEffect(() => {
   }, [subscribeFor, unsubscribeFor, canReadRides, fetchCountForRide]);
 
   const renderItem = ({ item }: { item: Ride }) => {
-    const guideText =
-      (item.guidaName && item.guidaName.trim()) ||
-      (item.guidaNames && item.guidaNames.length > 0
-        ? item.guidaNames.join(", ")
-        : "—");
+    const { main: mainGuide } = deriveGuideSummary({
+      guidaName: item.guidaName,
+      guidaNames: item.guidaNames,
+    });
+    const guideText = mainGuide || "—";
 
     const when = (() => {
       const ts = item.dateTime || item.date;

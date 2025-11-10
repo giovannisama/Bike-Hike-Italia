@@ -39,6 +39,7 @@ import { Screen, UI } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "./calendar/StatusBadge";
+import { deriveGuideSummary } from "../utils/guideHelpers";
 
 // Tipi parametri di navigazione (adatta se usi un RootStack diverso)
 type RootStackParamList = {
@@ -76,6 +77,7 @@ type Ride = {
   maxParticipants?: number | null;
   participantsCount?: number;
   guidaName?: string | null;
+  guidaNames?: string[] | null;
   createdBy: string;
   createdAt?: Timestamp | null;
 
@@ -275,6 +277,7 @@ export default function RideDetails() {
           maxParticipants: d?.maxParticipants ?? null,
           participantsCount: updatedCount,
           guidaName: d?.guidaName ?? null,
+          guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
           createdBy: d?.createdBy,
           createdAt: d?.createdAt ?? null,
 
@@ -382,6 +385,16 @@ export default function RideDetails() {
     if (!ride?.bikes || ride.bikes.length === 0) return "—";
     return ride.bikes.join(", ");
   }, [ride]);
+
+  const guideSummary = useMemo(
+    () =>
+      deriveGuideSummary({
+        guidaName: ride?.guidaName,
+        guidaNames: ride?.guidaNames ?? undefined,
+      }),
+    [ride?.guidaName, ride?.guidaNames]
+  );
+  const guideFullText = guideSummary.all.length > 0 ? guideSummary.all.join("; ") : "—";
 
   const manualParticipantsList = useMemo<Participant[]>(() => {
     if (!ride?.manualParticipants || ride.manualParticipants.length === 0) return [];
@@ -1033,7 +1046,7 @@ export default function RideDetails() {
           </View>
         ) : null}
 
-        <Row label="Guida" value={ride.guidaName || "—"} />
+        <Row label="Guida" value={guideFullText} />
         <Row label="Bici" value={bikesText} />
         <Row label="Difficoltà" value={ride.difficulty || "—"} />
         <Row label="Max partecipanti" value={maxText} />

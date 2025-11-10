@@ -791,14 +791,16 @@ export default function ProfileScreen() {
         <View style={styles.securityCard}>
           <View style={styles.securityPanel}>
             <View style={styles.securityRow}>
-              <Text style={styles.label}>Face ID / Touch ID</Text>
-              <Switch
-                value={bioEnabled}
-                onValueChange={onToggleBiometrics}
-                disabled={!bioAvailable}
-                accessibilityRole="switch"
-                accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
-              />
+              <Text style={[styles.label, styles.securityLabel]}>Face ID / Touch ID</Text>
+              <View style={styles.securitySwitchWrapper}>
+                <Switch
+                  value={bioEnabled}
+                  onValueChange={onToggleBiometrics}
+                  disabled={!bioAvailable}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
+                />
+              </View>
             </View>
             <Text style={styles.helperTextSmall}>
               {bioAvailable
@@ -1074,7 +1076,27 @@ const styles = StyleSheet.create({
   securityRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingBottom: 4,
+  },
+  securityLabel: {
+    flex: 1,
+    marginTop: 0,
+    paddingRight: 12,
+  },
+  securitySwitchWrapper: {
+    flexShrink: 0,
+    paddingLeft: 12,
+    paddingRight: 4,
+    paddingTop: 2,
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+    alignSelf: "flex-start",
+    ...Platform.select({
+      ios: { minWidth: 68 },
+      default: { minWidth: 60 },
+    }),
   },
   toastBase: {
     position: "absolute",

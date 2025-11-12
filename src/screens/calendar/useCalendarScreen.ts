@@ -25,6 +25,31 @@ import {
 } from "./helpers";
 import { MarkedDates, Ride } from "./types";
 
+const sanitizeBikeList = (input: unknown): string[] => {
+  if (Array.isArray(input)) {
+    return input
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim());
+  }
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return [];
+};
+
+const rideMatchesSearch = (ride: Ride, normalizedQuery: string) => {
+  if (!normalizedQuery) return true;
+  const bikesText =
+    Array.isArray(ride.bikes) && ride.bikes.length > 0 ? ride.bikes.join(" ") : "";
+  const haystack = [
+    normalizeForSearch(ride.title),
+    normalizeForSearch(ride.meetingPoint),
+    normalizeForSearch(bikesText),
+  ];
+  return haystack.some((chunk) => chunk.includes(normalizedQuery));
+};
+
 export type SearchModalState = {
   ymLocal: string;
   fromLocal: string;
@@ -166,9 +191,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       const value = rideDateValue(r);
       if (fromValue != null && (value == null || value < fromValue)) return false;
       if (toValue != null && (value == null || value > toValue)) return false;
-      const title = normalizeForSearch(r.title);
-      const place = normalizeForSearch(r.meetingPoint);
-      return title.includes(q) || place.includes(q);
+      return rideMatchesSearch(r, q);
     });
     matches.sort((a, b) => {
       const tb = (b.dateTime || b.date)?.toDate?.()?.getTime() ?? 0;
@@ -197,6 +220,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
             id: docSnap.id,
             title: d?.title ?? "",
             meetingPoint: d?.meetingPoint ?? "",
+            bikes: sanitizeBikeList(d?.bikes),
             date: d?.date ?? null,
             dateTime: d?.dateTime ?? null,
             status: (d?.status as Ride["status"]) ?? "active",
@@ -277,6 +301,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
           id: doc.id,
           title: d?.title ?? "",
           meetingPoint: d?.meetingPoint ?? "",
+          bikes: sanitizeBikeList(d?.bikes),
           date: d?.date ?? null,
           dateTime: d?.dateTime ?? null,
           status: (d?.status as Ride["status"]) ?? "active",
@@ -317,11 +342,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       if (from && key < from) return false;
       if (to && key > to) return false;
 
-      if (qText) {
-        const t = normalizeForSearch(r.title);
-        const p = normalizeForSearch(r.meetingPoint);
-        if (!t.includes(qText) && !p.includes(qText)) return false;
-      }
+      if (qText && !rideMatchesSearch(r, qText)) return false;
       return true;
     });
 
@@ -363,9 +384,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
     const q = normalizeForSearch(searchText.trim());
     if (q) {
-      base = base.filter(
-        (r) => normalizeForSearch(r.title).includes(q) || normalizeForSearch(r.meetingPoint).includes(q)
-      );
+      base = base.filter((r) => rideMatchesSearch(r, q));
     }
 
     const fromValue = inputDateValue(dateFromInput);
@@ -402,9 +421,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
     const q = normalizeForSearch(searchText.trim());
     if (q) {
-      base = base.filter(
-        (r) => normalizeForSearch(r.title).includes(q) || normalizeForSearch(r.meetingPoint).includes(q)
-      );
+      base = base.filter((r) => rideMatchesSearch(r, q));
     }
 
     base.sort((a, b) => {

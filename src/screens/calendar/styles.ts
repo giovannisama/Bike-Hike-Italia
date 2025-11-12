@@ -21,6 +21,7 @@ export const calendarStyles = StyleSheet.create({
   },
   rideTitle: { fontWeight: "700", color: "#111" },
   ridePlace: { color: "#374151", marginTop: 2 },
+  rideBike: { color: "#047857", marginTop: 2, fontWeight: "600" },
   rideDate: { color: "#6B7280", fontSize: 12, marginBottom: 4 },
   centerRow: { padding: 12, alignItems: "center", justifyContent: "center" },
   searchTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },

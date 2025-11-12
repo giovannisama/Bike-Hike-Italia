@@ -93,7 +93,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
               </View>
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={calendarStyles.inputLabel}>Cerca (titolo/luogo)</Text>
+              <Text style={calendarStyles.inputLabel}>Cerca (titolo/luogo/bici)</Text>
               <TextInput
                 value={state.textLocal}
                 onChangeText={state.setTextLocal}

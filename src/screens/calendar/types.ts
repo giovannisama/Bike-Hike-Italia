@@ -4,6 +4,7 @@ export type Ride = {
   id: string;
   title: string;
   meetingPoint: string;
+  bikes?: string[];
   date?: Timestamp | null;
   dateTime?: Timestamp | null;
   status?: "active" | "cancelled";

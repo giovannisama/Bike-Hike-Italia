@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import DateTimePicker, { DateTimePickerAndroid, DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { format, isValid, parseISO } from "date-fns";
@@ -142,12 +143,15 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const [manualCropCandidate, setManualCropCandidate] = useState<CropCandidate | null>(null);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [iosPickerVisible, setIosPickerVisible] = useState(false);
+  const [iosPickerDate, setIosPickerDate] = useState<Date>(new Date());
 
   const normalizedExpiryInput = expiryInput.trim();
   const parsedExpiryDate = useMemo(() => {
-    if (!normalizedExpiryInput || !DATE_INPUT_REGEX.test(normalizedExpiryInput)) {
+    if (!normalizedExpiryInput) {
       return null;
     }
+    if (!DATE_INPUT_REGEX.test(normalizedExpiryInput)) return null;
     const parsed = parseISO(normalizedExpiryInput);
     return isValid(parsed) ? parsed : null;
   }, [normalizedExpiryInput]);
@@ -283,13 +287,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   };
 
   const typeError = !typeValue ? "Seleziona il tipo di certificato" : null;
-  const expiryError = !normalizedExpiryInput
-    ? "Indica la data di scadenza (YYYY-MM-DD)"
-    : !DATE_INPUT_REGEX.test(normalizedExpiryInput)
-    ? "Formato non valido. Usa YYYY-MM-DD"
-    : !parsedExpiryDate
-    ? "Data non valida"
-    : null;
+  const expiryError = !parsedExpiryDate ? "Seleziona la data di scadenza" : null;
   const alertValue = parseInt(alertDaysInput, 10);
   const alertError = Number.isNaN(alertValue) || alertValue <= 0 ? "Inserisci un numero positivo" : null;
 
@@ -408,6 +406,34 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
     }
   };
 
+  const setExpiryFromDate = (date: Date) => {
+    setExpiryInput(formatInputDate(date));
+  };
+
+  const openExpiryPicker = () => {
+    const initialDate = parsedExpiryDate ?? new Date();
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        mode: "date",
+        value: initialDate,
+        display: "calendar",
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type !== "set" || !selectedDate) return;
+          setExpiryFromDate(selectedDate);
+        },
+      });
+      return;
+    }
+    setIosPickerDate(initialDate);
+    setIosPickerVisible(true);
+  };
+
+  const closeIosPicker = () => setIosPickerVisible(false);
+  const confirmIosPicker = () => {
+    setExpiryFromDate(iosPickerDate);
+    setIosPickerVisible(false);
+  };
+
   const statusInfo = useMemo(() => {
     const status = getCertificateStatus(certificate);
     const tone: "success" | "warning" | "danger" =
@@ -450,6 +476,8 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
       setExporting(false);
     }
   };
+
+  const expiryDisplayValue = parsedExpiryDate ? formatDate(parsedExpiryDate) : "Seleziona una data";
 
   if (loading && !certificate && !pendingImage) {
     return (
@@ -494,16 +522,16 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Data di scadenza</Text>
-            <TextInput
-              value={expiryInput}
-              onChangeText={setExpiryInput}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
-              style={[styles.input, expiryError && styles.inputError]}
-            />
-            <Text style={styles.helperText}>Formato richiesto: YYYY-MM-DD</Text>
+            <Pressable
+              onPress={openExpiryPicker}
+              accessibilityRole="button"
+              style={[styles.input, styles.dateInputButton, expiryError && styles.inputError]}
+            >
+              <Text style={parsedExpiryDate ? styles.dateInputValue : styles.dateInputPlaceholder}>
+                {expiryDisplayValue}
+              </Text>
+            </Pressable>
+            <Text style={styles.helperText}>Seleziona la data dal calendario</Text>
             {!!expiryError && <Text style={styles.errorText}>{expiryError}</Text>}
           </View>
 
@@ -642,97 +670,125 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
         </View>
       )}
 
-      <Modal visible={editingMetadata} transparent animationType="fade" onRequestClose={closeMetadataEditor}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.metaModalOverlay}
-        >
-          <TouchableWithoutFeedback onPress={closeMetadataEditor}>
-            <View style={styles.metaModalBackdrop} />
-          </TouchableWithoutFeedback>
-          <View style={styles.metaModalSheetContainer}>
-            <View style={styles.metaModalSheet}>
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.metaModalContent}
-              >
-                <Text style={styles.modalTitle}>Modifica metadati</Text>
+      {editingMetadata ? (
+        <View style={styles.metaModalRoot}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.metaModalOverlay}
+          >
+            <TouchableWithoutFeedback onPress={closeMetadataEditor}>
+              <View style={styles.metaModalBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={styles.metaModalSheetContainer}>
+              <View style={styles.metaModalSheet}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.metaModalContent}
+                >
+                  <Text style={styles.modalTitle}>Modifica metadati</Text>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Tipo certificato</Text>
-                  <View style={styles.segmented}>
-                    {CERT_TYPES.map((entry) => {
-                      const selected = typeValue === entry.value;
-                      return (
-                        <Pressable
-                          key={entry.value}
-                          onPress={() => onSelectType(entry.value)}
-                          style={[
-                            styles.segmentButton,
-                            selected && styles.segmentButtonSelected,
-                          ]}
-                        >
-                          <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                            {entry.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Tipo certificato</Text>
+                    <View style={styles.segmented}>
+                      {CERT_TYPES.map((entry) => {
+                        const selected = typeValue === entry.value;
+                        return (
+                          <Pressable
+                            key={entry.value}
+                            onPress={() => onSelectType(entry.value)}
+                            style={[
+                              styles.segmentButton,
+                              selected && styles.segmentButtonSelected,
+                            ]}
+                          >
+                            <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                              {entry.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {!!typeError && <Text style={styles.errorText}>{typeError}</Text>}
                   </View>
-                  {!!typeError && <Text style={styles.errorText}>{typeError}</Text>}
-                </View>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Data di scadenza</Text>
-                  <TextInput
-                    value={expiryInput}
-                    onChangeText={setExpiryInput}
-                    placeholder="YYYY-MM-DD"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
-                    style={[styles.input, expiryError && styles.inputError]}
-                  />
-                  <Text style={styles.helperText}>Formato richiesto: YYYY-MM-DD</Text>
-                  {!!expiryError && <Text style={styles.errorText}>{expiryError}</Text>}
-                </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Data di scadenza</Text>
+                    <Pressable
+                      onPress={openExpiryPicker}
+                      accessibilityRole="button"
+                      style={[styles.input, styles.dateInputButton, expiryError && styles.inputError]}
+                    >
+                      <Text style={parsedExpiryDate ? styles.dateInputValue : styles.dateInputPlaceholder}>
+                        {expiryDisplayValue}
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.helperText}>Seleziona la data dal calendario</Text>
+                    {!!expiryError && <Text style={styles.errorText}>{expiryError}</Text>}
+                  </View>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Giorni di preavviso</Text>
-                  <TextInput
-                    value={alertDaysInput}
-                    onChangeText={setAlertDaysInput}
-                    keyboardType="number-pad"
-                    style={[styles.input, alertError && styles.inputError]}
-                    placeholder={String(DEFAULT_ALERT_DAYS)}
-                  />
-                  {!!alertError && <Text style={styles.errorText}>{alertError}</Text>}
-                </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Giorni di preavviso</Text>
+                    <TextInput
+                      value={alertDaysInput}
+                      onChangeText={setAlertDaysInput}
+                      keyboardType="number-pad"
+                      style={[styles.input, alertError && styles.inputError]}
+                      placeholder={String(DEFAULT_ALERT_DAYS)}
+                    />
+                    {!!alertError && <Text style={styles.errorText}>{alertError}</Text>}
+                  </View>
 
-                <View style={styles.metaModalActions}>
-                  <Pressable
-                    onPress={closeMetadataEditor}
-                    style={[styles.secondaryButton, styles.metaModalActionButton]}
-                  >
-                    <Text style={styles.secondaryButtonText}>Annulla</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={submitMetadataChanges}
-                    style={[
-                      styles.primaryButton,
-                      styles.metaModalActionButton,
-                      (modifyingMeta || alertError || expiryError) && styles.primaryButtonDisabled,
-                    ]}
-                    disabled={modifyingMeta || !!alertError || !!expiryError}
-                  >
-                    {modifyingMeta ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Salva</Text>}
-                  </Pressable>
-                </View>
-              </ScrollView>
+                  <View style={styles.metaModalActions}>
+                    <Pressable
+                      onPress={closeMetadataEditor}
+                      style={[styles.secondaryButton, styles.metaModalActionButton]}
+                    >
+                      <Text style={styles.secondaryButtonText}>Annulla</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={submitMetadataChanges}
+                      style={[
+                        styles.primaryButton,
+                        styles.metaModalActionButton,
+                        (modifyingMeta || alertError || expiryError) && styles.primaryButtonDisabled,
+                      ]}
+                      disabled={modifyingMeta || !!alertError || !!expiryError}
+                    >
+                      {modifyingMeta ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Salva</Text>}
+                    </Pressable>
+                  </View>
+                </ScrollView>
+              </View>
             </View>
+          </KeyboardAvoidingView>
+        </View>
+      ) : null}
+      {Platform.OS === "ios" && (
+        <Modal visible={iosPickerVisible} transparent animationType="fade" onRequestClose={closeIosPicker}>
+          <TouchableWithoutFeedback onPress={closeIosPicker}>
+            <View style={styles.iosPickerBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.iosPickerSheet}>
+            <View style={styles.iosPickerActions}>
+              <Pressable onPress={closeIosPicker} style={styles.iosPickerButton}>
+                <Text style={styles.iosPickerButtonText}>Annulla</Text>
+              </Pressable>
+              <Pressable onPress={confirmIosPicker} style={styles.iosPickerButton}>
+                <Text style={[styles.iosPickerButtonText, styles.iosPickerButtonPrimary]}>Seleziona</Text>
+              </Pressable>
+            </View>
+            <DateTimePicker
+              value={iosPickerDate}
+              mode="date"
+              display="spinner"
+              onChange={(_event, date) => {
+                if (date) setIosPickerDate(date);
+              }}
+              locale="it-IT"
+            />
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
+      )}
 
       <CardCropperModal
         visible={!!cropSource}
@@ -841,6 +897,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: UI.spacing.sm,
     backgroundColor: "#F8FAFC",
+  },
+  dateInputButton: {
+    justifyContent: "center",
+  },
+  dateInputValue: {
+    color: UI.colors.text,
+    fontWeight: "600",
+  },
+  dateInputPlaceholder: {
+    color: UI.colors.muted,
   },
   inputError: {
     borderColor: "#f87171",
@@ -966,7 +1032,13 @@ const styles = StyleSheet.create({
     color: "#DC2626",
     fontWeight: "700",
   },
+  metaModalRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 20,
+  },
   metaModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.55)",
     justifyContent: "center",
@@ -976,8 +1048,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   metaModalSheetContainer: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: UI.spacing.md,
   },
   metaModalSheet: {
     width: "100%",
@@ -1001,5 +1075,38 @@ const styles = StyleSheet.create({
   },
   metaModalActionButton: {
     flex: 1,
+  },
+  iosPickerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  iosPickerSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: UI.radius.xl,
+    borderTopRightRadius: UI.radius.xl,
+    paddingBottom: UI.spacing.lg + UI.spacing.sm,
+    paddingHorizontal: UI.spacing.lg,
+    paddingTop: UI.spacing.md,
+  },
+  iosPickerActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: UI.spacing.sm,
+  },
+  iosPickerButton: {
+    paddingVertical: UI.spacing.xs,
+    paddingHorizontal: UI.spacing.sm,
+  },
+  iosPickerButtonText: {
+    fontSize: 16,
+    color: UI.colors.text,
+  },
+  iosPickerButtonPrimary: {
+    color: UI.colors.primary,
+    fontWeight: "700",
   },
 });

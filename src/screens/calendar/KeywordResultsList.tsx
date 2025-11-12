@@ -65,6 +65,10 @@ export function KeywordResultsList({
         const dateLabel = dateObj
           ? format(dateObj, "EEEE d MMMM yyyy 'alle' HH:mm", { locale: it })
           : "Data da definire";
+        const bikesLabel =
+          Array.isArray(item.bikes) && item.bikes.length > 0
+            ? item.bikes.join(", ")
+            : "Tipo bici non specificato";
 
         return (
           <TouchableOpacity style={[calendarStyles.rideCard, { marginHorizontal: 12 }]} onPress={() => onSelect(item)}>
@@ -82,8 +86,8 @@ export function KeywordResultsList({
               >
                 {item.title || "Uscita"}
               </Text>
-              <Text style={calendarStyles.ridePlace} numberOfLines={1}>
-                {item.meetingPoint || "—"}
+              <Text style={calendarStyles.rideBike} numberOfLines={1}>
+                {bikesLabel}
               </Text>
             </View>
             {isArchived ? (

@@ -8,6 +8,8 @@ import {
   ViewStyle,
   Pressable,
 } from "react-native";
+import { format } from "date-fns";
+import { it } from "date-fns/locale";
 import { calendarStyles } from "./styles";
 import { Ride } from "./types";
 import { StatusBadge } from "./StatusBadge";
@@ -41,9 +43,18 @@ export function RideList({
       renderItem={({ item }) => {
         const isCancelled = item.status === "cancelled";
         const isArchived = !!item.archived;
+        const dateObj = item.dateTime?.toDate?.() ?? item.date?.toDate?.() ?? null;
+        const dateLabel = dateObj ? format(dateObj, "EEEE d MMMM yyyy", { locale: it }) : "Data da definire";
+        const bikesLabel =
+          Array.isArray(item.bikes) && item.bikes.length > 0
+            ? item.bikes.join(", ")
+            : "Tipo bici non specificato";
         return (
           <TouchableOpacity style={[calendarStyles.rideCard, { marginHorizontal: 12 }]} onPress={() => onSelect(item)}>
             <View style={{ flex: 1 }}>
+              <Text style={calendarStyles.rideDate} numberOfLines={1}>
+                {dateLabel}
+              </Text>
               <Text
                 style={[
                   calendarStyles.rideTitle,
@@ -54,8 +65,8 @@ export function RideList({
               >
                 {item.title || "Uscita"}
               </Text>
-              <Text style={calendarStyles.ridePlace} numberOfLines={1}>
-                {item.meetingPoint || "—"}
+              <Text style={calendarStyles.rideBike} numberOfLines={1}>
+                {bikesLabel}
               </Text>
             </View>
             {isArchived ? (

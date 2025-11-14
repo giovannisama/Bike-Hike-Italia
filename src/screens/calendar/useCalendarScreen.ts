@@ -154,10 +154,41 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return height < 760;
   });
 
-  const [ymLocal, setYmLocal] = useState<string>("");
-  const [fromLocal, setFromLocal] = useState<string>("");
-  const [toLocal, setToLocal] = useState<string>("");
+  const [ymLocal, setYmLocalRaw] = useState<string>("");
+  const [fromLocal, setFromLocalRaw] = useState<string>("");
+  const [toLocal, setToLocalRaw] = useState<string>("");
   const [textLocal, setTextLocal] = useState<string>("");
+
+  const setYmLocal = useCallback(
+    (value: string) => {
+      setYmLocalRaw(value);
+      if (value.trim()) {
+        setFromLocalRaw("");
+        setToLocalRaw("");
+      }
+    },
+    [setFromLocalRaw, setToLocalRaw]
+  );
+
+  const setFromLocal = useCallback(
+    (value: string) => {
+      setFromLocalRaw(value);
+      if (value.trim()) {
+        setYmLocalRaw("");
+      }
+    },
+    [setYmLocalRaw]
+  );
+
+  const setToLocal = useCallback(
+    (value: string) => {
+      setToLocalRaw(value);
+      if (value.trim()) {
+        setYmLocalRaw("");
+      }
+    },
+    [setYmLocalRaw]
+  );
 
   useEffect(() => {
     if (isSearchOpen) {
@@ -490,26 +521,41 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   );
 
   const applySearchAndClose = useCallback(() => {
-    const ym = ymLocal.trim();
-    const from = fromLocal.trim();
-    const to = toLocal.trim();
+    const trimmedYm = ymLocal.trim();
+    const trimmedFrom = fromLocal.trim();
+    const trimmedTo = toLocal.trim();
     const txt = textLocal.trim();
 
-    const hasDateFilters =
-      /^\d{4}-(0[1-9]|1[0-2])$/.test(ym) ||
-      /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(from) ||
-      /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(to);
+    let finalYm = trimmedYm;
+    let finalFrom = trimmedFrom;
+    let finalTo = trimmedTo;
 
-    setYearMonthInput(ym);
-    setDateFromInput(from);
-    setDateToInput(to);
+    let finalHasYearMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(finalYm);
+    const hasFromValue = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalFrom);
+    const hasToValue = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalTo);
+
+    if (finalHasYearMonth) {
+      finalFrom = "";
+      finalTo = "";
+    } else if (hasFromValue || hasToValue) {
+      finalYm = "";
+      finalHasYearMonth = false;
+    }
+
+    const finalHasFrom = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalFrom);
+    const finalHasTo = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalTo);
+    const hasDateFilters = finalHasYearMonth || finalHasFrom || finalHasTo;
+
+    setYearMonthInput(finalYm);
+    setDateFromInput(finalFrom);
+    setDateToInput(finalTo);
     setSearchText(txt);
 
-    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) {
-      setVisibleMonth(`${ym}-01`);
+    if (finalHasYearMonth) {
+      setVisibleMonth(`${finalYm}-01`);
       if (monthChangeTimer.current) clearTimeout(monthChangeTimer.current);
-      monthChangeTimer.current = setTimeout(() => setCurrentMonth(ym), 120);
-      setSelectedDay(`${ym}-01`);
+      monthChangeTimer.current = setTimeout(() => setCurrentMonth(finalYm), 120);
+      setSelectedDay(`${finalYm}-01`);
     }
 
     if (hasDateFilters) {

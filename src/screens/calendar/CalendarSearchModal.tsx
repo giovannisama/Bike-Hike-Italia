@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -7,12 +8,18 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
-  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { calendarStyles } from "./styles";
 import { SearchModalState } from "./useCalendarScreen";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
+import { pad2 } from "./helpers";
+import { Picker } from "@react-native-picker/picker";
 
 type CalendarSearchModalProps = {
   visible: boolean;
@@ -21,6 +28,142 @@ type CalendarSearchModalProps = {
 };
 
 export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchModalProps) {
+  const [iosPickerField, setIosPickerField] = useState<"from" | "to" | null>(null);
+  const [iosPickerDate, setIosPickerDate] = useState<Date>(new Date());
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+
+  const hasYearMonthFilter = state.ymLocal.trim().length > 0;
+  const hasDateRangeFilter =
+    state.fromLocal.trim().length > 0 || state.toLocal.trim().length > 0;
+
+  const monthNames = useMemo(
+    () => [
+      "Gennaio",
+      "Febbraio",
+      "Marzo",
+      "Aprile",
+      "Maggio",
+      "Giugno",
+      "Luglio",
+      "Agosto",
+      "Settembre",
+      "Ottobre",
+      "Novembre",
+      "Dicembre",
+    ],
+    []
+  );
+  const yearOptions = useMemo(() => {
+    const start = 2020;
+    const end = new Date().getFullYear() + 2;
+    const years: number[] = [];
+    for (let year = start; year <= end; year += 1) {
+      years.push(year);
+    }
+    return years;
+  }, []);
+
+  const formatIsoDate = (date: Date) =>
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+  const parseIsoDate = (value: string) => {
+    if (!value) return null;
+    const parts = value.split("-");
+    if (parts.length !== 3) return null;
+    const [year, month, day] = parts.map((segment) => Number(segment));
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day) ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31
+    ) {
+      return null;
+    }
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const applyDateValue = (field: "from" | "to", date: Date) => {
+    const formatted = formatIsoDate(date);
+    const fromDate = parseIsoDate(state.fromLocal);
+    const toDate = parseIsoDate(state.toLocal);
+    if (field === "from") {
+      state.setFromLocal(formatted);
+      // ensure the 'to' date never drops before the new start
+      if (toDate && toDate < date) {
+        state.setToLocal(formatted);
+      }
+      return;
+    }
+    if (fromDate && date < fromDate) {
+      // clamp the 'to' date to the current from when the selection is too early
+      state.setToLocal(formatIsoDate(fromDate));
+      return;
+    }
+    state.setToLocal(formatted);
+  };
+
+  const openPicker = (field: "from" | "to") => {
+    if (hasYearMonthFilter) return;
+    const currentValue = field === "from" ? state.fromLocal : state.toLocal;
+    const baseDate = parseIsoDate(currentValue) ?? new Date();
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: baseDate,
+        mode: "date",
+        is24Hour: true,
+        onChange: (_event, selectedDate) => {
+          if (!_event || _event.type !== "set" || !selectedDate) return;
+          applyDateValue(field, selectedDate);
+        },
+      });
+      return;
+    }
+    setIosPickerDate(baseDate);
+    setIosPickerField(field);
+  };
+
+  const confirmIosPicker = () => {
+    if (!iosPickerField) return;
+    applyDateValue(iosPickerField, iosPickerDate);
+    setIosPickerField(null);
+  };
+
+  const parseYearMonth = (value: string) => {
+    if (!value) return null;
+    const parts = value.split("-");
+    if (parts.length !== 2) return null;
+    const [year, month] = parts.map((segment) => Number(segment));
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      month < 1 ||
+      month > 12 ||
+      year < 1900
+    ) {
+      return null;
+    }
+    return { year, month };
+  };
+
+  const openYearMonthPicker = () => {
+    if (hasDateRangeFilter) return;
+    const parsed = parseYearMonth(state.ymLocal);
+    setSelectedYear(parsed?.year ?? new Date().getFullYear());
+    setSelectedMonth(parsed?.month ?? new Date().getMonth() + 1);
+    setMonthPickerVisible(true);
+  };
+
+  const confirmYearMonth = () => {
+    state.setYmLocal(`${selectedYear}-${pad2(selectedMonth)}`);
+    setMonthPickerVisible(false);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -52,44 +195,66 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
           <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ padding: 16 }}>
             <View style={{ marginBottom: 12 }}>
               <Text style={calendarStyles.inputLabel}>Anno-Mese</Text>
-              <TextInput
-                value={state.ymLocal}
-                onChangeText={state.setYmLocal}
-                placeholder="YYYY-MM"
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="numbers-and-punctuation"
-                style={calendarStyles.textInput}
-                returnKeyType="go"
-                onSubmitEditing={state.apply}
-              />
+              <Pressable
+                onPress={openYearMonthPicker}
+                disabled={hasDateRangeFilter}
+                style={({ pressed }) => [
+                  calendarStyles.textInput,
+                  {
+                    justifyContent: "center",
+                    opacity: hasDateRangeFilter ? 0.55 : pressed ? 0.7 : 1,
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Apri selezione anno e mese"
+                accessibilityState={{ disabled: hasDateRangeFilter }}
+              >
+                <Text style={{ color: state.ymLocal ? "#111827" : "#9CA3AF" }}>
+                  {state.ymLocal || "YYYY-MM"}
+                </Text>
+              </Pressable>
             </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={calendarStyles.inputLabel}>Intervallo date</Text>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <TextInput
-                  value={state.fromLocal}
-                  onChangeText={state.setFromLocal}
-                  placeholder="Da YYYY-MM-DD"
-                  placeholderTextColor="#9CA3AF"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="numbers-and-punctuation"
-                  style={[calendarStyles.textInput, { flex: 1 }]}
-                  returnKeyType="next"
-                />
-                <TextInput
-                  value={state.toLocal}
-                  onChangeText={state.setToLocal}
-                  placeholder="A YYYY-MM-DD"
-                  placeholderTextColor="#9CA3AF"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="numbers-and-punctuation"
-                  style={[calendarStyles.textInput, { flex: 1 }]}
-                  returnKeyType="done"
-                />
+                <Pressable
+                  onPress={() => openPicker("from")}
+                  disabled={hasYearMonthFilter}
+                  style={({ pressed }) => [
+                    calendarStyles.textInput,
+                    {
+                      flex: 1,
+                      justifyContent: "center",
+                      opacity: hasYearMonthFilter ? 0.55 : pressed ? 0.7 : 1,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apri selezione data Da"
+                  accessibilityState={{ disabled: hasYearMonthFilter }}
+                >
+                  <Text style={{ color: state.fromLocal ? "#111827" : "#9CA3AF" }}>
+                    {state.fromLocal || "Da YYYY-MM-DD"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => openPicker("to")}
+                  disabled={hasYearMonthFilter}
+                  style={({ pressed }) => [
+                    calendarStyles.textInput,
+                    {
+                      flex: 1,
+                      justifyContent: "center",
+                      opacity: hasYearMonthFilter ? 0.55 : pressed ? 0.7 : 1,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apri selezione data A"
+                  accessibilityState={{ disabled: hasYearMonthFilter }}
+                >
+                  <Text style={{ color: state.toLocal ? "#111827" : "#9CA3AF" }}>
+                    {state.toLocal || "A YYYY-MM-DD"}
+                  </Text>
+                </Pressable>
               </View>
             </View>
             <View style={{ marginBottom: 12 }}>
@@ -118,6 +283,133 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+      {Platform.OS === "ios" && iosPickerField && (
+        <Modal
+          transparent
+          visible={true}
+          animationType="slide"
+          onRequestClose={() => setIosPickerField(null)}
+        >
+          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+            <TouchableWithoutFeedback onPress={() => setIosPickerField(null)}>
+              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
+            </TouchableWithoutFeedback>
+            <View
+              style={{
+                backgroundColor: "#fff",
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                paddingBottom: 16,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 16,
+                }}
+              >
+                <Pressable onPress={() => setIosPickerField(null)}>
+                  <Text style={{ color: "#111827", fontWeight: "600" }}>Annulla</Text>
+                </Pressable>
+                <Pressable onPress={confirmIosPicker}>
+                  <Text style={{ color: "#0B3D2E", fontWeight: "700" }}>Fatto</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={iosPickerDate}
+                mode="date"
+                display="spinner"
+                onChange={(_: DateTimePickerEvent, selected) => {
+                  if (selected) setIosPickerDate(selected);
+                }}
+                locale="it-IT"
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+      {monthPickerVisible && (
+        <Modal
+          transparent
+          visible={true}
+          animationType="slide"
+          onRequestClose={() => setMonthPickerVisible(false)}
+        >
+          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+            <TouchableWithoutFeedback onPress={() => setMonthPickerVisible(false)}>
+              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
+            </TouchableWithoutFeedback>
+            <View
+              style={{
+                backgroundColor: "#fff",
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                paddingBottom: 16,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 16,
+                }}
+              >
+                <Pressable onPress={() => setMonthPickerVisible(false)}>
+                  <Text style={{ color: "#111827", fontWeight: "600" }}>Annulla</Text>
+                </Pressable>
+                <Pressable onPress={confirmYearMonth}>
+                  <Text style={{ color: "#0B3D2E", fontWeight: "700" }}>Fatto</Text>
+                </Pressable>
+              </View>
+              <View style={{ flexDirection: "row" }}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: "#6B7280",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Mese
+                  </Text>
+                  <Picker
+                    selectedValue={selectedMonth}
+                    onValueChange={(value) => setSelectedMonth(value)}
+                  >
+                    {monthNames.map((label, index) => (
+                      <Picker.Item key={label} label={label} value={index + 1} />
+                    ))}
+                  </Picker>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      fontSize: 12,
+                      color: "#6B7280",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Anno
+                  </Text>
+                  <Picker
+                    selectedValue={selectedYear}
+                    onValueChange={(value) => setSelectedYear(value)}
+                  >
+                    {yearOptions.map((year) => (
+                      <Picker.Item key={year} label={String(year)} value={year} />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </Modal>
   );
 }

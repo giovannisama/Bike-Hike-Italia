@@ -837,26 +837,40 @@ export default function CreateRideScreen() {
           <View style={{ gap: UI.spacing.sm, marginTop: UI.spacing.xs }}>
             {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }) => {
               const state = extraServices[key];
+              const isToggleLocked = servicesLocked && !initialEnabledServices[key];
               return (
                 <View
                   key={key}
                   style={[
                     styles.serviceToggleBlock,
-                    servicesLocked && !initialEnabledServices[key] && styles.serviceToggleDisabled,
+                    isToggleLocked && styles.serviceToggleDisabled,
                   ]}
                 >
                   <View style={styles.serviceToggleRow}>
-                    <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
+                    <Pressable
+                      style={{ flex: 1, paddingRight: UI.spacing.sm }}
+                      onPress={() => toggleExtraService(key, !state.enabled)}
+                      disabled={isToggleLocked}
+                      accessibilityRole="switch"
+                      accessibilityState={{
+                        disabled: isToggleLocked,
+                        checked: state.enabled,
+                      }}
+                    >
                       <Text style={styles.serviceToggleLabel}>{label}</Text>
                       <Text style={styles.serviceToggleHelper}>{helper}</Text>
+                    </Pressable>
+                    <View style={styles.serviceSwitchWrapper}>
+                      <Switch
+                        value={state.enabled}
+                        onValueChange={(value) => toggleExtraService(key, value)}
+                        disabled={isToggleLocked}
+                        trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
+                        thumbColor={
+                          Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined
+                        }
+                      />
                     </View>
-                    <Switch
-                      value={state.enabled}
-                      onValueChange={(value) => toggleExtraService(key, value)}
-                      disabled={servicesLocked && !initialEnabledServices[key]}
-                      trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
-                      thumbColor={Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined}
-                    />
                   </View>
                   {state.enabled && (
                     <TextInput
@@ -1062,9 +1076,22 @@ const styles = StyleSheet.create({
   },
   serviceToggleRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: UI.spacing.sm,
+  },
+  serviceSwitchWrapper: {
+    flexShrink: 0,
+    paddingLeft: UI.spacing.sm,
+    paddingRight: UI.spacing.xs,
+    paddingTop: 2,
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+    alignSelf: "flex-start",
+    ...Platform.select({
+      ios: { minWidth: 68 },
+      default: { minWidth: 60 },
+    }),
   },
   serviceToggleLabel: {
     fontWeight: "700",

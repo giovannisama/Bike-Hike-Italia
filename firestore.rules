@@ -55,6 +55,70 @@ service cloud.firestore {
         || roleMatches(target, '(?i)^owner$');
     }
 
+    function medicalAllowedKeys() {
+      return [
+        "type",
+        "expiresAt",
+        "alertDays",
+        "imageBase64",
+        "mimeType",
+        "size",
+        "width",
+        "height",
+        "rotation",
+        "snoozedUntil",
+        "updatedAt",
+        "uploadedAt"
+      ];
+    }
+
+    function validMedicalPayload(data, requireAllFields) {
+      let allowed = medicalAllowedKeys();
+      if (!data.keys().hasOnly(allowed)) {
+        return false;
+      }
+      if (requireAllFields && !data.keys().hasAll(["type","expiresAt","alertDays","imageBase64","mimeType","updatedAt","uploadedAt"])) {
+        return false;
+      }
+      if (data.keys().hasAny(["type"]) && !(data.type == "semplice" || data.type == "agonistico")) {
+        return false;
+      }
+      if (data.keys().hasAny(["expiresAt"]) && !(data.expiresAt is timestamp)) {
+        return false;
+      }
+      if (data.keys().hasAny(["alertDays"]) && !(data.alertDays is int)) {
+        return false;
+      }
+      if (data.keys().hasAny(["imageBase64"]) && !(data.imageBase64 is string && data.imageBase64.size() > 0 && data.imageBase64.size() <= 1500000)) {
+        return false;
+      }
+      if (data.keys().hasAny(["mimeType"]) && !(data.mimeType == "image/jpeg" || data.mimeType == "image/png")) {
+        return false;
+      }
+      if (data.keys().hasAny(["size"]) && !(data.size is int && data.size >= 0)) {
+        return false;
+      }
+      if (data.keys().hasAny(["width"]) && !(data.width == null || (data.width is int && data.width >= 0))) {
+        return false;
+      }
+      if (data.keys().hasAny(["height"]) && !(data.height == null || (data.height is int && data.height >= 0))) {
+        return false;
+      }
+      if (data.keys().hasAny(["rotation"]) && !(data.rotation is int && data.rotation >= 0 && data.rotation < 360)) {
+        return false;
+      }
+      if (data.keys().hasAny(["snoozedUntil"]) && !(data.snoozedUntil == null || data.snoozedUntil is timestamp)) {
+        return false;
+      }
+      if (data.keys().hasAny(["updatedAt"]) && !(data.updatedAt is timestamp)) {
+        return false;
+      }
+      if (data.keys().hasAny(["uploadedAt"]) && !(data.uploadedAt is timestamp)) {
+        return false;
+      }
+      return true;
+    }
+
     // -----------------------
     // /users/{uid}
     // -----------------------
@@ -161,7 +225,23 @@ service cloud.firestore {
             (resource.data.keys().hasAny(['selfDeleted']) && resource.data.selfDeleted == true)
           );
       }
-    }
+
+      // -----------------------
+      // /users/{uid}/medicalCertificate/{docId}
+      // -----------------------
+      match /medicalCertificate/{docId} {
+        allow get: if isAuthed() && request.auth.uid == uid;
+        allow create: if
+          isAuthed() &&
+          request.auth.uid == uid &&
+          docId == "metadata" &&
+          validMedicalPayload(request.resource.data, true);
+        allow update, delete: if
+          isAuthed() &&
+          request.auth.uid == uid &&
+          docId == "metadata" &&
+          validMedicalPayload(request.resource.data, false);
+      }
 
     // -----------------------
     // /users/{uid}/devices/{deviceId}

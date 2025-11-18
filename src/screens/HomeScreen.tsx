@@ -132,12 +132,26 @@ function useActiveRidesCount() {
   return count;
 }
 
-function useBoardPreview(lastSeen: Date | null) {
+function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
   const [items, setItems] = useState<BoardPreviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [unread, setUnread] = useState(0);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      if (permissionDenied) setPermissionDenied(false);
+      setItems([]);
+      setLoading(false);
+      setUnread(0);
+      return;
+    }
+    if (permissionDenied) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+
     const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(50));
     const unsub = onSnapshot(
       q,
@@ -167,7 +181,12 @@ function useBoardPreview(lastSeen: Date | null) {
         }
       },
       (err) => {
-        if (__DEV__) console.warn("[Home] board preview error:", err);
+        const isPermissionError = (err?.code as string | undefined)?.toLowerCase() === "permission-denied";
+        if (isPermissionError) {
+          setPermissionDenied(true);
+        } else if (__DEV__) {
+          console.warn("[Home] board preview error:", err);
+        }
         setItems([]);
         setLoading(false);
         setUnread(0);
@@ -178,7 +197,7 @@ function useBoardPreview(lastSeen: Date | null) {
         unsub();
       } catch {}
     };
-  }, [lastSeen?.getTime()]);
+  }, [lastSeen?.getTime(), enabled, permissionDenied]);
 
   const latest = useMemo(() => items[0] ?? null, [items]);
 
@@ -206,6 +225,11 @@ export default function HomeScreen({ navigation }: any) {
 
   const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
   const userUid = user?.uid ?? null;
+  const boardPreviewAllowed =
+    !!profile &&
+    profile.approved === true &&
+    profile.disabled !== true &&
+    !!userUid;
 
   useFocusEffect(
     useCallback(() => {
@@ -224,7 +248,10 @@ export default function HomeScreen({ navigation }: any) {
     }, [userUid])
   );
 
-  const { latest: latestBoard, loading: boardLoading, unreadCount } = useBoardPreview(boardLastSeen);
+  const { latest: latestBoard, loading: boardLoading, unreadCount } = useBoardPreview(
+    boardLastSeen,
+    boardPreviewAllowed
+  );
 
   const { certificate } = useMedicalCertificate();
   const certificateStatus = useMemo(() => getCertificateStatus(certificate), [certificate]);

@@ -145,6 +145,7 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
   const [exporting, setExporting] = useState(false);
   const [iosPickerVisible, setIosPickerVisible] = useState(false);
   const [iosPickerDate, setIosPickerDate] = useState<Date>(new Date());
+  const isIos = Platform.OS === "ios";
 
   const normalizedExpiryInput = expiryInput.trim();
   const parsedExpiryDate = useMemo(() => {
@@ -763,29 +764,45 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
           </KeyboardAvoidingView>
         </View>
       ) : null}
+
+      {/* Picker iOS per “Data di scadenza” */}
       {Platform.OS === "ios" && (
-        <Modal visible={iosPickerVisible} transparent animationType="fade" onRequestClose={closeIosPicker}>
-          <TouchableWithoutFeedback onPress={closeIosPicker}>
-            <View style={styles.iosPickerBackdrop} />
-          </TouchableWithoutFeedback>
-          <View style={styles.iosPickerSheet}>
-            <View style={styles.iosPickerActions}>
-              <Pressable onPress={closeIosPicker} style={styles.iosPickerButton}>
-                <Text style={styles.iosPickerButtonText}>Annulla</Text>
-              </Pressable>
-              <Pressable onPress={confirmIosPicker} style={styles.iosPickerButton}>
-                <Text style={[styles.iosPickerButtonText, styles.iosPickerButtonPrimary]}>Seleziona</Text>
-              </Pressable>
+        <Modal
+          visible={iosPickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={closeIosPicker}
+        >
+          <View style={styles.iosPickerWrapper}>
+            {/* backdrop cliccabile sopra il foglio */}
+            <TouchableWithoutFeedback onPress={closeIosPicker}>
+              <View style={styles.iosPickerBackdrop} />
+            </TouchableWithoutFeedback>
+
+            {/* sheet in basso con pulsanti + picker */}
+            <View style={styles.iosPickerSheet}>
+              <View style={styles.iosPickerActions}>
+                <Pressable onPress={closeIosPicker} style={styles.iosPickerButton}>
+                  <Text style={styles.iosPickerButtonText}>Annulla</Text>
+                </Pressable>
+                <Pressable onPress={confirmIosPicker} style={styles.iosPickerButton}>
+                  <Text style={[styles.iosPickerButtonText, styles.iosPickerButtonPrimary]}>
+                    Seleziona
+                  </Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={iosPickerDate}
+                mode="date"
+                display={isIos ? "spinner" : "default"}
+                preferredDatePickerStyle={isIos ? "spinner" : undefined}
+                onChange={(_event, date) => {
+                  if (date) setIosPickerDate(date);
+                }}
+                locale="it-IT"
+                style={styles.iosPicker}
+              />
             </View>
-            <DateTimePicker
-              value={iosPickerDate}
-              mode="date"
-              display="spinner"
-              onChange={(_event, date) => {
-                if (date) setIosPickerDate(date);
-              }}
-              locale="it-IT"
-            />
           </View>
         </Modal>
       )}
@@ -1076,21 +1093,22 @@ const styles = StyleSheet.create({
   metaModalActionButton: {
     flex: 1,
   },
+  iosPickerWrapper: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
   iosPickerBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
   },
   iosPickerSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: "#fff",
     borderTopLeftRadius: UI.radius.xl,
     borderTopRightRadius: UI.radius.xl,
     paddingBottom: UI.spacing.lg + UI.spacing.sm,
     paddingHorizontal: UI.spacing.lg,
     paddingTop: UI.spacing.md,
+    minHeight: 320,
   },
   iosPickerActions: {
     flexDirection: "row",
@@ -1108,5 +1126,9 @@ const styles = StyleSheet.create({
   iosPickerButtonPrimary: {
     color: UI.colors.primary,
     fontWeight: "700",
+  },
+  iosPicker: {
+    width: "100%",
+    minHeight: 260,
   },
 });

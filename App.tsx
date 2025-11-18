@@ -56,13 +56,13 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./src/firebase";
 import HomeScreen from "./src/screens/HomeScreen";
+import NotificationSettingsScreen from "./src/screens/NotificationSettingsScreen";
+import useCurrentProfile from "./src/hooks/useCurrentProfile";
+import { registerPushToken } from "./src/notifications/registerPushToken";
 
 // 🔐 Face ID / Touch ID
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
-
-// Hook profilo centralizzato
-import useCurrentProfile from "./src/hooks/useCurrentProfile";
 
 // Schermate dell'app
 import UsciteList from "./src/screens/UsciteList";
@@ -121,6 +121,7 @@ export type RootStackParamList = {
   RideDetails: { rideId: string; title?: string };
   Profile: undefined;
   Attesa: undefined;
+  NotificationSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -740,6 +741,13 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // 1.b) register push token once we know the user
+  useEffect(() => {
+    if (!user?.uid) return;
+    console.log("[App] registering push token for user", user.uid);
+    void registerPushToken();
+  }, [user?.uid]);
+
   // 2) Schermata di caricamento mentre verifichiamo auth o profilo
   if (user === undefined || (user && profileLoading)) {
     return (
@@ -809,6 +817,11 @@ export default function App() {
               options={({ route }) => ({ title: route.params?.title || "Dettagli Uscita" })}
             />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profilo Utente" }} />
+            <Stack.Screen
+              name="NotificationSettings"
+              component={NotificationSettingsScreen}
+              options={{ title: "Notifiche" }}
+            />
           </Stack.Navigator>
         )
       )}

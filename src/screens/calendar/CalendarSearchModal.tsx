@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -33,6 +34,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const isIos = Platform.OS === "ios";
 
   const hasYearMonthFilter = state.ymLocal.trim().length > 0;
   const hasDateRangeFilter =
@@ -94,14 +96,13 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
     const toDate = parseIsoDate(state.toLocal);
     if (field === "from") {
       state.setFromLocal(formatted);
-      // ensure the 'to' date never drops before the new start
+      // mantieni la "A" ≥ "Da"
       if (toDate && toDate < date) {
         state.setToLocal(formatted);
       }
       return;
     }
     if (fromDate && date < fromDate) {
-      // clamp the 'to' date to the current from when the selection is too early
       state.setToLocal(formatIsoDate(fromDate));
       return;
     }
@@ -283,6 +284,8 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      {/* Modal iOS per il DateTimePicker "Da/A" */}
       {Platform.OS === "ios" && iosPickerField && (
         <Modal
           transparent
@@ -290,46 +293,39 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
           animationType="slide"
           onRequestClose={() => setIosPickerField(null)}
         >
-          <View style={{ flex: 1, justifyContent: "flex-end" }}>
+          <View style={pickerModalStyles.wrapper}>
+            {/* backdrop cliccabile */}
             <TouchableWithoutFeedback onPress={() => setIosPickerField(null)}>
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
+              <View style={pickerModalStyles.overlay} />
             </TouchableWithoutFeedback>
-            <View
-              style={{
-                backgroundColor: "#fff",
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                paddingBottom: 16,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: 16,
-                }}
-              >
+
+            {/* sheet in basso con header + picker */}
+            <View style={pickerModalStyles.container}>
+              <View style={pickerModalStyles.actions}>
                 <Pressable onPress={() => setIosPickerField(null)}>
-                  <Text style={{ color: "#111827", fontWeight: "600" }}>Annulla</Text>
+                  <Text style={pickerModalStyles.cancelText}>Annulla</Text>
                 </Pressable>
                 <Pressable onPress={confirmIosPicker}>
-                  <Text style={{ color: "#0B3D2E", fontWeight: "700" }}>Fatto</Text>
+                  <Text style={pickerModalStyles.confirmText}>Fatto</Text>
                 </Pressable>
               </View>
               <DateTimePicker
                 value={iosPickerDate}
                 mode="date"
-                display="spinner"
+                display={isIos ? "spinner" : "default"}
+                preferredDatePickerStyle={isIos ? "spinner" : undefined}
                 onChange={(_: DateTimePickerEvent, selected) => {
                   if (selected) setIosPickerDate(selected);
                 }}
                 locale="it-IT"
+                style={pickerModalStyles.picker}
               />
             </View>
           </View>
         </Modal>
       )}
+
+      {/* Picker Mese/Anno */}
       {monthPickerVisible && (
         <Modal
           transparent
@@ -413,3 +409,43 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
     </Modal>
   );
 }
+
+const pickerModalStyles = StyleSheet.create({
+  wrapper: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
+  // backdrop sopra il foglio
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  // sheet in basso con altezza minima sufficiente
+  container: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    minHeight: 320,
+  },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 4,
+  },
+  cancelText: {
+    color: "#111827",
+    fontWeight: "600",
+  },
+  confirmText: {
+    color: "#0B3D2E",
+    fontWeight: "700",
+  },
+  picker: {
+    width: "100%",
+    minHeight: 260,
+  },
+});

@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -19,7 +19,8 @@
         "NSFaceIDUsageDescription": "Userò Face ID per accedere più velocemente all'app.",
         "NSCameraUsageDescription": "Uso la fotocamera per scansionare la tessera socio.",
         "NSPhotoLibraryUsageDescription": "Uso la libreria foto per caricare l'immagine della tessera.",
-        "NSPhotoLibraryAddUsageDescription": "Uso la libreria foto per salvare tessera e certificato sul dispositivo."
+        "NSPhotoLibraryAddUsageDescription": "Uso la libreria foto per salvare tessera e certificato sul dispositivo.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.giovanni.sama.bikehikeitalia"
     },

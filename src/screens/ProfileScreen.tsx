@@ -23,6 +23,7 @@ import { Screen } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { CardCropperModal } from "../components/CardCropperModal";
 import { ZoomableImageModal } from "../components/ZoomableImageModal";
+import { Ionicons } from "@expo/vector-icons";
 import {
   deviceSupportsBiometrics,
   loadCredsSecurely,
@@ -33,6 +34,9 @@ import { MedicalCertificateSection } from "./profile/MedicalCertificateSection";
 import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
 import { saveImageToDevice } from "../utils/saveImageToDevice";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../App";
 
 const logo = require("../../assets/images/logo.jpg");
 const SELF_DELETED_SENTINEL = "__self_deleted__";
@@ -53,6 +57,7 @@ const PROFILE_TABS: { key: "personal" | "documents" | "security"; label: string 
 
 export default function ProfileScreen() {
   const user = auth.currentUser;
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isMounted = useRef(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -812,6 +817,26 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.securityPanel}>
+            <Pressable
+              onPress={() => navigation.navigate("NotificationSettings")}
+              style={({ pressed }) => [
+                styles.securityRow,
+                pressed && styles.securityRowPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Apri le impostazioni delle notifiche"
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, styles.securityLabel]}>Notifiche</Text>
+                <Text style={styles.helperTextSmall}>
+                  Gestisci le notifiche push per le nuove uscite.
+                </Text>
+              </View>
+              <Ionicons name="notifications-outline" size={22} color="#0B3D2E" />
+            </Pressable>
+          </View>
+
+          <View style={styles.securityPanel}>
             <Text style={styles.label}>Cancellazione account</Text>
             <Text style={styles.helperTextSmall}>
               Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
@@ -1079,6 +1104,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
     paddingBottom: 4,
+  },
+  securityRowPressed: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
   },
   securityLabel: {
     flex: 1,

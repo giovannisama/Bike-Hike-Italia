@@ -55,68 +55,8 @@ service cloud.firestore {
         || roleMatches(target, '(?i)^owner$');
     }
 
-    function medicalAllowedKeys() {
-      return [
-        "type",
-        "expiresAt",
-        "alertDays",
-        "imageBase64",
-        "mimeType",
-        "size",
-        "width",
-        "height",
-        "rotation",
-        "snoozedUntil",
-        "updatedAt",
-        "uploadedAt"
-      ];
-    }
-
-    function validMedicalPayload(data, requireAllFields) {
-      let allowed = medicalAllowedKeys();
-      if (!data.keys().hasOnly(allowed)) {
-        return false;
-      }
-      if (requireAllFields && !data.keys().hasAll(["type","expiresAt","alertDays","imageBase64","mimeType","updatedAt","uploadedAt"])) {
-        return false;
-      }
-      if (data.keys().hasAny(["type"]) && !(data.type == "semplice" || data.type == "agonistico")) {
-        return false;
-      }
-      if (data.keys().hasAny(["expiresAt"]) && !(data.expiresAt is timestamp)) {
-        return false;
-      }
-      if (data.keys().hasAny(["alertDays"]) && !(data.alertDays is int)) {
-        return false;
-      }
-      if (data.keys().hasAny(["imageBase64"]) && !(data.imageBase64 is string && data.imageBase64.size() > 0 && data.imageBase64.size() <= 1500000)) {
-        return false;
-      }
-      if (data.keys().hasAny(["mimeType"]) && !(data.mimeType == "image/jpeg" || data.mimeType == "image/png")) {
-        return false;
-      }
-      if (data.keys().hasAny(["size"]) && !(data.size is int && data.size >= 0)) {
-        return false;
-      }
-      if (data.keys().hasAny(["width"]) && !(data.width == null || (data.width is int && data.width >= 0))) {
-        return false;
-      }
-      if (data.keys().hasAny(["height"]) && !(data.height == null || (data.height is int && data.height >= 0))) {
-        return false;
-      }
-      if (data.keys().hasAny(["rotation"]) && !(data.rotation is int && data.rotation >= 0 && data.rotation < 360)) {
-        return false;
-      }
-      if (data.keys().hasAny(["snoozedUntil"]) && !(data.snoozedUntil == null || data.snoozedUntil is timestamp)) {
-        return false;
-      }
-      if (data.keys().hasAny(["updatedAt"]) && !(data.updatedAt is timestamp)) {
-        return false;
-      }
-      if (data.keys().hasAny(["uploadedAt"]) && !(data.uploadedAt is timestamp)) {
-        return false;
-      }
-      return true;
+    function isSelfOrOwner(targetUid) {
+      return isAuthed() && (request.auth.uid == targetUid || isOwner());
     }
 
     // -----------------------
@@ -127,6 +67,12 @@ service cloud.firestore {
       allow list: if isAuthed() && isOwner();
 
       allow create: if isAuthed() && request.auth.uid == uid && validUserCreateSelf();
+
+      // Consente all'utente autenticato di aggiornare SOLO il proprio campo expoPushTokens
+      allow update: if
+        request.auth != null &&
+        request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["expoPushTokens"]);
 
       allow update: if isAuthed() && (
         (isOwner() && validUserUpdateAdmin()) ||
@@ -155,10 +101,20 @@ service cloud.firestore {
           );
       }
 
+      // Nuove funzioni per notifiche / token multipli
+      function validExpoPushTokens(val) {
+        return val == null || (val is list && val.size() <= 100);
+      }
+
+      function validNotificationsDisabled(val) {
+        return val is bool;
+      }
+
       function allowedUserKeys() {
         return [
           'uid','email','displayName','firstName','lastName','nickname',
-          'role','approved','disabled','createdAt','expoPushToken','membershipCard',
+          'role','approved','disabled','createdAt',
+          'expoPushToken','expoPushTokens','notificationsDisabled','membershipCard',
           'selfDeleted','selfDeletedAt'
         ];
       }
@@ -177,7 +133,9 @@ service cloud.firestore {
           && request.resource.data.createdAt is timestamp
           && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
           && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
-          && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null);
+          && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null)
+          && (!has('expoPushTokens') || validExpoPushTokens(request.resource.data.expoPushTokens))
+          && (!has('notificationsDisabled') || validNotificationsDisabled(request.resource.data.notificationsDisabled));
       }
 
       function validUserUpdateAdmin() {
@@ -200,11 +158,13 @@ service cloud.firestore {
           && (!changed.hasAny(['expoPushToken'])|| request.resource.data.expoPushToken == null || request.resource.data.expoPushToken is string)
           && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
           && (!changed.hasAny(['selfDeleted'])   || request.resource.data.selfDeleted is bool)
-          && (!changed.hasAny(['selfDeletedAt']) || request.resource.data.selfDeletedAt == null || request.resource.data.selfDeletedAt is timestamp);
+          && (!changed.hasAny(['selfDeletedAt']) || request.resource.data.selfDeletedAt == null || request.resource.data.selfDeletedAt is timestamp)
+          && (!changed.hasAny(['expoPushTokens']) || validExpoPushTokens(request.resource.data.expoPushTokens))
+          && (!changed.hasAny(['notificationsDisabled']) || validNotificationsDisabled(request.resource.data.notificationsDisabled));
       }
 
       function validUserUpdateSelf() {
-        let safeKeys = ['displayName','firstName','lastName','nickname','membershipCard'];
+        let safeKeys = ['displayName','firstName','lastName','nickname','membershipCard','expoPushTokens','notificationsDisabled'];
         let diff = request.resource.data.diff(resource.data);
         let changed = diff.changedKeys();
 
@@ -213,7 +173,9 @@ service cloud.firestore {
           && (request.resource.data.firstName is string || request.resource.data.firstName == null)
           && (request.resource.data.lastName is string || request.resource.data.lastName == null)
           && (request.resource.data.nickname is string || request.resource.data.nickname == null)
-          && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard));
+          && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
+          && (!changed.hasAny(['expoPushTokens']) || validExpoPushTokens(request.resource.data.expoPushTokens))
+          && (!changed.hasAny(['notificationsDisabled']) || validNotificationsDisabled(request.resource.data.notificationsDisabled));
       }
 
       function validUserDelete() {
@@ -226,22 +188,61 @@ service cloud.firestore {
           );
       }
 
-      // -----------------------
-      // /users/{uid}/medicalCertificate/{docId}
-      // -----------------------
-      match /medicalCertificate/{docId} {
-        allow get: if isAuthed() && request.auth.uid == uid;
-        allow create: if
-          isAuthed() &&
-          request.auth.uid == uid &&
-          docId == "metadata" &&
-          validMedicalPayload(request.resource.data, true);
-        allow update, delete: if
-          isAuthed() &&
-          request.auth.uid == uid &&
-          docId == "metadata" &&
-          validMedicalPayload(request.resource.data, false);
+      function certificateAllowedKeys() {
+        return [
+          'type','expiresAt','alertDays','imageBase64','mimeType',
+          'size','width','height','rotation','snoozedUntil','updatedAt','uploadedAt'
+        ];
       }
+
+      function validCertificateFields(data) {
+        return data.keys().hasOnly(certificateAllowedKeys())
+          && data.keys().hasAll(['type','expiresAt','alertDays','imageBase64','mimeType','size','updatedAt','uploadedAt'])
+          && data.type is string && (data.type == 'semplice' || data.type == 'agonistico')
+          && data.expiresAt is timestamp
+          && data.alertDays is int && data.alertDays >= 1 && data.alertDays <= 365
+          && data.imageBase64 is string && data.imageBase64.size() > 0 && data.imageBase64.size() <= 1500000
+          && data.mimeType is string && (data.mimeType == 'image/jpeg' || data.mimeType == 'image/png')
+          && data.size is int && data.size > 0 && data.size <= 1048576
+          && (!data.keys().hasAny(['width']) || data.width == null || (data.width is int && data.width >= 0 && data.width <= 6000))
+          && (!data.keys().hasAny(['height']) || data.height == null || (data.height is int && data.height >= 0 && data.height <= 6000))
+          && (!data.keys().hasAny(['rotation']) || data.rotation == null || (data.rotation is int && data.rotation >= 0 && data.rotation < 360 && data.rotation % 90 == 0))
+          && (!data.keys().hasAny(['snoozedUntil']) || data.snoozedUntil == null || data.snoozedUntil is timestamp)
+          && data.updatedAt is timestamp
+          && data.uploadedAt is timestamp;
+      }
+
+      function validCertificateCreate() {
+        let data = request.resource.data;
+        return validCertificateFields(data)
+          && data.updatedAt == request.time
+          && data.uploadedAt == request.time
+          && (!data.keys().hasAny(['rotation']) || data.rotation == null || data.rotation == 0)
+          && (!data.keys().hasAny(['snoozedUntil']) || data.snoozedUntil == null);
+      }
+
+      function validCertificateUpdate() {
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added   = diff.addedKeys();
+        let removed = diff.removedKeys();
+
+        return changed.union(added).union(removed).hasOnly(certificateAllowedKeys())
+          && removed.size() == 0
+          && added.hasOnly(['rotation','snoozedUntil'])
+          && !changed.hasAny(['imageBase64','mimeType','size','width','height','uploadedAt'])
+          && validCertificateFields(request.resource.data)
+          && request.resource.data.updatedAt == request.time;
+      }
+
+      match /medicalCertificate/{docId} {
+        allow get: if isSelfOrOwner(uid) && docId == "metadata";
+        allow list: if false;
+        allow create: if isAuthed() && request.auth.uid == uid && docId == "metadata" && validCertificateCreate();
+        allow update: if isAuthed() && request.auth.uid == uid && docId == "metadata" && validCertificateUpdate();
+        allow delete: if isAuthed() && request.auth.uid == uid && docId == "metadata";
+      }
+    }
 
     // -----------------------
     // /users/{uid}/devices/{deviceId}
@@ -257,7 +258,7 @@ service cloud.firestore {
           && (request.resource.data.expoPushToken is string
               && request.resource.data.expoPushToken.size() > 0
               && request.resource.data.expoPushToken.size() <= 255)
-          && (request.resource.data.platform in ['ios','android'])
+          && (request.resource.data.platform == 'ios' || request.resource.data.platform == 'android')
           && (request.resource.data.updatedAt is timestamp);
       }
     }
@@ -398,33 +399,86 @@ service cloud.firestore {
         ];
       }
 
+      function validServiceResponses(val) {
+        return val == null ||
+          (
+            val is map &&
+            val.keys().hasOnly(['lunch','dinner','overnight']) &&
+            (!val.keys().hasAny(['lunch']) || val.lunch == null || (val.lunch == 'yes' || val.lunch == 'no')) &&
+            (!val.keys().hasAny(['dinner']) || val.dinner == null || (val.dinner == 'yes' || val.dinner == 'no')) &&
+            (!val.keys().hasAny(['overnight']) || val.overnight == null || (val.overnight == 'yes' || val.overnight == 'no'))
+          );
+      }
+
+      function validExtraServices(val) {
+        return val == null ||
+          (
+            val is map &&
+            val.keys().hasOnly(['lunch','dinner','overnight']) &&
+            (!val.keys().hasAny(['lunch']) || validExtraNode(val.lunch)) &&
+            (!val.keys().hasAny(['dinner']) || validExtraNode(val.dinner)) &&
+            (!val.keys().hasAny(['overnight']) || validExtraNode(val.overnight))
+          );
+      }
+
+      function validExtraNode(node) {
+        return node == null ||
+          (
+            node is map &&
+            node.keys().hasOnly(['enabled','label']) &&
+            node.enabled is bool &&
+            (!node.keys().hasAny(['label']) || node.label == null || (node.label is string && node.label.size() <= 120))
+          );
+      }
+
+      function validServiceStats(val) {
+        return val == null ||
+          (
+            val is map &&
+            val.keys().hasOnly(['lunch','dinner','overnight']) &&
+            (!val.keys().hasAny(['lunch']) || validStatsNode(val.lunch)) &&
+            (!val.keys().hasAny(['dinner']) || validStatsNode(val.dinner)) &&
+            (!val.keys().hasAny(['overnight']) || validStatsNode(val.overnight))
+          );
+      }
+
+      function validStatsNode(node) {
+        return node == null ||
+          (
+            node is map &&
+            node.keys().hasOnly(['yes','no']) &&
+            (!node.keys().hasAny(['yes']) || (node.yes is int && node.yes >= 0)) &&
+            (!node.keys().hasAny(['no']) || (node.no is int && node.no >= 0))
+          );
+      }
+
       function validManualParticipants(val) {
         return val == null || (val is list && val.size() <= 50);
       }
 
       function validRideCreateFlexible() {
         return request.resource.data.keys().hasOnly(rideAllowedKeys())
-          && has('title')        && request.resource.data.title is string        && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120
+          && has('title') && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120
           && has('meetingPoint') && request.resource.data.meetingPoint is string && request.resource.data.meetingPoint.size() > 0 && request.resource.data.meetingPoint.size() <= 200
           && ((has('dateTime') && request.resource.data.dateTime is timestamp) || (has('date') && request.resource.data.date is timestamp))
-          && has('createdBy')    && request.resource.data.createdBy is string   && request.resource.data.createdBy.size() > 0
-          && has('createdAt')    && request.resource.data.createdAt is timestamp
+          && has('createdBy') && request.resource.data.createdBy is string && request.resource.data.createdBy.size() > 0
+          && has('createdAt') && request.resource.data.createdAt is timestamp
           && (!has('description') || request.resource.data.description == null || request.resource.data.description is string)
-          && (!has('bikes')      || request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20))
-          && (!has('date')       || request.resource.data.date == null || request.resource.data.date is timestamp)
+          && (!has('bikes') || request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20))
+          && (!has('date') || request.resource.data.date == null || request.resource.data.date is timestamp)
           && (!has('maxParticipants') || request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0))
           && (!has('participantsCount') || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
-          && (!has('status')     || request.resource.data.status in ['active','cancelled'])
-          && (!has('archived')   || request.resource.data.archived is bool)
-          && (!has('archiveYear')|| request.resource.data.archiveYear == null || request.resource.data.archiveYear is int)
-          && (!has('archiveMonth')|| request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12))
-          && (!has('guidaName')  || request.resource.data.guidaName == null || request.resource.data.guidaName is string)
+          && (!has('status') || (request.resource.data.status == 'active' || request.resource.data.status == 'cancelled'))
+          && (!has('archived') || request.resource.data.archived is bool)
+          && (!has('archiveYear') || request.resource.data.archiveYear == null || request.resource.data.archiveYear is int)
+          && (!has('archiveMonth') || request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12))
+          && (!has('guidaName') || request.resource.data.guidaName == null || request.resource.data.guidaName is string)
           && (!has('guidaNames') || request.resource.data.guidaNames == null || request.resource.data.guidaNames is list)
-          && (!has('link')       || request.resource.data.link == null || request.resource.data.link is string)
+          && (!has('link') || request.resource.data.link == null || request.resource.data.link is string)
           && (!has('difficulty') || request.resource.data.difficulty == null || request.resource.data.difficulty is string)
           && (!has('manualParticipants') || validManualParticipants(request.resource.data.manualParticipants))
-          && (!has('extraServices') || request.resource.data.extraServices == null || request.resource.data.extraServices is map)
-          && (!has('serviceStats') || request.resource.data.serviceStats == null || request.resource.data.serviceStats is map);
+          && (!has('extraServices') || validExtraServices(request.resource.data.extraServices))
+          && (!has('serviceStats') || validServiceStats(request.resource.data.serviceStats));
       }
 
       function validRideUpdatePartial() {
@@ -434,29 +488,30 @@ service cloud.firestore {
         let removed = diff.removedKeys();
 
         return changed.union(added).union(removed).hasOnly(rideAllowedKeys())
-          && (!(changed.hasAny(['title'])        || added.hasAny(['title']))        || (request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120))
+          && (!(changed.hasAny(['title']) || added.hasAny(['title'])) || (request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 120))
           && (!(changed.hasAny(['meetingPoint']) || added.hasAny(['meetingPoint'])) || (request.resource.data.meetingPoint is string && request.resource.data.meetingPoint.size() > 0 && request.resource.data.meetingPoint.size() <= 200))
           && (!(changed.hasAny(['description']) || added.hasAny(['description'])) || (request.resource.data.description == null || request.resource.data.description is string))
-          && (!(changed.hasAny(['bikes'])        || added.hasAny(['bikes']))        || (request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20)))
-          && (!(changed.hasAny(['dateTime'])     || added.hasAny(['dateTime']))     || request.resource.data.dateTime is timestamp)
-          && (!(changed.hasAny(['date'])         || added.hasAny(['date']))         || (request.resource.data.date == null || request.resource.data.date is timestamp))
+          && (!(changed.hasAny(['bikes']) || added.hasAny(['bikes'])) || (request.resource.data.bikes == null || (request.resource.data.bikes is list && request.resource.data.bikes.size() <= 20)))
+          && (!(changed.hasAny(['dateTime']) || added.hasAny(['dateTime'])) || request.resource.data.dateTime is timestamp)
+          && (!(changed.hasAny(['date']) || added.hasAny(['date'])) || (request.resource.data.date == null || request.resource.data.date is timestamp))
           && (!(changed.hasAny(['maxParticipants']) || added.hasAny(['maxParticipants'])) || (request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0)))
           && (!(changed.hasAny(['participantsCount']) || added.hasAny(['participantsCount'])) || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
-          && (!(changed.hasAny(['status'])       || added.hasAny(['status']))       || (request.resource.data.status in ['active','cancelled']))
-          && (!(changed.hasAny(['archived'])     || added.hasAny(['archived']))     || request.resource.data.archived is bool)
-          && (!(changed.hasAny(['archiveYear'])  || added.hasAny(['archiveYear']))  || (request.resource.data.archiveYear == null || request.resource.data.archiveYear is int))
+          && (!(changed.hasAny(['status']) || added.hasAny(['status'])) || (request.resource.data.status == 'active' || request.resource.data.status == 'cancelled'))
+          && (!(changed.hasAny(['archived']) || added.hasAny(['archived'])) || request.resource.data.archived is bool)
+          && (!(changed.hasAny(['archiveYear']) || added.hasAny(['archiveYear'])) || (request.resource.data.archiveYear == null || request.resource.data.archiveYear is int))
           && (!(changed.hasAny(['archiveMonth']) || added.hasAny(['archiveMonth'])) || (request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12)))
-          && (!(changed.hasAny(['createdBy'])    || added.hasAny(['createdBy']))    || request.resource.data.createdBy is string)
-          && (!(changed.hasAny(['createdAt'])    || added.hasAny(['createdAt']))    || request.resource.data.createdAt is timestamp)
-          && (!(changed.hasAny(['guidaName'])    || added.hasAny(['guidaName']))    || (request.resource.data.guidaName == null || request.resource.data.guidaName is string))
-          && (!(changed.hasAny(['guidaNames'])   || added.hasAny(['guidaNames']))   || (request.resource.data.guidaNames == null || request.resource.data.guidaNames is list))
-          && (!(changed.hasAny(['link'])         || added.hasAny(['link']))         || (request.resource.data.link == null || request.resource.data.link is string))
-          && (!(changed.hasAny(['difficulty'])   || added.hasAny(['difficulty']))   || (request.resource.data.difficulty == null || request.resource.data.difficulty is string))
+          && (!(changed.hasAny(['createdBy']) || added.hasAny(['createdBy'])) || request.resource.data.createdBy is string)
+          && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || request.resource.data.createdAt is timestamp)
+          && (!(changed.hasAny(['guidaName']) || added.hasAny(['guidaName'])) || (request.resource.data.guidaName == null || request.resource.data.guidaName is string))
+          && (!(changed.hasAny(['guidaNames']) || added.hasAny(['guidaNames'])) || (request.resource.data.guidaNames == null || request.resource.data.guidaNames is list))
+          && (!(changed.hasAny(['link']) || added.hasAny(['link'])) || (request.resource.data.link == null || request.resource.data.link is string))
+          && (!(changed.hasAny(['difficulty']) || added.hasAny(['difficulty'])) || (request.resource.data.difficulty == null || request.resource.data.difficulty is string))
           && (!(changed.hasAny(['manualParticipants']) || added.hasAny(['manualParticipants'])) || validManualParticipants(request.resource.data.manualParticipants))
-          && (!(changed.hasAny(['extraServices']) || added.hasAny(['extraServices'])) || request.resource.data.extraServices == null || request.resource.data.extraServices is map)
-          && (!(changed.hasAny(['serviceStats'])  || added.hasAny(['serviceStats']))  || request.resource.data.serviceStats == null || request.resource.data.serviceStats is map);
+          && (!(changed.hasAny(['extraServices']) || added.hasAny(['extraServices'])) || validExtraServices(request.resource.data.extraServices))
+          && (!(changed.hasAny(['serviceStats']) || added.hasAny(['serviceStats'])) || validServiceStats(request.resource.data.serviceStats));
       }
 
+      // -------- participants subcollection --------
       match /participants/{uid} {
         allow read: if canReadRides();
 
@@ -479,17 +534,6 @@ service cloud.firestore {
         function parentRideIsBookable() {
           let ride = get(/databases/$(database)/documents/rides/$(rideId)).data;
           return !(ride.status == 'cancelled') && !(ride.archived == true);
-        }
-
-        function validServiceResponses(val) {
-          return val == null
-            || (
-              val is map
-              && val.keys().hasOnly(['lunch','dinner','overnight'])
-              && (!val.keys().hasAny(['lunch'])     || val['lunch'] == null     || val['lunch'] in ['yes','no'])
-              && (!val.keys().hasAny(['dinner'])    || val['dinner'] == null    || val['dinner'] in ['yes','no'])
-              && (!val.keys().hasAny(['overnight']) || val['overnight'] == null || val['overnight'] in ['yes','no'])
-            );
         }
 
         function validParticipantCreate() {
@@ -523,5 +567,26 @@ service cloud.firestore {
         }
       }
     }
+
+    // -----------------------
+    // /analyticsEvents/{eventId}
+    // -----------------------
+    match /analyticsEvents/{eventId} {
+      allow read: if isOwner();
+      allow create: if isAuthed() && validAnalyticsCreate();
+      allow update, delete: if false;
+
+      function validAnalyticsCreate() {
+        return request.resource.data.keys().hasOnly(['name','payload','uid','createdAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && (!has('payload') || request.resource.data.payload == null || request.resource.data.payload is map)
+          && (!has('uid') || request.resource.data.uid == null || (request.resource.data.uid is string && request.resource.data.uid.size() > 0 && request.resource.data.uid.size() <= 128))
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.createdAt == request.time;
+      }
+    }
+
   }
 }

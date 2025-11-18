@@ -1,6 +1,14 @@
 // src/components/Screen.tsx
 import React from "react";
-import { View, Text, ScrollView, ViewStyle, KeyboardAvoidingView, Platform } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  ViewStyle,
+  KeyboardAvoidingView,
+  Platform,
+  KeyboardAvoidingViewProps,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -66,6 +74,16 @@ export function Screen({
   keyboardShouldPersistTaps = "always",
   headerContent,
 }: ScreenProps) {
+  const keyboardBehavior: KeyboardAvoidingViewProps["behavior"] = Platform.select({
+    ios: "padding",
+    android: "height",
+    default: "padding",
+  });
+  const keyboardVerticalOffset = Platform.select({
+    ios: 140,
+    android: 100,
+    default: 110,
+  });
   // render tree kept inline so we don't recreate components each render (avoids TextInput blur)
   const content = (
     <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
@@ -163,10 +181,14 @@ export function Screen({
       {scroll ? (
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={keyboardBehavior}
+          keyboardVerticalOffset={keyboardVerticalOffset}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: UI.spacing.lg }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: UI.spacing.lg + 28,
+            }}
             keyboardShouldPersistTaps={keyboardShouldPersistTaps}
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           >

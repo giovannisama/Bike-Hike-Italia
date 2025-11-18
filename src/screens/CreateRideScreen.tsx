@@ -136,7 +136,7 @@ const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
   <View style={{ height: UI.spacing[size] }} />
 );
 
-// Tipi route (adatta se il tuo RootStack ha nomi diversi)
+// Tipi route
 type RootStackParamList = {
   CreateRide: { rideId?: string } | undefined;
 };
@@ -173,6 +173,7 @@ export default function CreateRideScreen() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<"date" | "time" | null>(null);
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
+  const isIos = Platform.OS === "ios";
 
   useEffect(() => {
     if (!feedback) return;
@@ -460,7 +461,6 @@ export default function CreateRideScreen() {
 
   // ---------- helper pulizia payload ----------
   function sanitizeCreatePayload(raw: any) {
-    // trim stringhe
     const obj: Record<string, any> = { ...raw };
     const trimIfString = (v: any) => (typeof v === "string" ? v.trim() : v);
 
@@ -468,7 +468,6 @@ export default function CreateRideScreen() {
       obj[k] = trimIfString(obj[k]);
     });
 
-    // rimuovi chiavi con null/undefined per non rischiare validazioni inutili
     Object.keys(obj).forEach((k) => {
       if (obj[k] === null || obj[k] === undefined) delete obj[k];
     });
@@ -524,33 +523,30 @@ export default function CreateRideScreen() {
       }
     }
 
-    // guidaName (singolo) + guidaNames (lista) usando ; come separatore principale (fallback virgola legacy)
     const names = splitGuideInput(guidaText);
     const guidaName = names.length > 0 ? names[0] : null;
     const guidaNames = names.length > 1 ? names : names.length === 1 ? [names[0]] : null;
 
-    // costruisci payload compatibile rules
     const basePayload: Record<string, any> = {
       title: title.trim(),
       meetingPoint: meetingPoint.trim(),
       description: (description || "").trim() || null,
       bikes: Array.isArray(bikes) ? bikes.slice(0, 20) : [],
-      dateTime: Timestamp.fromDate(dt), // ⬅️ OBBLIGATORIO timestamp
-      date: Timestamp.fromDate(dt),     // opzionale ma ok come timestamp
-      maxParticipants: maxNum,          // null o int >= 0
-      createdBy: auth.currentUser.uid,  // ⬅️ string
-      createdAt: serverTimestamp(),     // ⬅️ timestamp
-      status: "active",                 // ⬅️ "active" | "cancelled"
-      archived: false,                  // ⬅️ bool
-      participantsCount: 0,             // ⬅️ int >= 0
+      dateTime: Timestamp.fromDate(dt),
+      date: Timestamp.fromDate(dt),
+      maxParticipants: maxNum,
+      createdBy: auth.currentUser.uid,
+      createdAt: serverTimestamp(),
+      status: "active",
+      archived: false,
+      participantsCount: 0,
       link: link.trim() ? link.trim() : null,
       difficulty: difficulty ? difficulty : null,
       guidaName: guidaName ?? null,
-      guidaNames: guidaNames ?? null,   // lista o omessa
-      // archiveYear/month verranno aggiunti solo in archivio
+      guidaNames: guidaNames ?? null,
     };
 
-    const payload = sanitizeCreatePayload(basePayload);
+  const payload = sanitizeCreatePayload(basePayload);
     if (Object.keys(extraServicesPayload).length > 0) {
       payload.extraServices = extraServicesPayload;
     } else if (isEdit) {
@@ -560,17 +556,14 @@ export default function CreateRideScreen() {
     setSaving(true);
     try {
       if (isEdit) {
-        // UPDATE (solo campi ammessi dalle regole)
         await updateDoc(doc(db, "rides", rideId!), {
           ...payload,
-          status,   // "active" | "cancelled"
-          archived, // true | false
+          status,
+          archived,
         });
         setFeedback({ type: "success", message: "Uscita aggiornata correttamente." });
       } else {
-        // CREATE con setDoc su id generato (invece di addDoc)
         const ridesColl = collection(db, "rides");
-        // genera id localmente (usa crypto.randomUUID se disponibile, altrimenti Firestore doc().id)
         const newId = (globalThis as any).crypto?.randomUUID?.() ?? doc(ridesColl).id;
         await setDoc(doc(db, "rides", newId), payload);
         setFeedback({ type: "success", message: "Uscita creata!" });
@@ -625,7 +618,6 @@ export default function CreateRideScreen() {
 
   // ---------- UI ----------
   const titleScreen = isEdit ? "Modifica Uscita" : "Crea Uscita";
-
   const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
   return (
@@ -637,316 +629,317 @@ export default function CreateRideScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ gap: UI.spacing.md }}>
-        {feedback && (
-          <View
-            style={[
-              styles.feedbackBox,
-              feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError,
-            ]}
-          >
-            <Text
-              style={{
-                color: feedback.type === "success" ? "#14532d" : "#7f1d1d",
-                fontWeight: "700",
-              }}
+          {feedback && (
+            <View
+              style={[
+                styles.feedbackBox,
+                feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError,
+              ]}
             >
-              {feedback.message}
-            </Text>
-          </View>
-        )}
-        {!!adminWarning && (
-          <View style={styles.alertBox}>
-            <Text style={styles.alertText}>{adminWarning}</Text>
-          </View>
-        )}
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Titolo *</Text>
-          <TextInput
-            value={title}
-            onChangeText={(value) => {
-              setTitle(value);
-              if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-            }}
-            placeholder="Uscita Gravel ai Colli Euganei"
-            style={[styles.input, errors.title && styles.inputError]}
-            autoCorrect
-            autoCapitalize="sentences"
-            returnKeyType="next"
-            blurOnSubmit={false}
-          />
-          {errors.title && <Text style={styles.errorText}>{errors.title}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Guida (testo libero)</Text>
-          <TextInput
-            value={guidaText}
-            onChangeText={setGuidaText}
-            placeholder="Es. Mario Rossi; Anna Verdi"
-            style={styles.input}
-          />
-          <Text style={styles.helperText}>
-            Separa i nomi con il punto e virgola (;). Il primo sarà mostrato come “guida principale”.
-          </Text>
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Tipo di bici</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsScrollContent}
-          >
-            {BIKE_TYPES.map((b) => {
-              const active = bikes.includes(b);
-              return (
-                <Pressable
-                  key={b}
-                  onPress={() => toggleBike(b)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Difficoltà</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsScrollContent}
-          >
-            {DIFFICULTY_OPTIONS.map((opt) => {
-              const active = difficulty === opt;
-              return (
-                <Pressable
-                  key={opt}
-                  onPress={() => setDifficulty(active ? "" : opt)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Data *</Text>
-          <Pressable
-            onPress={() => openNativePicker("date")}
-            style={[styles.input, styles.fakeInput, errors.date && styles.inputError]}
-            accessibilityRole="button"
-            accessibilityLabel="Seleziona la data dell'uscita"
-          >
-            <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-              {date ? displayDateValue : "Seleziona data"}
-            </Text>
-          </Pressable>
-          {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Ora *</Text>
-          <Pressable
-            onPress={() => openNativePicker("time")}
-            style={[styles.input, styles.fakeInput, errors.time && styles.inputError]}
-            accessibilityRole="button"
-            accessibilityLabel="Seleziona l'orario di partenza"
-          >
-            <Text style={time ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-              {time || "Seleziona orario"}
-            </Text>
-          </Pressable>
-          {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Luogo di ritrovo *</Text>
-          <TextInput
-            value={meetingPoint}
-            onChangeText={(value) => {
-              setMeetingPoint(value);
-              if (errors.meetingPoint) setErrors((prev) => ({ ...prev, meetingPoint: undefined }));
-            }}
-            placeholder="Piazzale Roma"
-            style={[styles.input, errors.meetingPoint && styles.inputError]}
-          />
-          {errors.meetingPoint && <Text style={styles.errorText}>{errors.meetingPoint}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Link posizione (opzionale)</Text>
-          <TextInput
-            value={link}
-            onChangeText={(value) => {
-              setLink(value);
-              if (errors.link) setErrors((prev) => ({ ...prev, link: undefined }));
-            }}
-            placeholder="Incolla link Google Maps / Apple Maps / geo:"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            style={[styles.input, errors.link && styles.inputError]}
-          />
-          {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Descrizione</Text>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Percorso gravel panoramico…"
-            style={[styles.input, styles.textArea]}
-            multiline
-          />
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
-          <TextInput
-            value={maxParticipants}
-            onChangeText={(value) => {
-              setMaxParticipants(value);
-              if (errors.maxParticipants) setErrors((prev) => ({ ...prev, maxParticipants: undefined }));
-            }}
-            placeholder="es. 12 (lascia vuoto per nessun limite)"
-            keyboardType="number-pad"
-            inputMode="numeric"
-            style={[styles.input, errors.maxParticipants && styles.inputError]}
-          />
-          {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
-        </View>
-
-        <View style={styles.formBlock}>
-          <Text style={styles.label}>Servizi extra</Text>
-          <Text style={styles.helperText}>
-            Attiva le richieste aggiuntive: i partecipanti dovranno rispondere Sì/No durante la prenotazione.
-          </Text>
-          {servicesLocked && (
-            <Text style={styles.warningText}>
-              Non è possibile attivare nuovi servizi perché l'uscita ha già prenotati.
-            </Text>
-          )}
-          <View style={{ gap: UI.spacing.sm, marginTop: UI.spacing.xs }}>
-            {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }) => {
-              const state = extraServices[key];
-              const isToggleLocked = servicesLocked && !initialEnabledServices[key];
-              return (
-                <View
-                  key={key}
-                  style={[
-                    styles.serviceToggleBlock,
-                    isToggleLocked && styles.serviceToggleDisabled,
-                  ]}
-                >
-                  <View style={styles.serviceToggleRow}>
-                    <Pressable
-                      style={{ flex: 1, paddingRight: UI.spacing.sm }}
-                      onPress={() => toggleExtraService(key, !state.enabled)}
-                      disabled={isToggleLocked}
-                      accessibilityRole="switch"
-                      accessibilityState={{
-                        disabled: isToggleLocked,
-                        checked: state.enabled,
-                      }}
-                    >
-                      <Text style={styles.serviceToggleLabel}>{label}</Text>
-                      <Text style={styles.serviceToggleHelper}>{helper}</Text>
-                    </Pressable>
-                    <View style={styles.serviceSwitchWrapper}>
-                      <Switch
-                        value={state.enabled}
-                        onValueChange={(value) => toggleExtraService(key, value)}
-                        disabled={isToggleLocked}
-                        trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
-                        thumbColor={
-                          Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined
-                        }
-                      />
-                    </View>
-                  </View>
-                  {state.enabled && (
-                    <TextInput
-                      value={state.label}
-                      onChangeText={(value) => updateExtraServiceLabel(key, value)}
-                      style={styles.serviceLabelInput}
-                      placeholder={`Dettagli ${label.toLowerCase()} (facoltativo)`}
-                    />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {isEdit && isAdmin && (
-          <View style={[styles.formBlock, { gap: UI.spacing.sm }]}>
-            <Text style={styles.label}>Azioni amministrative</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm }}>
-              <Pressable
-                onPress={toggleCancelled}
-                style={[
-                  styles.adminBtn,
-                  status === "cancelled" && { backgroundColor: UI.colors.danger },
-                ]}
+              <Text
+                style={{
+                  color: feedback.type === "success" ? "#14532d" : "#7f1d1d",
+                  fontWeight: "700",
+                }}
               >
-                <Text style={styles.adminBtnText}>
-                  {status === "cancelled" ? "Riapri" : "Annulla"}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={toggleArchived}
-                style={[
-                  styles.adminBtn,
-                  archived && { backgroundColor: UI.colors.muted },
-                ]}
-              >
-                <Text style={styles.adminBtnText}>
-                  {archived ? "Ripristina" : "Archivia"}
-                </Text>
-              </Pressable>
+                {feedback.message}
+              </Text>
             </View>
+          )}
+          {!!adminWarning && (
+            <View style={styles.alertBox}>
+              <Text style={styles.alertText}>{adminWarning}</Text>
+            </View>
+          )}
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Titolo *</Text>
+            <TextInput
+              value={title}
+              onChangeText={(value) => {
+                setTitle(value);
+                if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+              }}
+              placeholder="Uscita Gravel ai Colli Euganei"
+              style={[styles.input, errors.title && styles.inputError]}
+              autoCorrect
+              autoCapitalize="sentences"
+              returnKeyType="next"
+              blurOnSubmit={false}
+            />
+            {errors.title && <Text style={styles.errorText}>{errors.title}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Guida (testo libero)</Text>
+            <TextInput
+              value={guidaText}
+              onChangeText={setGuidaText}
+              placeholder="Es. Mario Rossi; Anna Verdi"
+              style={styles.input}
+            />
             <Text style={styles.helperText}>
-              Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
-              {archived ? " • ARCHIVIATA" : ""}
+              Separa i nomi con il punto e virgola (;). Il primo sarà mostrato come “guida principale”.
             </Text>
           </View>
-        )}
 
-        <View style={{ marginTop: UI.spacing.lg }}>
-          <TouchableOpacity
-            onPress={onSave}
-            disabled={saving || !isAdmin || loadingPrefill}
-            style={[
-              styles.saveBtn,
-              (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
-            ]}
-          >
-            {saving ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno…" : "Salvataggio…"}</Text>
-              </View>
-            ) : (
-              <Text style={styles.saveBtnText}>
-                {isEdit ? "💾 Salva modifiche" : "💾 Crea uscita"}
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Tipo di bici</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScrollContent}
+            >
+              {BIKE_TYPES.map((b) => {
+                const active = bikes.includes(b);
+                return (
+                  <Pressable
+                    key={b}
+                    onPress={() => toggleBike(b)}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Difficoltà</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScrollContent}
+            >
+              {DIFFICULTY_OPTIONS.map((opt) => {
+                const active = difficulty === opt;
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setDifficulty(active ? "" : opt)}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Data *</Text>
+            <Pressable
+              onPress={() => openNativePicker("date")}
+              style={[styles.input, styles.fakeInput, errors.date && styles.inputError]}
+              accessibilityRole="button"
+              accessibilityLabel="Seleziona la data dell'uscita"
+            >
+              <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+                {date ? displayDateValue : "Seleziona data"}
+              </Text>
+            </Pressable>
+            {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Ora *</Text>
+            <Pressable
+              onPress={() => openNativePicker("time")}
+              style={[styles.input, styles.fakeInput, errors.time && styles.inputError]}
+              accessibilityRole="button"
+              accessibilityLabel="Seleziona l'orario di partenza"
+            >
+              <Text style={time ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+                {time || "Seleziona orario"}
+              </Text>
+            </Pressable>
+            {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Luogo di ritrovo *</Text>
+            <TextInput
+              value={meetingPoint}
+              onChangeText={(value) => {
+                setMeetingPoint(value);
+                if (errors.meetingPoint) setErrors((prev) => ({ ...prev, meetingPoint: undefined }));
+              }}
+              placeholder="Piazzale Roma"
+              style={[styles.input, errors.meetingPoint && styles.inputError]}
+            />
+            {errors.meetingPoint && <Text style={styles.errorText}>{errors.meetingPoint}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Link posizione (opzionale)</Text>
+            <TextInput
+              value={link}
+              onChangeText={(value) => {
+                setLink(value);
+                if (errors.link) setErrors((prev) => ({ ...prev, link: undefined }));
+              }}
+              placeholder="Incolla link Google Maps / Apple Maps / geo:"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              style={[styles.input, errors.link && styles.inputError]}
+            />
+            {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Descrizione</Text>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Percorso gravel panoramico…"
+              style={[styles.input, styles.textArea]}
+              multiline
+            />
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
+            <TextInput
+              value={maxParticipants}
+              onChangeText={(value) => {
+                setMaxParticipants(value);
+                if (errors.maxParticipants) setErrors((prev) => ({ ...prev, maxParticipants: undefined }));
+              }}
+              placeholder="es. 12 (lascia vuoto per nessun limite)"
+              keyboardType="number-pad"
+              inputMode="numeric"
+              style={[styles.input, errors.maxParticipants && styles.inputError]}
+            />
+            {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
+          </View>
+
+          <View style={styles.formBlock}>
+            <Text style={styles.label}>Servizi extra</Text>
+            <Text style={styles.helperText}>
+              Attiva le richieste aggiuntive: i partecipanti dovranno rispondere Sì/No durante la prenotazione.
+            </Text>
+            {servicesLocked && (
+              <Text style={styles.warningText}>
+                Non è possibile attivare nuovi servizi perché l'uscita ha già prenotati.
               </Text>
             )}
-          </TouchableOpacity>
-        </View>
+            <View style={{ gap: UI.spacing.sm, marginTop: UI.spacing.xs }}>
+              {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }) => {
+                const state = extraServices[key];
+                const isToggleLocked = servicesLocked && !initialEnabledServices[key];
+                return (
+                  <View
+                    key={key}
+                    style={[
+                      styles.serviceToggleBlock,
+                      isToggleLocked && styles.serviceToggleDisabled,
+                    ]}
+                  >
+                    <View style={styles.serviceToggleRow}>
+                      <Pressable
+                        style={{ flex: 1, paddingRight: UI.spacing.sm }}
+                        onPress={() => toggleExtraService(key, !state.enabled)}
+                        disabled={isToggleLocked}
+                        accessibilityRole="switch"
+                        accessibilityState={{
+                          disabled: isToggleLocked,
+                          checked: state.enabled,
+                        }}
+                      >
+                        <Text style={styles.serviceToggleLabel}>{label}</Text>
+                        <Text style={styles.serviceToggleHelper}>{helper}</Text>
+                      </Pressable>
+                      <View style={styles.serviceSwitchWrapper}>
+                        <Switch
+                          value={state.enabled}
+                          onValueChange={(value) => toggleExtraService(key, value)}
+                          disabled={isToggleLocked}
+                          trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
+                          thumbColor={
+                            Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined
+                          }
+                        />
+                      </View>
+                    </View>
+                    {state.enabled && (
+                      <TextInput
+                        value={state.label}
+                        onChangeText={(value) => updateExtraServiceLabel(key, value)}
+                        style={styles.serviceLabelInput}
+                        placeholder={`Dettagli ${label.toLowerCase()} (facoltativo)`}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
-        <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
+          {isEdit && isAdmin && (
+            <View style={[styles.formBlock, { gap: UI.spacing.sm }]}>
+              <Text style={styles.label}>Azioni amministrative</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm }}>
+                <Pressable
+                  onPress={toggleCancelled}
+                  style={[
+                    styles.adminBtn,
+                    status === "cancelled" && { backgroundColor: UI.colors.danger },
+                  ]}
+                >
+                  <Text style={styles.adminBtnText}>
+                    {status === "cancelled" ? "Riapri" : "Annulla"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={toggleArchived}
+                  style={[
+                    styles.adminBtn,
+                    archived && { backgroundColor: UI.colors.muted },
+                  ]}
+                >
+                  <Text style={styles.adminBtnText}>
+                    {archived ? "Ripristina" : "Archivia"}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={styles.helperText}>
+                Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
+                {archived ? " • ARCHIVIATA" : ""}
+              </Text>
+            </View>
+          )}
 
-        <VSpace size="xl" />
+          <View style={{ marginTop: UI.spacing.lg }}>
+            <TouchableOpacity
+              onPress={onSave}
+              disabled={saving || !isAdmin || loadingPrefill}
+              style={[
+                styles.saveBtn,
+                (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
+              ]}
+            >
+              {saving ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <ActivityIndicator color="#fff" />
+                  <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno…" : "Salvataggio…"}</Text>
+                </View>
+              ) : (
+                <Text style={styles.saveBtnText}>
+                  {isEdit ? "💾 Salva modifiche" : "💾 Crea uscita"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
+
+          <VSpace size="xl" />
         </View>
       </Screen>
+
       {Platform.OS === "ios" && (
         <Modal
           transparent
@@ -955,35 +948,44 @@ export default function CreateRideScreen() {
           onRequestClose={closeIosPicker}
         >
           <View style={styles.pickerWrapper}>
+            {/* backdrop cliccabile */}
             <TouchableWithoutFeedback onPress={closeIosPicker}>
               <View style={styles.pickerOverlay} />
             </TouchableWithoutFeedback>
+
+            {/* sheet in basso con header + DateTimePicker */}
             <View style={styles.pickerContainer}>
-            <View style={styles.pickerHeader}>
-              <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
-                <Text style={styles.pickerHeaderText}>Annulla</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
-                <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>Fatto</Text>
-              </TouchableOpacity>
-            </View>
-            {iosPickerMode === "date" ? (
-              <View style={styles.pickerPreviewRow}>
-                <Text style={styles.pickerPreviewLabel}>
-                  {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
-                </Text>
+              <View style={styles.pickerHeader}>
+                <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
+                  <Text style={styles.pickerHeaderText}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
+                  <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>
+                    Fatto
+                  </Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
-            {iosPickerMode && (
-              <DateTimePicker
-                value={iosPickerValue}
-                mode={iosPickerMode}
-                display="spinner"
+
+              {iosPickerMode === "date" ? (
+                <View style={styles.pickerPreviewRow}>
+                  <Text style={styles.pickerPreviewLabel}>
+                    {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
+                  </Text>
+                </View>
+              ) : null}
+
+              {iosPickerMode && (
+                <DateTimePicker
+                  value={iosPickerValue}
+                  mode={iosPickerMode}
+                  display={isIos ? "spinner" : "default"}
+                  preferredDatePickerStyle={isIos ? "spinner" : undefined}
                   onChange={(_, selected) => {
                     if (selected) setIosPickerValue(selected);
                   }}
                   minuteInterval={iosPickerMode === "time" ? 1 : undefined}
                   locale="it-IT"
+                  style={styles.iosPicker}
                 />
               )}
             </View>
@@ -1113,18 +1115,24 @@ const styles = StyleSheet.create({
     color: UI.colors.text,
   },
 
+  // === iOS picker modal ===
   pickerWrapper: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
   },
+  // backdrop prende lo spazio sopra il foglio, non è absolute
   pickerOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
   },
+  // sheet in basso con il DateTimePicker
   pickerContainer: {
     backgroundColor: "#fff",
     borderTopLeftRadius: UI.radius.lg,
     borderTopRightRadius: UI.radius.lg,
+    minHeight: 320,
+    paddingHorizontal: UI.spacing.md,
+    paddingTop: UI.spacing.sm,
     paddingBottom: UI.spacing.md,
   },
   pickerHeader: {
@@ -1156,6 +1164,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: UI.colors.text,
+  },
+  iosPicker: {
+    width: "100%",
+    minHeight: 260,
   },
 
   adminBtn: {

@@ -37,8 +37,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendExpoPushNotification = sendExpoPushNotification;
+// functions/src/expoPush.ts
 const functions = __importStar(require("firebase-functions"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
+const firebaseAdmin_1 = require("./firebaseAdmin");
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN || functions.config().expo?.token || undefined;
 const CHUNK_SIZE = 100;
@@ -56,10 +58,15 @@ function makeHeaders() {
     }
     return headers;
 }
+/**
+ * Analizza la risposta di Expo per un chunk di token e:
+ * - logga i risultati
+ * - restituisce la lista dei token invalidi (DeviceNotRegistered, ecc.)
+ */
 function logExpoResponse(chunk, status, rawText, parsed) {
     if (!parsed) {
         console.log(`[expoPush] response (status ${status}) - non JSON: ${rawText.slice(0, 500)}`);
-        return;
+        return [];
     }
     // Error globale
     if (parsed.errors && parsed.errors.length > 0) {
@@ -68,10 +75,11 @@ function logExpoResponse(chunk, status, rawText, parsed) {
     const tickets = parsed.data || [];
     if (!tickets.length) {
         console.log(`[expoPush] response (status ${status}) - no tickets, raw: ${rawText.slice(0, 500)}`);
-        return;
+        return [];
     }
     let okCount = 0;
     let errorCount = 0;
+    const invalidTokens = [];
     tickets.forEach((ticket, index) => {
         const token = chunk[index] || "(unknown token)";
         if (ticket.status === "ok") {
@@ -82,9 +90,57 @@ function logExpoResponse(chunk, status, rawText, parsed) {
             errorCount++;
             const code = ticket.details?.error || "UnknownError";
             console.error(`[expoPush] error for token ${token} - code: ${code}, message: ${ticket.message || "no message"}`);
+            // Token considerati non più validi da Expo/FCM
+            if (code === "DeviceNotRegistered" ||
+                code === "ExpoPushTokenNotRegistered" ||
+                code === "InvalidCredentials") {
+                invalidTokens.push(token);
+            }
         }
     });
     console.log(`[expoPush] summary for chunk: ${okCount} ok, ${errorCount} error(s) (status ${status})`);
+    if (invalidTokens.length > 0) {
+        console.warn("[expoPush] invalid tokens in this chunk:", JSON.stringify(invalidTokens));
+    }
+    return invalidTokens;
+}
+/**
+ * Rimuove i token invalidi dall'array users/{uid}.expoPushTokens
+ * per tutti gli utenti che li contengono.
+ */
+async function removeInvalidTokensFromUsers(tokensToRemove) {
+    const unique = Array.from(new Set(tokensToRemove));
+    console.log("[expoPush] removeInvalidTokensFromUsers - tokensToRemove:", JSON.stringify(unique));
+    if (!unique.length)
+        return;
+    for (const tok of unique) {
+        try {
+            console.log(`[expoPush] cleanup: cerco utenti con token ${tok}`);
+            const snap = await firebaseAdmin_1.db
+                .collection("users")
+                .where("expoPushTokens", "array-contains", tok)
+                .get();
+            if (snap.empty) {
+                console.log(`[expoPush] cleanup: nessun utente trovato per token ${tok}`);
+                continue;
+            }
+            const batch = firebaseAdmin_1.db.batch();
+            snap.docs.forEach((docSnap) => {
+                const data = docSnap.data() || {};
+                const tokens = Array.isArray(data.expoPushTokens)
+                    ? data.expoPushTokens
+                    : [];
+                const filtered = tokens.filter((t) => t !== tok);
+                console.log(`[expoPush] cleanup: rimuovo token ${tok} da user ${docSnap.id} (prima=${tokens.length}, dopo=${filtered.length})`);
+                batch.update(docSnap.ref, { expoPushTokens: filtered });
+            });
+            await batch.commit();
+            console.log(`[expoPush] cleanup: completata rimozione token ${tok} da ${snap.size} utente/i`);
+        }
+        catch (err) {
+            console.error(`[expoPush] cleanup: errore rimuovendo token ${tok} dai profili utente:`, err);
+        }
+    }
 }
 async function sendExpoPushNotification(message) {
     const tokens = normalizeTokens(message.to);
@@ -94,6 +150,7 @@ async function sendExpoPushNotification(message) {
     }
     const headers = makeHeaders();
     const results = [];
+    let allInvalidTokens = [];
     for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
         const chunk = tokens.slice(i, i + CHUNK_SIZE);
         const payload = chunk.map((to) => ({
@@ -124,12 +181,18 @@ async function sendExpoPushNotification(message) {
                 responseText: text,
             };
             if (response.ok) {
-                logExpoResponse(chunk, response.status, text, parsed);
+                const invalidFromChunk = logExpoResponse(chunk, response.status, text, parsed);
+                if (invalidFromChunk && invalidFromChunk.length > 0) {
+                    allInvalidTokens = allInvalidTokens.concat(invalidFromChunk);
+                }
             }
             else {
                 console.error(`[expoPush] HTTP error for chunk (status ${response.status}); raw response: ${text.slice(0, 500)}`);
                 if (parsed) {
-                    logExpoResponse(chunk, response.status, text, parsed);
+                    const invalidFromChunk = logExpoResponse(chunk, response.status, text, parsed);
+                    if (invalidFromChunk && invalidFromChunk.length > 0) {
+                        allInvalidTokens = allInvalidTokens.concat(invalidFromChunk);
+                    }
                 }
             }
             results.push(chunkResult);
@@ -142,6 +205,15 @@ async function sendExpoPushNotification(message) {
                 ok: false,
                 responseText: String(error),
             });
+        }
+    }
+    if (allInvalidTokens.length > 0) {
+        console.warn("[expoPush] invalid tokens detected across all chunks:", JSON.stringify(allInvalidTokens));
+        try {
+            await removeInvalidTokensFromUsers(allInvalidTokens);
+        }
+        catch (err) {
+            console.error("[expoPush] errore durante la pulizia dei token invalidi:", err);
         }
     }
     return results;

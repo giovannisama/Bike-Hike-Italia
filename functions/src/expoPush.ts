@@ -1,5 +1,7 @@
+// functions/src/expoPush.ts
 import * as functions from "firebase-functions";
 import fetch from "node-fetch";
+import { db } from "./firebaseAdmin";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_ACCESS_TOKEN =
@@ -11,7 +13,6 @@ export interface ExpoPushMessage {
   body: string;
   data?: Record<string, unknown> | null;
   sound?: string;
-  channelId?: string; // opzionale: se non passato, usiamo "default"
 }
 
 export interface ExpoPushResult {
@@ -19,28 +20,6 @@ export interface ExpoPushResult {
   status: number;
   ok: boolean;
   responseText: string;
-}
-
-const CHUNK_SIZE = 100;
-
-function normalizeTokens(to: string | string[]): string[] {
-  const arr = Array.isArray(to) ? to : [to];
-  return Array.from(
-    new Set(
-      arr.filter((tok) => typeof tok === "string" && tok.length > 0)
-    )
-  );
-}
-
-function makeHeaders() {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
-  if (EXPO_ACCESS_TOKEN) {
-    headers["Authorization"] = `Bearer ${EXPO_ACCESS_TOKEN}`;
-  }
-  return headers;
 }
 
 type ExpoPushTicket = {
@@ -63,12 +42,39 @@ type ExpoPushResponse = {
   [key: string]: unknown;
 };
 
+const CHUNK_SIZE = 100;
+
+function normalizeTokens(to: string | string[]): string[] {
+  const arr = Array.isArray(to) ? to : [to];
+  return Array.from(
+    new Set(
+      arr.filter((tok) => typeof tok === "string" && tok.length > 0)
+    )
+  );
+}
+
+function makeHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (EXPO_ACCESS_TOKEN) {
+    headers["Authorization"] = `Bearer ${EXPO_ACCESS_TOKEN}`;
+  }
+  return headers;
+}
+
+/**
+ * Analizza la risposta di Expo per un chunk di token e:
+ * - logga i risultati
+ * - restituisce la lista dei token invalidi (DeviceNotRegistered, ecc.)
+ */
 function logExpoResponse(
   chunk: string[],
   status: number,
   rawText: string,
   parsed?: ExpoPushResponse
-) {
+): string[] {
   if (!parsed) {
     console.log(
       `[expoPush] response (status ${status}) - non JSON: ${rawText.slice(
@@ -76,7 +82,7 @@ function logExpoResponse(
         500
       )}`
     );
-    return;
+    return [];
   }
 
   // Error globale
@@ -95,11 +101,12 @@ function logExpoResponse(
         500
       )}`
     );
-    return;
+    return [];
   }
 
   let okCount = 0;
   let errorCount = 0;
+  const invalidTokens: string[] = [];
 
   tickets.forEach((ticket, index) => {
     const token = chunk[index] || "(unknown token)";
@@ -116,12 +123,88 @@ function logExpoResponse(
           ticket.message || "no message"
         }`
       );
+
+      // Token considerati non più validi da Expo/FCM
+      if (
+        code === "DeviceNotRegistered" ||
+        code === "ExpoPushTokenNotRegistered" ||
+        code === "InvalidCredentials"
+      ) {
+        invalidTokens.push(token);
+      }
     }
   });
 
   console.log(
     `[expoPush] summary for chunk: ${okCount} ok, ${errorCount} error(s) (status ${status})`
   );
+
+  if (invalidTokens.length > 0) {
+    console.warn(
+      "[expoPush] invalid tokens in this chunk:",
+      JSON.stringify(invalidTokens)
+    );
+  }
+
+  return invalidTokens;
+}
+
+/**
+ * Rimuove i token invalidi dall'array users/{uid}.expoPushTokens
+ * per tutti gli utenti che li contengono.
+ */
+async function removeInvalidTokensFromUsers(tokensToRemove: string[]): Promise<void> {
+  const unique = Array.from(new Set(tokensToRemove));
+
+  console.log(
+    "[expoPush] removeInvalidTokensFromUsers - tokensToRemove:",
+    JSON.stringify(unique)
+  );
+
+  if (!unique.length) return;
+
+  for (const tok of unique) {
+    try {
+      console.log(`[expoPush] cleanup: cerco utenti con token ${tok}`);
+      const snap = await db
+        .collection("users")
+        .where("expoPushTokens", "array-contains", tok)
+        .get();
+
+      if (snap.empty) {
+        console.log(
+          `[expoPush] cleanup: nessun utente trovato per token ${tok}`
+        );
+        continue;
+      }
+
+      const batch = db.batch();
+
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        const tokens = Array.isArray((data as any).expoPushTokens)
+          ? (data as any).expoPushTokens as string[]
+          : [];
+        const filtered = tokens.filter((t) => t !== tok);
+
+        console.log(
+          `[expoPush] cleanup: rimuovo token ${tok} da user ${docSnap.id} (prima=${tokens.length}, dopo=${filtered.length})`
+        );
+
+        batch.update(docSnap.ref, { expoPushTokens: filtered });
+      });
+
+      await batch.commit();
+      console.log(
+        `[expoPush] cleanup: completata rimozione token ${tok} da ${snap.size} utente/i`
+      );
+    } catch (err) {
+      console.error(
+        `[expoPush] cleanup: errore rimuovendo token ${tok} dai profili utente:`,
+        err
+      );
+    }
+  }
 }
 
 export async function sendExpoPushNotification(
@@ -135,17 +218,16 @@ export async function sendExpoPushNotification(
 
   const headers = makeHeaders();
   const results: ExpoPushResult[] = [];
+  let allInvalidTokens: string[] = [];
 
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
     const chunk = tokens.slice(i, i + CHUNK_SIZE);
-
     const payload = chunk.map((to) => ({
       to,
       title: message.title,
       body: message.body,
       data: message.data || undefined,
       sound: message.sound || "default",
-      channelId: message.channelId || "default", // 👈 canale impostato
     }));
 
     try {
@@ -172,7 +254,15 @@ export async function sendExpoPushNotification(
       };
 
       if (response.ok) {
-        logExpoResponse(chunk, response.status, text, parsed);
+        const invalidFromChunk = logExpoResponse(
+          chunk,
+          response.status,
+          text,
+          parsed
+        );
+        if (invalidFromChunk && invalidFromChunk.length > 0) {
+          allInvalidTokens = allInvalidTokens.concat(invalidFromChunk);
+        }
       } else {
         console.error(
           `[expoPush] HTTP error for chunk (status ${response.status}); raw response: ${text.slice(
@@ -181,7 +271,15 @@ export async function sendExpoPushNotification(
           )}`
         );
         if (parsed) {
-          logExpoResponse(chunk, response.status, text, parsed);
+          const invalidFromChunk = logExpoResponse(
+            chunk,
+            response.status,
+            text,
+            parsed
+          );
+          if (invalidFromChunk && invalidFromChunk.length > 0) {
+            allInvalidTokens = allInvalidTokens.concat(invalidFromChunk);
+          }
         }
       }
 
@@ -194,6 +292,21 @@ export async function sendExpoPushNotification(
         ok: false,
         responseText: String(error),
       });
+    }
+  }
+
+  if (allInvalidTokens.length > 0) {
+    console.warn(
+      "[expoPush] invalid tokens detected across all chunks:",
+      JSON.stringify(allInvalidTokens)
+    );
+    try {
+      await removeInvalidTokensFromUsers(allInvalidTokens);
+    } catch (err) {
+      console.error(
+        "[expoPush] errore durante la pulizia dei token invalidi:",
+        err
+      );
     }
   }
 

@@ -34,6 +34,8 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [androidYmModalVisible, setAndroidYmModalVisible] = useState(false);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(() => new Date().getMonth());
   const isIos = Platform.OS === "ios";
 
   const hasYearMonthFilter = state.ymLocal.trim().length > 0;
@@ -152,17 +154,40 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
     return { year, month };
   };
 
+  const formatMonthYearLabel = (value: string) => {
+    const parsed = parseYearMonth(value);
+    if (!parsed) return value;
+    return `${monthNames[parsed.month - 1]} ${parsed.year}`;
+  };
+
+  const applyYearMonthSelection = (year: number, monthIndex: number) => {
+    const d = new Date(year, monthIndex, 1);
+    const ymStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+    state.setYmLocal(ymStr);
+    setMonthPickerVisible(false);
+    setAndroidYmModalVisible(false);
+  };
+
   const openYearMonthPicker = () => {
     if (hasDateRangeFilter) return;
     const parsed = parseYearMonth(state.ymLocal);
+    if (Platform.OS === "android") {
+      setSelectedYear(parsed?.year ?? new Date().getFullYear());
+      setSelectedMonthIndex(parsed ? parsed.month - 1 : new Date().getMonth());
+      setAndroidYmModalVisible(true);
+      return;
+    }
     setSelectedYear(parsed?.year ?? new Date().getFullYear());
     setSelectedMonth(parsed?.month ?? new Date().getMonth() + 1);
     setMonthPickerVisible(true);
   };
 
   const confirmYearMonth = () => {
-    state.setYmLocal(`${selectedYear}-${pad2(selectedMonth)}`);
-    setMonthPickerVisible(false);
+    if (isIos) {
+      applyYearMonthSelection(selectedYear, selectedMonth - 1);
+      return;
+    }
+    applyYearMonthSelection(selectedYear, selectedMonthIndex);
   };
 
   return (
@@ -211,7 +236,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
                 accessibilityState={{ disabled: hasDateRangeFilter }}
               >
                 <Text style={{ color: state.ymLocal ? "#111827" : "#9CA3AF" }}>
-                  {state.ymLocal || "YYYY-MM"}
+                  {state.ymLocal ? formatMonthYearLabel(state.ymLocal) : "YYYY-MM"}
                 </Text>
               </Pressable>
             </View>
@@ -326,7 +351,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
       )}
 
       {/* Picker Mese/Anno */}
-      {monthPickerVisible && (
+      {isIos && monthPickerVisible && (
         <Modal
           transparent
           visible={true}
@@ -406,6 +431,77 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
           </View>
         </Modal>
       )}
+
+      {/* FIX: su Android il picker "Anno-Mese" usa una modal custom mese/anno invece del calendario con i giorni */}
+      {Platform.OS === "android" && androidYmModalVisible && (
+        <Modal
+          transparent
+          visible={true}
+          animationType="slide"
+          onRequestClose={() => setAndroidYmModalVisible(false)}
+        >
+          <View style={androidMonthPickerStyles.overlay}>
+            <TouchableWithoutFeedback onPress={() => setAndroidYmModalVisible(false)}>
+              <View style={{ flex: 1 }} />
+            </TouchableWithoutFeedback>
+            <View style={androidMonthPickerStyles.sheet}>
+              <View style={androidMonthPickerStyles.header}>
+                <Pressable onPress={() => setAndroidYmModalVisible(false)}>
+                  <Text style={androidMonthPickerStyles.cancelText}>Annulla</Text>
+                </Pressable>
+                <Pressable onPress={confirmYearMonth}>
+                  <Text style={androidMonthPickerStyles.confirmText}>Fatto</Text>
+                </Pressable>
+              </View>
+              <View style={androidMonthPickerStyles.columns}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  style={[androidMonthPickerStyles.column, { marginRight: 8 }]}
+                >
+                  {yearOptions.map((year) => (
+                    <Pressable
+                      key={year}
+                      onPress={() => setSelectedYear(year)}
+                      style={androidMonthPickerStyles.option}
+                    >
+                      <Text
+                        style={[
+                          androidMonthPickerStyles.optionText,
+                          selectedYear === year && androidMonthPickerStyles.optionTextSelected,
+                        ]}
+                      >
+                        {year}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  style={androidMonthPickerStyles.column}
+                >
+                  {monthNames.map((label, index) => (
+                    <Pressable
+                      key={label}
+                      onPress={() => setSelectedMonthIndex(index)}
+                      style={androidMonthPickerStyles.option}
+                    >
+                      <Text
+                        style={[
+                          androidMonthPickerStyles.optionText,
+                          selectedMonthIndex === index &&
+                            androidMonthPickerStyles.optionTextSelected,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </Modal>
   );
 }
@@ -447,5 +543,57 @@ const pickerModalStyles = StyleSheet.create({
   picker: {
     width: "100%",
     minHeight: 260,
+  },
+});
+
+const androidMonthPickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  sheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 12,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    maxHeight: 320,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 4,
+  },
+  cancelText: {
+    color: "#111827",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+  confirmText: {
+    color: "#0B3D2E",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  columns: {
+    flexDirection: "row",
+    marginTop: 12,
+    height: 220,
+  },
+  column: {
+    flex: 1,
+  },
+  option: {
+    paddingVertical: 10,
+  },
+  optionText: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#111827",
+  },
+  optionTextSelected: {
+    color: "#0B3D2E",
+    fontWeight: "700",
   },
 });

@@ -61,6 +61,7 @@ type ScreenProps = {
   useNativeHeader?: boolean;
   keyboardShouldPersistTaps?: "always" | "handled" | "never";
   headerContent?: React.ReactNode;
+  avoidKeyboard?: boolean;
 };
 
 export function Screen({
@@ -73,6 +74,7 @@ export function Screen({
   useNativeHeader = false,
   keyboardShouldPersistTaps = "always",
   headerContent,
+  avoidKeyboard = true,
 }: ScreenProps) {
   const keyboardBehavior: KeyboardAvoidingViewProps["behavior"] = Platform.select({
     ios: "padding",
@@ -179,11 +181,24 @@ export function Screen({
       }}
     >
       {scroll ? (
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={keyboardBehavior}
-          keyboardVerticalOffset={keyboardVerticalOffset}
-        >
+        avoidKeyboard ? (
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={keyboardBehavior}
+            keyboardVerticalOffset={keyboardVerticalOffset}
+          >
+            <ScrollView
+              contentContainerStyle={{
+                flexGrow: 1,
+                paddingBottom: UI.spacing.lg + 28,
+              }}
+              keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            >
+              {content}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        ) : (
           <ScrollView
             contentContainerStyle={{
               flexGrow: 1,
@@ -194,7 +209,7 @@ export function Screen({
           >
             {content}
           </ScrollView>
-        </KeyboardAvoidingView>
+        )
       ) : (
         content
       )}

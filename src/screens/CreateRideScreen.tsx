@@ -35,6 +35,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { Screen, UI } from "../components/Screen";
+import AndroidTimePicker from "../components/AndroidTimePicker";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { splitGuideInput } from "../utils/guideHelpers";
@@ -173,6 +174,8 @@ export default function CreateRideScreen() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<"date" | "time" | null>(null);
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
+  const [androidTimePickerVisible, setAndroidTimePickerVisible] = useState(false);
+  const [androidTimePickerInitialDate, setAndroidTimePickerInitialDate] = useState<Date>(() => new Date());
   const isIos = Platform.OS === "ios";
 
   useEffect(() => {
@@ -270,6 +273,11 @@ export default function CreateRideScreen() {
       base.setSeconds(0, 0);
     }
     if (Platform.OS === "android") {
+      if (mode === "time") {
+        setAndroidTimePickerInitialDate(new Date(base));
+        setAndroidTimePickerVisible(true);
+        return;
+      }
       DateTimePickerAndroid.open({
         mode,
         display: mode === "date" ? "calendar" : "spinner",
@@ -983,7 +991,7 @@ export default function CreateRideScreen() {
                   onChange={(_, selected) => {
                     if (selected) setIosPickerValue(selected);
                   }}
-                  minuteInterval={iosPickerMode === "time" ? 1 : undefined}
+                  minuteInterval={iosPickerMode === "time" ? 5 : undefined}
                   locale="it-IT"
                   style={styles.iosPicker}
                 />
@@ -992,6 +1000,17 @@ export default function CreateRideScreen() {
           </View>
         </Modal>
       )}
+
+      {/* FIX: Android time picker 5-minute steps */}
+      <AndroidTimePicker
+        visible={androidTimePickerVisible}
+        initialDate={androidTimePickerInitialDate}
+        onCancel={() => setAndroidTimePickerVisible(false)}
+        onConfirm={(date) => {
+          applyPickerValue("time", date);
+          setAndroidTimePickerVisible(false);
+        }}
+      />
     </>
   );
 }

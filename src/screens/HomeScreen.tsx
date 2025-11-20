@@ -282,7 +282,13 @@ export default function HomeScreen({ navigation }: any) {
   const secondaryLine = nickname || user?.email || "";
 
   return (
-    <Screen useNativeHeader scroll keyboardShouldPersistTaps="handled">
+    <Screen
+      useNativeHeader
+      scroll
+      keyboardShouldPersistTaps="handled"
+      // FIX: rimuovo il KeyboardAvoidingView su Home perché Android lasciava un blocco bianco dopo il ritorno da CreateRide
+      avoidKeyboard={false}
+    >
       <LinearGradient
         colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
         start={{ x: 0, y: 0 }}

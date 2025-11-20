@@ -374,6 +374,7 @@ export default function UserListScreen() {
   }, []);
 
   // Aggiorna elementi mostrati quando cambiano i dati o il filtro
+  // TODO: logica di merge pubblico/privato + filtri/ricerca potrebbe essere estratta in hook useUserListData.
   useEffect(() => {
     if (!publicLoaded || !privateLoaded) {
       setLoading(true);
@@ -504,6 +505,7 @@ export default function UserListScreen() {
     return true;
   }, [meRole]);
 
+  // TODO: azioni approve/activate/deactivate potrebbero essere centralizzate in un piccolo service/helper per ridurre duplicazioni.
   // Azioni rapide
   const doApprove = useCallback(async (uid: string) => {
     if (!requireOwner()) return;

@@ -36,7 +36,7 @@ import { getCertificateStatus } from "../utils/medicalCertificate";
 import { saveImageToDevice } from "../utils/saveImageToDevice";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../../App";
+import type { RootStackParamList } from "../navigation/types";
 
 const logo = require("../../assets/images/logo.jpg");
 const SELF_DELETED_SENTINEL = "__self_deleted__";
@@ -155,6 +155,7 @@ export default function ProfileScreen() {
       setBioEnabled(!!stored);
     })();
   }, []);
+  // TODO: logica Face ID / Touch ID potrebbe diventare hook condiviso (riutilizzabile anche nella LoginScreen).
   const onToggleBiometrics = async (next: boolean) => {
     if (!bioAvailable) {
       Alert.alert("Non supportato", "Questo dispositivo non supporta Face ID / Touch ID.");
@@ -585,6 +586,7 @@ export default function ProfileScreen() {
   return (
     <Screen headerContent={headerContent}>
 
+      {/* TODO: tab bar + contenuti potrebbero essere estratti in sottocomponenti per le tre sezioni (personal/documents/security). */}
       <View style={styles.tabBar}>
         {PROFILE_TABS.map((tab) => {
           const active = activeTab === tab.key;
@@ -631,6 +633,7 @@ export default function ProfileScreen() {
 
       {activeTab === "documents" && (
         <>
+          {/* TODO: sezione documenti (tessera + certificato) potrebbe essere suddivisa in componenti dedicati. */}
           <View style={styles.documentHighlightStack}>
             <View>
               <Pressable

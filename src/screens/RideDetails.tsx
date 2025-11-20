@@ -31,7 +31,6 @@ import {
   updateDoc,
   arrayUnion,
   arrayRemove,
-  increment,
 } from "firebase/firestore";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
@@ -40,11 +39,8 @@ import { PrimaryButton } from "../components/Button";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "./calendar/StatusBadge";
 import { deriveGuideSummary } from "../utils/guideHelpers";
-
-// Tipi parametri di navigazione (adatta se usi un RootStack diverso)
-type RootStackParamList = {
-  RideDetails: { rideId: string; title?: string };
-};
+import type { RootStackParamList } from "../navigation/types";
+import type { ParticipantDoc, RideDoc, UserDoc } from "../types/firestore";
 
 type RideServiceKey = "lunch" | "dinner" | "overnight";
 type RideServiceChoice = "yes" | "no";
@@ -185,7 +181,7 @@ export default function RideDetails() {
     try {
       const main = await getDoc(doc(db, "users", uid));
       if (main.exists()) {
-        const d = main.data() as any;
+        const d = main.data() as UserDoc;
         return {
           firstName: d?.name ?? d?.firstName ?? d?.nome ?? null,
           lastName: d?.surname ?? d?.lastName ?? d?.cognome ?? null,
@@ -238,7 +234,7 @@ export default function RideDetails() {
           return;
         }
 
-        const d = snap.data() as any;
+        const d = snap.data() as RideDoc | undefined;
         const rawManual = Array.isArray(d?.manualParticipants) ? d.manualParticipants : [];
         const manualParticipants: ManualParticipant[] = rawManual
           .map((mp: any): ManualParticipant | null => {
@@ -314,7 +310,7 @@ export default function RideDetails() {
       (snap) => {
         const rows: Participant[] = [];
         snap.forEach((d) => {
-          const x = d.data() as any;
+          const x = d.data() as ParticipantDoc;
           rows.push({
             id: d.id,
             uid: x?.uid,
@@ -688,6 +684,7 @@ export default function RideDetails() {
     [rideId]
   );
 
+  // TODO: handler di join/nota lungo; valutare estrazione in helper dedicato per leggibilità/test.
   const confirmJoin = useCallback(async () => {
     if (joinSaving) return;
     const u = auth.currentUser;
@@ -793,6 +790,7 @@ export default function RideDetails() {
     setShowFullDescription(false);
   }, [rideId]);
 
+  // TODO: gestione aggiunta manuale partecipanti corposa; valutare estrazione in helper/hook specifico.
   const confirmManualAdd = useCallback(async () => {
     if (!isAdmin || manualSaving) return;
     if (ride?.archived) {
@@ -1085,7 +1083,8 @@ export default function RideDetails() {
       </View>
 
         {/* Prenotazione */}
-        <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>
+        {/* TODO: la card di prenotazione + riepilogo servizi potrebbe essere estratta in un sottocomponente. */}
+        <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>         
         <Text style={styles.sectionTitle}>Prenotazione</Text>
 
         <Text style={{ color: "#1F2937" }}>
@@ -1158,6 +1157,7 @@ export default function RideDetails() {
       </View>
 
         {/* Elenco partecipanti */}
+        {/* TODO: blocco elenco partecipanti (lista + azioni admin) candidabile a sottocomponente riusabile. */}
         <View style={[styles.card, { marginHorizontal: 16 }]}>
         <Text style={styles.sectionTitle}>Elenco partecipanti</Text>
         {isAdmin && (
@@ -1443,15 +1443,6 @@ export default function RideDetails() {
         </KeyboardAvoidingView>
       </Modal>
     </>
-  );
-}
-
-// Badge semplice per stati
-function Badge({ color, text }: { color: string; text: string }) {
-  return (
-    <View style={{ backgroundColor: color, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 }}>
-      <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>{text}</Text>
-    </View>
   );
 }
 

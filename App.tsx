@@ -59,6 +59,8 @@ import HomeScreen from "./src/screens/HomeScreen";
 import NotificationSettingsScreen from "./src/screens/NotificationSettingsScreen";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
 import { registerPushToken } from "./src/notifications/registerPushToken";
+import type { RootStackParamList } from "./src/navigation/types";
+import type { UserDoc } from "./src/types/firestore";
 
 // 🔐 Face ID / Touch ID
 import * as LocalAuthentication from "expo-local-authentication";
@@ -101,28 +103,6 @@ function AdminGate() {
 
   return <AdminScreen />;
 }
-
-// ---- ROUTES ----
-export type RootStackParamList = {
-  // Auth
-  Login: undefined;
-  Signup: undefined;
-
-  // App
-  Home: undefined;
-  Amministrazione: undefined;
-  UserList: undefined;
-  UserDetail: { uid: string; meRole?: string | null };
-  UsciteList: undefined;
-  Calendar: undefined;
-  Board: undefined;
-  CreateRide: undefined;
-  Create: undefined; // alias compatibilità
-  RideDetails: { rideId: string; title?: string };
-  Profile: undefined;
-  Attesa: undefined;
-  NotificationSettings: undefined;
-};
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 // Navigation ref per future esigenze (es. deep link)
@@ -211,18 +191,7 @@ const APP_VERSION_LABEL = (() => {
 })();
 
 // ---- TIPO profilo (per typing nella signup) ----
-type UserProfile = {
-  uid?: string;
-  email?: string;
-  displayName?: string;
-  firstName?: string;
-  lastName?: string;
-  nickname?: string;
-  role?: "admin" | "member";
-  approved?: boolean;
-  disabled?: boolean;
-  createdAt?: any; // Firestore timestamp
-};
+type UserProfile = UserDoc;
 
 // ---- Biometric helpers (locali a App) ----
 const BIOMETRIC_EMAIL_KEY = "bh_email";
@@ -744,7 +713,9 @@ export default function App() {
   // 1.b) register push token once we know the user
   useEffect(() => {
     if (!user?.uid) return;
-    console.log("[App] registering push token for user", user.uid);
+    if (__DEV__) {
+      console.log("[App] registering push token for user", user.uid);
+    }
     void registerPushToken();
   }, [user?.uid]);
 
@@ -806,6 +777,7 @@ export default function App() {
               component={CreateRideScreen}
               options={{ title: "Crea Uscita" }}
             />
+            {/* LEGACY alias per "CreateRide" (usato solo per compatibilità futura/eventuale). */}
             <Stack.Screen
               name="Create"
               component={CreateRideScreen}

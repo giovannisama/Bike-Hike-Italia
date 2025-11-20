@@ -3,20 +3,10 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import type { UserDoc } from "../types/firestore";
 
 export type UserRole = "member" | "admin" | "owner";
-export type UserProfile = {
-  uid?: string;
-  email?: string;
-  displayName?: string;
-  firstName?: string;
-  lastName?: string;
-  nickname?: string;
-  role?: UserRole;
-  approved?: boolean;
-  disabled?: boolean;
-  createdAt?: any;
-};
+export type UserProfile = UserDoc;
 
 export default function useCurrentProfile() {
   const [authUser, setAuthUser] = useState<User | null>(auth.currentUser);

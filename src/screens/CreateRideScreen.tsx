@@ -39,6 +39,8 @@ import AndroidTimePicker from "../components/AndroidTimePicker";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { splitGuideInput } from "../utils/guideHelpers";
+import type { RideDoc, UserDoc } from "../types/firestore";
+import type { RootStackParamList } from "../navigation/types";
 
 type FieldErrors = {
   title?: string;
@@ -136,11 +138,6 @@ const extractExtraServices = (raw: any): Record<ExtraServiceKey, ExtraServiceSta
 const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
   <View style={{ height: UI.spacing[size] }} />
 );
-
-// Tipi route
-type RootStackParamList = {
-  CreateRide: { rideId?: string } | undefined;
-};
 
 export default function CreateRideScreen() {
   const navigation = useNavigation<any>();
@@ -316,7 +313,7 @@ export default function CreateRideScreen() {
     const unsub = onSnapshot(
       ref,
       (snap) => {
-        const role = snap.exists() ? (snap.data() as any)?.role : null;
+        const role = snap.exists() ? (snap.data() as UserDoc | undefined)?.role : null;
         setIsAdmin(role === "admin" || role === "owner");
       },
       () => setIsAdmin(false)
@@ -342,7 +339,7 @@ export default function CreateRideScreen() {
           navigation.goBack();
           return;
         }
-        const d = snap.data() as any;
+        const d = snap.data() as RideDoc | undefined;
         if (cancelled) return;
         setTitle(d?.title ?? "");
         const storedGuides =
@@ -419,6 +416,7 @@ export default function CreateRideScreen() {
   }, [rideId, navigation]);
 
   // ---------- validazione semplice ----------
+  // TODO: logica di validazione potrebbe essere estratta in helper riusabile/testabile separatamente.
   const validate = useCallback(() => {
     const t = title.trim();
     const mp = meetingPoint.trim();
@@ -535,6 +533,7 @@ export default function CreateRideScreen() {
     const guidaName = names.length > 0 ? names[0] : null;
     const guidaNames = names.length > 1 ? names : names.length === 1 ? [names[0]] : null;
 
+    // TODO: questa preparazione payload/save create/edit potrebbe vivere in helper riusabile (stessa logica, meno rumore nel component).
     const basePayload: Record<string, any> = {
       title: title.trim(),
       meetingPoint: meetingPoint.trim(),
@@ -628,6 +627,7 @@ export default function CreateRideScreen() {
   const titleScreen = isEdit ? "Modifica Uscita" : "Crea Uscita";
   const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
+  // TODO: sezione UI principale molto ampia; valutare estrazione in sottocomponenti (es. form principale, feedback, warning).
   return (
     <>
       <Screen
@@ -636,6 +636,7 @@ export default function CreateRideScreen() {
         scroll={true}
         keyboardShouldPersistTaps="handled"
       >
+        {/* TODO: sezione principale del form candidabile a sottocomponente riutilizzabile. */}
         <View style={{ gap: UI.spacing.md }}>
           {feedback && (
             <View
@@ -824,6 +825,7 @@ export default function CreateRideScreen() {
             {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
           </View>
 
+          {/* TODO: pannello extraServices potrebbe diventare componente dedicato riusabile. */}
           <View style={styles.formBlock}>
             <Text style={styles.label}>Servizi extra</Text>
             <Text style={styles.helperText}>

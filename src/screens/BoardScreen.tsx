@@ -158,6 +158,7 @@ export default function BoardScreen({ navigation }: any) {
     [baseScale, pinchScale]
   );
 
+  // TODO: logica di preview/zoom immagine (pinch/pan) potrebbe essere incapsulata in hook o componente modale dedicato.
   const handlePanEvent = useMemo(
     () =>
       Animated.event([{ nativeEvent: { translationX: pan.x, translationY: pan.y } }], {
@@ -238,6 +239,7 @@ export default function BoardScreen({ navigation }: any) {
 
   const searchNormalized = useMemo(() => normalize(search), [search]);
 
+  // TODO: logica filtri/ordinamento board potrebbe essere estratta in hook dedicato per testabilità.
   const filteredItems = useMemo(() => {
     return items
       .filter((item) => {
@@ -286,6 +288,7 @@ export default function BoardScreen({ navigation }: any) {
     }
   }, [requestMediaPermission]);
 
+  // TODO: flusso creazione/modifica post (titolo/descrizione/immagine) abbastanza coeso per estrazione in hook/useBoardPostForm.
   const handleSave = useCallback(async () => {
     if (!canEdit) return;
 

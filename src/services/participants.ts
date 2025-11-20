@@ -1,3 +1,4 @@
+// LEGACY: API partecipanti non più usata (logica spostata in RideDetails.tsx). Mantenuto solo come riferimento.
 // src/services/participants.ts
 import { auth, db } from '../firebase';
 import {

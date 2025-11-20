@@ -67,20 +67,26 @@ async function ensureAndroidNotificationChannel() {
 export async function registerPushToken() {
   try {
     if (!Device.isDevice) {
-      console.log("Le notifiche push richiedono un dispositivo reale.");
+      if (__DEV__) {
+        console.log("Le notifiche push richiedono un dispositivo reale.");
+      }
       return;
     }
 
     // 1) Permessi Android 13+
     const androidOk = await ensureAndroidNotificationPermission();
     if (!androidOk) {
-      console.log("[registerPushToken] Permesso notifiche Android non concesso");
+      if (__DEV__) {
+        console.log("[registerPushToken] Permesso notifiche Android non concesso");
+      }
       return;
     }
 
     // 2) Permessi generali Expo
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    console.log("[registerPushToken] Stato permessi iniziale (Expo):", existingStatus);
+    if (__DEV__) {
+      console.log("[registerPushToken] Stato permessi iniziale (Expo):", existingStatus);
+    }
 
     let finalStatus = existingStatus;
     if (existingStatus !== "granted") {
@@ -88,7 +94,9 @@ export async function registerPushToken() {
       finalStatus = status;
     }
     if (finalStatus !== "granted") {
-      console.log("[registerPushToken] Permesso notifiche non concesso (Expo)");
+      if (__DEV__) {
+        console.log("[registerPushToken] Permesso notifiche non concesso (Expo)");
+      }
       return;
     }
 
@@ -103,7 +111,9 @@ export async function registerPushToken() {
       (Constants?.manifest2 as any)?.extra?.eas?.projectId ||
       (Constants?.manifest as any)?.extra?.eas?.projectId;
 
-    console.log("[registerPushToken] projectId Expo:", projectId);
+    if (__DEV__) {
+      console.log("[registerPushToken] projectId Expo:", projectId);
+    }
 
     // 5) Ottieni il token push da Expo
     let tokenData: Notifications.ExpoPushToken;
@@ -124,12 +134,16 @@ export async function registerPushToken() {
     }
 
     const expoPushToken = tokenData.data; // es. "ExponentPushToken[xxxxxxxxxxxxxx]"
-    console.log("[registerPushToken] Expo token:", expoPushToken);
+    if (__DEV__) {
+      console.log("[registerPushToken] Expo token:", expoPushToken);
+    }
 
     // 6) Salva nel profilo utente (deduplicato e limitato)
     const user = auth.currentUser;
     if (!user) {
-      console.log("[registerPushToken] Nessun utente loggato, salto salvataggio token.");
+      if (__DEV__) {
+        console.log("[registerPushToken] Nessun utente loggato, salto salvataggio token.");
+      }
       return;
     }
 
@@ -165,18 +179,20 @@ export async function registerPushToken() {
       { merge: true }
     );
 
-    console.log(
-      "[registerPushToken] Token salvato su Firestore per utente:",
-      user.uid,
-      "tokens totali:",
-      normalized.length
-    );
+    if (__DEV__) {
+      console.log(
+        "[registerPushToken] Token salvato su Firestore per utente:",
+        user.uid,
+        "tokens totali:",
+        normalized.length
+      );
+    }
   } catch (e) {
     console.error("Errore registerPushToken:", e);
   }
 }
 
-// Gestione di come vengono mostrate le notifiche in foreground
+// Gestione centralizzata di come vengono mostrate le notifiche in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,

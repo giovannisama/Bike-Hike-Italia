@@ -1,3 +1,4 @@
+// LEGACY: schermata archivio non più usata nella navigazione corrente.
 // src/screens/ArchiveScreen.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {

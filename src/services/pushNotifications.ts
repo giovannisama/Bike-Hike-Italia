@@ -9,14 +9,7 @@ import Constants from "expo-constants";
 // 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
 const FALLBACK_EXPO_PROJECT_ID = "e74521c0-d040-4137-a8d1-0d535e353f2d";
 
-// Config consigliata da Expo
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Handler notifiche centralizzato altrove; qui non impostiamo più setNotificationHandler.
 
 function resolveExpoProjectId(): string | null {
   try {
@@ -51,8 +44,12 @@ function resolveExpoProjectId(): string | null {
 }
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  // NOTE: usata da NotificationSettingsScreen; salva i token con arrayUnion (non limita il numero).
+  // Il flusso alternativo in notifications/registerPushToken.ts deduplica e limita i token.
   if (!Device.isDevice) {
-    console.log("[pushNotifications] push supportate solo su dispositivo reale");
+    if (__DEV__) {
+      console.log("[pushNotifications] push supportate solo su dispositivo reale");
+    }
     return null;
   }
 
@@ -65,7 +62,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  console.log("[pushNotifications] Platform:", Platform.OS, "ownership:", appOwnership);
+  if (__DEV__) {
+    console.log("[pushNotifications] Platform:", Platform.OS, "ownership:", appOwnership);
+  }
 
   // Permessi
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -77,7 +76,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   if (finalStatus !== "granted") {
-    console.log("[pushNotifications] permessi push non concessi");
+    if (__DEV__) {
+      console.log("[pushNotifications] permessi push non concessi");
+    }
     return null;
   }
 
@@ -90,7 +91,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     return null;
   }
 
-  console.log("[pushNotifications] usando projectId:", projectId);
+  if (__DEV__) {
+    console.log("[pushNotifications] usando projectId:", projectId);
+  }
 
   // Ottieni token Expo
   let tokenResponse: Notifications.ExpoPushToken;
@@ -105,7 +108,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   const token = tokenResponse.data;
-  console.log("[pushNotifications] Expo push token ottenuto:", token);
+  if (__DEV__) {
+    console.log("[pushNotifications] Expo push token ottenuto:", token);
+  }
 
   // Solo Android: canale di default
   if (Platform.OS === "android") {
@@ -116,7 +121,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#FF231F7C",
       });
-      console.log("[pushNotifications] canale Android 'default' configurato");
+      if (__DEV__) {
+        console.log("[pushNotifications] canale Android 'default' configurato");
+      }
     } catch (error) {
       console.warn(
         "[pushNotifications] errore configurando il canale Android:",
@@ -133,10 +140,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       await updateDoc(userRef, {
         expoPushTokens: arrayUnion(token),
       });
-      console.log(
-        "[pushNotifications] token salvato per l'utente",
-        currentUser.uid
-      );
+      if (__DEV__) {
+        console.log(
+          "[pushNotifications] token salvato per l'utente",
+          currentUser.uid
+        );
+      }
     } catch (error) {
       console.error(
         "[pushNotifications] impossibile salvare il token su Firestore:",
@@ -144,9 +153,11 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       );
     }
   } else {
-    console.warn(
-      "[pushNotifications] nessun utente autenticato; non salvo il token su Firestore"
-    );
+    if (__DEV__) {
+      console.warn(
+        "[pushNotifications] nessun utente autenticato; non salvo il token su Firestore"
+      );
+    }
   }
 
   return token;

@@ -1,7 +1,10 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { sendExpoPushNotification } from "./expoPush";
-import { fetchApprovedExpoTokens } from "./userTokens";
+import {
+  fetchApprovedExpoTokens,
+  fetchOwnerExpoTokens,
+} from "./userTokens";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -42,7 +45,10 @@ export const onRideCreated = functions.firestore
     }
 
     const { tokens: recipients, approvedUsersCount } =
-      await fetchApprovedExpoTokens();
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCreatedRide",
+      });
+
     functions.logger.info(
       `[onRideCreated] ${rideId} approved users=${approvedUsersCount}`
     );
@@ -55,13 +61,13 @@ export const onRideCreated = functions.firestore
       return;
     }
 
-    functions.logger.info(
-      `[onRideCreated] ${rideId} sending push to ${recipients.length} tokens`
-    );
-
     const body = dateLabel
       ? `È stata pubblicata una nuova uscita: ${title} (${dateLabel})`
       : `È stata pubblicata una nuova uscita: ${title}`;
+
+    functions.logger.info(
+      `[onRideCreated] ${rideId} sending push to ${recipients.length} tokens`
+    );
 
     const results = await sendExpoPushNotification({
       to: recipients,
@@ -75,14 +81,137 @@ export const onRideCreated = functions.firestore
         `[onRideCreated] ${rideId} chunk ${index} status=${result.status} ok=${result.ok}`
       );
     });
+  });
 
+// -----------------------------
+// 3) Trigger su aggiornamento ride (cancellazione)
+// -----------------------------
+export const onRideUpdated = functions.firestore
+  .document("rides/{rideId}")
+  .onUpdate(async (change, context) => {
+    const rideId = context.params.rideId;
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (!before || !after) {
+      functions.logger.info(`[onRideUpdated] ${rideId} missing snapshot data`);
+      return;
+    }
+
+    const prevStatus = typeof before.status === "string" ? before.status : "active";
+    const nextStatus = typeof after.status === "string" ? after.status : "active";
+
+    // Trigger solo quando lo stato passa a "cancelled"
+    if (prevStatus === "cancelled" || nextStatus !== "cancelled") {
+      return;
+    }
+
+    const title =
+      typeof after.title === "string" && after.title.trim().length > 0
+        ? after.title
+        : null;
+
+    const body = title
+      ? `L'uscita "${title}" è stata annullata.`
+      : "Un'uscita è stata annullata.";
+
+    const { tokens: recipients, approvedUsersCount } =
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCancelledRide",
+      });
+
+    functions.logger.info(
+      `[onRideUpdated] ${rideId} cancellation approved users=${approvedUsersCount}`
+    );
+    functions.logger.info(
+      `[onRideUpdated] ${rideId} cancellation tokens collected=${recipients.length}`
+    );
+
+    if (!recipients.length) {
+      functions.logger.info(`[onRideUpdated] ${rideId} cancellation no recipients`);
+      return;
+    }
+
+    const results = await sendExpoPushNotification({
+      to: recipients,
+      title: "Uscita annullata",
+      body,
+      data: { type: "rideCancelled", rideId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onRideUpdated] ${rideId} cancel chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
+  });
+
+// -----------------------------
+// 4) Trigger su nuovo utente
+// -----------------------------
+export const onUserCreated = functions.firestore
+  .document("users/{uid}")
+  .onCreate(async (snapshot, context) => {
+    const uid = context.params.uid as string;
+    const data = snapshot.data() as any;
+    if (!data) {
+      functions.logger.info(`[onUserCreated] ${uid} missing data`);
+      return;
+    }
+
+    if (data.disabled === true) return;
+    if (data.approved !== false) return;
+
+    const roleRaw =
+      typeof data.role === "string" ? data.role.toLowerCase() : "member";
+    // Non notifichiamo se è già owner/admin
+    if (roleRaw === "owner" || roleRaw === "admin") return;
+
+    const displayName =
+      data.displayName ||
+      [data.firstName, data.lastName].filter(Boolean).join(" ") ||
+      data.email ||
+      uid;
+
+    const body = `Un nuovo utente è in attesa di approvazione: ${displayName}.`;
+
+    const { tokens: ownerTokens, roleUsersCount: ownerUsersCount } =
+      await fetchOwnerExpoTokens({
+        eventFlagField: "notificationsDisabledForPendingUser",
+      });
+
+    functions.logger.info(
+      `[onUserCreated] new pending user=${uid} owners=${ownerUsersCount} tokens=${ownerTokens.length}`
+    );
+
+    if (!ownerTokens.length) {
+      functions.logger.info(`[onUserCreated] ${uid} no owner tokens`);
+      return;
+    }
+
+    const results = await sendExpoPushNotification({
+      to: ownerTokens,
+      title: "Nuova registrazione in attesa",
+      body,
+      data: { type: "pendingUser", uid },
+    });
+
+    functions.logger.info(
+      `[onUserCreated] pending profile=${uid} displayName=${displayName}`
+    );
+
+    results.forEach((result, index) =>
+      functions.logger.info(
+        `[onUserCreated] ${uid} chunk ${index} status=${result.status} ok=${result.ok}`
+      )
+    );
   });
 
 // ------------------------------------------
-// 3) HTTP endpoint di test: sendTestPush
+// 5) HTTP endpoint di test: sendTestPush
 // ------------------------------------------
 export const sendTestPush = functions.https.onRequest(async (req, res) => {
-  // CORS base per poter chiamare anche da browser se serve
+  // CORS base per poter chiamare anche da browser if serve
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");

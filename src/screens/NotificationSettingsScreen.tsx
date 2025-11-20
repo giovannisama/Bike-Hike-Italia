@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator } from "react-native";
-import { doc, getDoc } from "firebase/firestore";
+import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform } from "react-native";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../services/pushNotifications";
 import { Screen, UI } from "../components/Screen";
 
 const NotificationSettingsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [enabled, setEnabled] = useState(false);
+
+  // toggle globale (blocca/sblocca tutte le push)
+  const [globalEnabled, setGlobalEnabled] = useState(false);
+
+  // toggle per singolo evento
+  const [rideCreatedEnabled, setRideCreatedEnabled] = useState(true);
+  const [rideCancelledEnabled, setRideCancelledEnabled] = useState(true);
+  const [pendingUserEnabled, setPendingUserEnabled] = useState(true);
+
+  const [isOwner, setIsOwner] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -21,9 +30,22 @@ const NotificationSettingsScreen: React.FC = () => {
         const userRef = doc(db, "users", currentUser.uid);
         const snap = await getDoc(userRef);
         if (snap.exists()) {
-          const data = snap.data();
-          const notificationsDisabled = data.notificationsDisabled === true;
-          setEnabled(!notificationsDisabled);
+          const data = snap.data() as any;
+
+          const role = (data.role || "").toString().toLowerCase();
+          setIsOwner(role === "owner");
+
+          const notificationsDisabledGlobal = data.notificationsDisabled === true;
+          setGlobalEnabled(!notificationsDisabledGlobal);
+
+          // se i flag specifici non esistono → li consideriamo come "abilitati"
+          const disabledCreated = data.notificationsDisabledForCreatedRide === true;
+          const disabledCancelled = data.notificationsDisabledForCancelledRide === true;
+          const disabledPending = data.notificationsDisabledForPendingUser === true;
+
+          setRideCreatedEnabled(!disabledCreated);
+          setRideCancelledEnabled(!disabledCancelled);
+          setPendingUserEnabled(!disabledPending);
         }
       } catch (e) {
         console.error("Error loading notification settings", e);
@@ -34,33 +56,144 @@ const NotificationSettingsScreen: React.FC = () => {
     load();
   }, []);
 
-  const handleToggle = async (value: boolean) => {
+  const ensureAuthUser = () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert("Notifiche", "Devi effettuare l'accesso per gestire le notifiche.");
+      return null;
+    }
+    return currentUser;
+  };
+
+  // ------- toggle globale -------
+  const handleGlobalToggle = async (value: boolean) => {
     if (saving) return;
-    const previousValue = enabled;
-    setEnabled(value);
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+
+    const previous = globalEnabled;
+    setGlobalEnabled(value);
     setSaving(true);
+
     try {
       if (value) {
-        // Abilita notifiche: chiedi permessi + registra token
+        // ATTIVA notifiche push: chiedi permesso + registra token
         const token = await registerForPushNotificationsAsync();
         if (!token) {
           Alert.alert(
             "Notifiche",
             "Non è stato possibile attivare le notifiche. Controlla i permessi nelle impostazioni di sistema."
           );
-          setEnabled(previousValue);
+          setGlobalEnabled(previous);
           await setNotificationsDisabled(true);
           return;
         }
         await setNotificationsDisabled(false);
       } else {
-        // Disabilita notifiche
+        // DISATTIVA tutte le notifiche push
         await setNotificationsDisabled(true);
       }
     } catch (e) {
-      console.error("Error updating notification settings", e);
-      setEnabled(previousValue);
+      console.error("Error updating global notification settings", e);
+      setGlobalEnabled(previous);
       Alert.alert("Errore", "Si è verificato un errore aggiornando le impostazioni notifiche.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // helper: blocca i toggle evento se globale OFF
+  const guardEventToggle = () => {
+    if (!globalEnabled) {
+      Alert.alert(
+        "Notifiche disattivate",
+        "Per modificare queste opzioni devi prima attivare le notifiche push."
+      );
+      return false;
+    }
+    return true;
+  };
+
+  // ------- toggle: nuova uscita creata -------
+  const handleRideCreatedToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = rideCreatedEnabled;
+    setRideCreatedEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        // campo booleano: true = notifiche DISABILITATE per questo evento
+        notificationsDisabledForCreatedRide: !value,
+      });
+    } catch (e) {
+      console.error("Error updating rideCreated notification setting", e);
+      setRideCreatedEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per le nuove uscite."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: uscita annullata -------
+  const handleRideCancelledToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = rideCancelledEnabled;
+    setRideCancelledEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCancelledRide: !value,
+      });
+    } catch (e) {
+      console.error("Error updating rideCancelled notification setting", e);
+      setRideCancelledEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per le uscite annullate."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: nuovo utente in attesa (solo owner) -------
+  const handlePendingUserToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = pendingUserEnabled;
+    setPendingUserEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForPendingUser: !value,
+      });
+    } catch (e) {
+      console.error("Error updating pendingUser notification setting", e);
+      setPendingUserEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per le nuove registrazioni."
+      );
     } finally {
       setSaving(false);
     }
@@ -89,22 +222,83 @@ const NotificationSettingsScreen: React.FC = () => {
     );
   }
 
+  const eventSwitchDisabled = saving || !globalEnabled;
+
   return (
     <Screen title="Notifiche">
+      {/* Toggle globale */}
       <View style={styles.card}>
         <View style={styles.cardRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>Nuove uscite</Text>
+            <Text style={styles.cardTitle}>Notifiche push</Text>
             <Text style={styles.cardSubtitle}>
+              Attiva o disattiva le notifiche push dell&apos;app. Quando sono disattivate,
+              non riceverai alcun avviso.
+            </Text>
+          </View>
+          <Switch
+            value={globalEnabled}
+            onValueChange={handleGlobalToggle}
+            disabled={saving}
+          />
+        </View>
+      </View>
+
+      {/* Toggle per singolo evento */}
+      <View style={styles.card}>
+        <Text style={[styles.cardTitle, { marginBottom: UI.spacing.sm }]}>
+          Eventi
+        </Text>
+
+        <View style={styles.eventRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eventTitle}>Nuove uscite</Text>
+            <Text style={styles.eventSubtitle}>
               Ricevi una notifica quando viene pubblicata una nuova uscita.
             </Text>
           </View>
-          <Switch value={enabled} onValueChange={handleToggle} disabled={saving} />
+          <Switch
+            value={rideCreatedEnabled}
+            onValueChange={handleRideCreatedToggle}
+            disabled={eventSwitchDisabled}
+          />
         </View>
+
+        <View style={styles.eventRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eventTitle}>Uscite annullate</Text>
+            <Text style={styles.eventSubtitle}>
+              Ricevi una notifica quando un&apos;uscita a cui potresti partecipare viene annullata.
+            </Text>
+          </View>
+          <Switch
+            value={rideCancelledEnabled}
+            onValueChange={handleRideCancelledToggle}
+            disabled={eventSwitchDisabled}
+          />
+        </View>
+
+        {isOwner && (
+          <View style={styles.eventRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.eventTitle}>Nuovi utenti in attesa</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando un nuovo utente si registra ed è in attesa di approvazione.
+              </Text>
+            </View>
+            <Switch
+              value={pendingUserEnabled}
+              onValueChange={handlePendingUserToggle}
+              disabled={eventSwitchDisabled}
+            />
+          </View>
+        )}
       </View>
+
       <Text style={styles.note}>
         Se le notifiche risultano ancora disattivate, controlla anche le
-        impostazioni di iOS per l'app "Bike Hike Italia".
+        impostazioni di sistema del dispositivo per l&apos;app{" "}
+        {Platform.OS === "ios" ? `"Bike Hike Italia".` : `"Bike Hike Italia".`}
       </Text>
     </Screen>
   );
@@ -151,6 +345,23 @@ const styles = StyleSheet.create({
   cardSubtitle: {
     marginTop: 4,
     fontSize: 14,
+    color: UI.colors.muted,
+  },
+  eventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI.spacing.md,
+    marginTop: UI.spacing.md,
+  },
+  eventTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: UI.colors.text,
+  },
+  eventSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
     color: UI.colors.muted,
   },
   note: {

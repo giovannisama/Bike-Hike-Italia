@@ -101,21 +101,16 @@ service cloud.firestore {
           );
       }
 
-      // Nuove funzioni per notifiche / token multipli
-      function validExpoPushTokens(val) {
-        return val == null || (val is list && val.size() <= 100);
-      }
-
-      function validNotificationsDisabled(val) {
-        return val is bool;
-      }
-
       function allowedUserKeys() {
         return [
           'uid','email','displayName','firstName','lastName','nickname',
-          'role','approved','disabled','createdAt',
-          'expoPushToken','expoPushTokens','notificationsDisabled','membershipCard',
-          'selfDeleted','selfDeletedAt'
+          'role','approved','disabled','createdAt','expoPushToken','membershipCard',
+          'selfDeleted','selfDeletedAt',
+          // nuovi campi per le notifiche
+          'notificationsDisabled',
+          'notificationsDisabledForCreatedRide',
+          'notificationsDisabledForCancelledRide',
+          'notificationsDisabledForPendingUser'
         ];
       }
 
@@ -134,8 +129,11 @@ service cloud.firestore {
           && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
           && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
           && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null)
-          && (!has('expoPushTokens') || validExpoPushTokens(request.resource.data.expoPushTokens))
-          && (!has('notificationsDisabled') || validNotificationsDisabled(request.resource.data.notificationsDisabled));
+          // se presenti, i flag di notifica devono essere booleani
+          && (!has('notificationsDisabled') || request.resource.data.notificationsDisabled is bool)
+          && (!has('notificationsDisabledForCreatedRide') || request.resource.data.notificationsDisabledForCreatedRide is bool)
+          && (!has('notificationsDisabledForCancelledRide') || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!has('notificationsDisabledForPendingUser') || request.resource.data.notificationsDisabledForPendingUser is bool);
       }
 
       function validUserUpdateAdmin() {
@@ -159,12 +157,22 @@ service cloud.firestore {
           && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
           && (!changed.hasAny(['selfDeleted'])   || request.resource.data.selfDeleted is bool)
           && (!changed.hasAny(['selfDeletedAt']) || request.resource.data.selfDeletedAt == null || request.resource.data.selfDeletedAt is timestamp)
-          && (!changed.hasAny(['expoPushTokens']) || validExpoPushTokens(request.resource.data.expoPushTokens))
-          && (!changed.hasAny(['notificationsDisabled']) || validNotificationsDisabled(request.resource.data.notificationsDisabled));
+          // nuovi flag notifica: se cambiano, devono essere bool
+          && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool);
       }
 
       function validUserUpdateSelf() {
-        let safeKeys = ['displayName','firstName','lastName','nickname','membershipCard','expoPushTokens','notificationsDisabled'];
+        let safeKeys = [
+          'displayName','firstName','lastName','nickname','membershipCard',
+          // l’utente può modificare i propri flag di notifica
+          'notificationsDisabled',
+          'notificationsDisabledForCreatedRide',
+          'notificationsDisabledForCancelledRide',
+          'notificationsDisabledForPendingUser'
+        ];
         let diff = request.resource.data.diff(resource.data);
         let changed = diff.changedKeys();
 
@@ -174,8 +182,11 @@ service cloud.firestore {
           && (request.resource.data.lastName is string || request.resource.data.lastName == null)
           && (request.resource.data.nickname is string || request.resource.data.nickname == null)
           && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
-          && (!changed.hasAny(['expoPushTokens']) || validExpoPushTokens(request.resource.data.expoPushTokens))
-          && (!changed.hasAny(['notificationsDisabled']) || validNotificationsDisabled(request.resource.data.notificationsDisabled));
+          // se l’utente cambia questi campi, devono essere booleani
+          && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool);
       }
 
       function validUserDelete() {

@@ -3,9 +3,13 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-import { auth, db } from "../firebase"; // importa i tuoi oggetti firebase già inizializzati
+import { auth, db } from "../firebase";
+import Constants from "expo-constants";
 
-// Config consigliata da Expo (se non l'hai già da qualche parte)
+// 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
+const FALLBACK_EXPO_PROJECT_ID = "e74521c0-d040-4137-a8d1-0d535e353f2d";
+
+// Config consigliata da Expo
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -14,11 +18,54 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (!Device.isDevice) {
-    console.log("Push notifications require a physical device");
+function resolveExpoProjectId(): string | null {
+  try {
+    // Prova a leggere da vari punti possibili
+    const fromExpoConfig =
+      (Constants as any)?.expoConfig?.extra?.eas?.projectId ??
+      (Constants as any)?.expoConfig?.extra?.eas?.projectID;
+
+    const fromEasConfig = (Constants as any)?.easConfig?.projectId;
+
+    const resolved =
+      fromExpoConfig ??
+      fromEasConfig ??
+      FALLBACK_EXPO_PROJECT_ID ??
+      null;
+
+    if (!resolved) {
+      console.warn(
+        "[pushNotifications] impossibile risolvere l'Expo projectId (nessun valore trovato)."
+      );
+      return null;
+    }
+
+    return resolved;
+  } catch (err) {
+    console.warn(
+      "[pushNotifications] errore risolvendo l'Expo projectId:",
+      err
+    );
     return null;
   }
+}
+
+export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  if (!Device.isDevice) {
+    console.log("[pushNotifications] push supportate solo su dispositivo reale");
+    return null;
+  }
+
+  const appOwnership = Constants.appOwnership;
+  if (appOwnership === "expo") {
+    // Evita di salvare token di Expo Go → niente notifiche duplicate in dev
+    console.log(
+      "[pushNotifications] esecuzione dentro Expo Go; salto registrazione token per evitare duplicati."
+    );
+    return null;
+  }
+
+  console.log("[pushNotifications] Platform:", Platform.OS, "ownership:", appOwnership);
 
   // Permessi
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -30,41 +77,76 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   if (finalStatus !== "granted") {
-    console.log("Push notification permissions not granted");
+    console.log("[pushNotifications] permessi push non concessi");
     return null;
   }
 
-  // Ottieni token Expo
-  const projectId = Notifications.getExpoPushTokenAsync.length
-    ? undefined
-    : undefined;
+  // Risolviamo il projectId di Expo/EAS
+  const projectId = resolveExpoProjectId();
+  if (!projectId) {
+    console.warn(
+      "[pushNotifications] nessun projectId valido; impossibile richiedere il token push."
+    );
+    return null;
+  }
 
-  const tokenResponse = await Notifications.getExpoPushTokenAsync({
-    projectId,
-  });
+  console.log("[pushNotifications] usando projectId:", projectId);
+
+  // Ottieni token Expo
+  let tokenResponse: Notifications.ExpoPushToken;
+  try {
+    tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+  } catch (error) {
+    console.error(
+      "[pushNotifications] errore in getExpoPushTokenAsync:",
+      error
+    );
+    return null;
+  }
 
   const token = tokenResponse.data;
-  console.log("Expo push token:", token);
+  console.log("[pushNotifications] Expo push token ottenuto:", token);
 
-  // Solo iOS: configurazione canali non necessaria, ma la lascio per Android
+  // Solo Android: canale di default
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF231F7C",
-    });
+    try {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#FF231F7C",
+      });
+      console.log("[pushNotifications] canale Android 'default' configurato");
+    } catch (error) {
+      console.warn(
+        "[pushNotifications] errore configurando il canale Android:",
+        error
+      );
+    }
   }
 
   // Salva su Firestore se l’utente è loggato
   const currentUser = auth.currentUser;
   if (currentUser) {
     const userRef = doc(db, "users", currentUser.uid);
-    await updateDoc(userRef, {
-      expoPushTokens: arrayUnion(token),
-    });
+    try {
+      await updateDoc(userRef, {
+        expoPushTokens: arrayUnion(token),
+      });
+      console.log(
+        "[pushNotifications] token salvato per l'utente",
+        currentUser.uid
+      );
+    } catch (error) {
+      console.error(
+        "[pushNotifications] impossibile salvare il token su Firestore:",
+        error
+      );
+    }
   } else {
-    console.warn("No authenticated user; not saving token to Firestore");
+    console.warn(
+      "[pushNotifications] nessun utente autenticato; non salvo il token su Firestore"
+    );
   }
 
   return token;
@@ -73,7 +155,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 export async function setNotificationsDisabled(disabled: boolean): Promise<void> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
-    console.warn("No authenticated user; cannot update notification settings");
+    console.warn(
+      "[pushNotifications] nessun utente autenticato; impossibile aggiornare notificationsDisabled"
+    );
     return;
   }
 
@@ -81,5 +165,19 @@ export async function setNotificationsDisabled(disabled: boolean): Promise<void>
   const payload = {
     notificationsDisabled: disabled,
   };
-  await updateDoc(userRef, payload);
+  try {
+    await updateDoc(userRef, payload);
+    console.log(
+      "[pushNotifications] notificationsDisabled aggiornato a",
+      disabled,
+      "per utente",
+      currentUser.uid
+    );
+  } catch (error) {
+    console.error(
+      "[pushNotifications] errore aggiornando notificationsDisabled:",
+      error
+    );
+    throw error;
+  }
 }

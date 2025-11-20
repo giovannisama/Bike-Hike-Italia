@@ -11,6 +11,7 @@ export interface ExpoPushMessage {
   body: string;
   data?: Record<string, unknown> | null;
   sound?: string;
+  channelId?: string; // opzionale: se non passato, usiamo "default"
 }
 
 export interface ExpoPushResult {
@@ -137,12 +138,14 @@ export async function sendExpoPushNotification(
 
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
     const chunk = tokens.slice(i, i + CHUNK_SIZE);
+
     const payload = chunk.map((to) => ({
       to,
       title: message.title,
       body: message.body,
       data: message.data || undefined,
       sound: message.sound || "default",
+      channelId: message.channelId || "default", // 👈 canale impostato
     }));
 
     try {

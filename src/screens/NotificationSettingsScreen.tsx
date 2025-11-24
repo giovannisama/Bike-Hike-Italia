@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform, Pressable } from "react-native";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../services/pushNotifications";
@@ -228,20 +228,28 @@ const NotificationSettingsScreen: React.FC = () => {
     <Screen title="Notifiche">
       {/* Toggle globale */}
       <View style={styles.card}>
-        <View style={styles.cardRow}>
-          <View style={{ flex: 1 }}>
+        <Pressable
+          style={({ pressed }) => [styles.settingRow, pressed && styles.rowPressed]}
+          onPress={() => handleGlobalToggle(!globalEnabled)}
+          disabled={saving}
+          android_ripple={{ color: UI.colors.tint }}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <View style={styles.rowText}>
             <Text style={styles.cardTitle}>Notifiche push</Text>
             <Text style={styles.cardSubtitle}>
               Attiva o disattiva le notifiche push dell&apos;app. Quando sono disattivate,
               non riceverai alcun avviso.
             </Text>
           </View>
-          <Switch
-            value={globalEnabled}
-            onValueChange={handleGlobalToggle}
-            disabled={saving}
-          />
-        </View>
+          <View style={styles.switchWrapper}>
+            <Switch
+              value={globalEnabled}
+              onValueChange={handleGlobalToggle}
+              disabled={saving}
+            />
+          </View>
+        </Pressable>
       </View>
 
       {/* Toggle per singolo evento */}
@@ -250,48 +258,72 @@ const NotificationSettingsScreen: React.FC = () => {
           Eventi
         </Text>
 
-        <View style={styles.eventRow}>
-          <View style={{ flex: 1 }}>
+        <Pressable
+          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+          onPress={() => handleRideCreatedToggle(!rideCreatedEnabled)}
+          disabled={eventSwitchDisabled}
+          android_ripple={{ color: UI.colors.tint }}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <View style={styles.rowText}>
             <Text style={styles.eventTitle}>Nuove uscite</Text>
             <Text style={styles.eventSubtitle}>
               Ricevi una notifica quando viene pubblicata una nuova uscita.
             </Text>
           </View>
-          <Switch
-            value={rideCreatedEnabled}
-            onValueChange={handleRideCreatedToggle}
-            disabled={eventSwitchDisabled}
-          />
-        </View>
+          <View style={styles.switchWrapper}>
+            <Switch
+              value={rideCreatedEnabled}
+              onValueChange={handleRideCreatedToggle}
+              disabled={eventSwitchDisabled}
+            />
+          </View>
+        </Pressable>
 
-        <View style={styles.eventRow}>
-          <View style={{ flex: 1 }}>
+        <Pressable
+          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+          onPress={() => handleRideCancelledToggle(!rideCancelledEnabled)}
+          disabled={eventSwitchDisabled}
+          android_ripple={{ color: UI.colors.tint }}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <View style={styles.rowText}>
             <Text style={styles.eventTitle}>Uscite annullate</Text>
             <Text style={styles.eventSubtitle}>
               Ricevi una notifica quando un&apos;uscita a cui potresti partecipare viene annullata.
             </Text>
           </View>
-          <Switch
-            value={rideCancelledEnabled}
-            onValueChange={handleRideCancelledToggle}
-            disabled={eventSwitchDisabled}
-          />
-        </View>
+          <View style={styles.switchWrapper}>
+            <Switch
+              value={rideCancelledEnabled}
+              onValueChange={handleRideCancelledToggle}
+              disabled={eventSwitchDisabled}
+            />
+          </View>
+        </Pressable>
 
         {isOwner && (
-          <View style={styles.eventRow}>
-            <View style={{ flex: 1 }}>
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handlePendingUserToggle(!pendingUserEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
               <Text style={styles.eventTitle}>Nuovi utenti in attesa</Text>
               <Text style={styles.eventSubtitle}>
                 Ricevi una notifica quando un nuovo utente si registra ed è in attesa di approvazione.
               </Text>
             </View>
-            <Switch
-              value={pendingUserEnabled}
-              onValueChange={handlePendingUserToggle}
-              disabled={eventSwitchDisabled}
-            />
-          </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={pendingUserEnabled}
+                onValueChange={handlePendingUserToggle}
+                disabled={eventSwitchDisabled}
+              />
+            </View>
+          </Pressable>
         )}
       </View>
 
@@ -331,11 +363,29 @@ const styles = StyleSheet.create({
     ...UI.shadow.card,
     marginBottom: UI.spacing.lg,
   },
-  cardRow: {
+  settingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: UI.spacing.md,
+    width: "100%",
+    paddingVertical: 12,
+    paddingHorizontal: UI.spacing.sm,
+    borderRadius: UI.radius.md,
+  },
+  rowPressed: {
+    backgroundColor: "#F8FAFC",
+  },
+  rowText: {
+    flex: 1,
+    paddingRight: UI.spacing.md,
+  },
+  switchWrapper: {
+    justifyContent: "center",
+    alignItems: "flex-end",
+    paddingLeft: UI.spacing.md,
+    flexShrink: 0,
+    minWidth: 68,
+    marginTop: -2, // alza leggermente lo switch per allinearlo visivamente al titolo
   },
   cardTitle: {
     fontSize: 16,
@@ -348,10 +398,6 @@ const styles = StyleSheet.create({
     color: UI.colors.muted,
   },
   eventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: UI.spacing.md,
     marginTop: UI.spacing.md,
   },
   eventTitle: {

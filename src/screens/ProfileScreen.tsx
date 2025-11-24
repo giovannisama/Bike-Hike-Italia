@@ -798,7 +798,14 @@ export default function ProfileScreen() {
       {activeTab === "security" && (
         <View style={styles.securityCard}>
           <View style={styles.securityPanel}>
-            <View style={styles.securityRow}>
+            <Pressable
+              style={({ pressed }) => [styles.securityRow, pressed && styles.securityRowPressed]}
+              onPress={() => onToggleBiometrics(!bioEnabled)}
+              disabled={!bioAvailable}
+              accessibilityRole="button"
+              accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
+              hitSlop={{ top: 6, bottom: 6 }}
+            >
               <Text style={[styles.label, styles.securityLabel]}>Face ID / Touch ID</Text>
               <View style={styles.securitySwitchWrapper}>
                 <Switch
@@ -809,7 +816,7 @@ export default function ProfileScreen() {
                   accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
                 />
               </View>
-            </View>
+            </Pressable>
             <Text style={styles.helperTextSmall}>
               {bioAvailable
                 ? bioEnabled
@@ -1104,9 +1111,9 @@ const styles = StyleSheet.create({
   securityRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
-    paddingBottom: 4,
+    paddingVertical: 6,
   },
   securityRowPressed: {
     backgroundColor: "#F8FAFC",
@@ -1121,10 +1128,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     paddingLeft: 12,
     paddingRight: 4,
-    paddingTop: 2,
     alignItems: "flex-end",
-    justifyContent: "flex-start",
-    alignSelf: "flex-start",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginTop: Platform.select({ ios: -20, android: 0 }), // alza leggermente lo switch della build iOS per allinearlo al testo
     ...Platform.select({
       ios: { minWidth: 68 },
       default: { minWidth: 60 },

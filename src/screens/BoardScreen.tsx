@@ -90,6 +90,57 @@ const normalize = (value: string) =>
 
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
+const MAX_BOARD_DESCRIPTION_LENGTH = 3000;
+
+const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
+
+const renderLinkedText = (
+  text: string,
+  onPressLink: (url: string) => void
+) => {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  URL_REGEX_GLOBAL.lastIndex = 0;
+
+  while ((match = URL_REGEX_GLOBAL.exec(text)) !== null) {
+    const url = match[0];
+    const start = match.index;
+
+    // testo normale prima del link
+    if (start > lastIndex) {
+      nodes.push(text.slice(lastIndex, start));
+    }
+
+    // il link cliccabile
+    nodes.push(
+      <Text
+        key={`link-${nodes.length}`}
+        style={styles.cardDescriptionLink}
+        onPress={() => onPressLink(url)}
+        selectable={false}
+        accessibilityRole="link"
+      >
+        {url}
+      </Text>
+    );
+
+    lastIndex = start + url.length;
+  }
+
+  // eventuale testo rimanente dopo l’ultimo link
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  // se non ci sono match, restituisci il testo intero
+  if (nodes.length === 0) {
+    return text;
+  }
+
+  return nodes;
+};
 
 const window = Dimensions.get("window");
 
@@ -312,6 +363,13 @@ export default function BoardScreen({ navigation }: any) {
       Alert.alert(
         "Descrizione obbligatoria",
         'Inserisci una descrizione oppure disattiva la voce "Descrizione".'
+      );
+      return;
+    }
+    if (editor.includeDescription && trimmedDescription.length > MAX_BOARD_DESCRIPTION_LENGTH) {
+      Alert.alert(
+        "Descrizione troppo lunga",
+        `Hai superato il limite massimo di ${MAX_BOARD_DESCRIPTION_LENGTH} caratteri consentiti per la descrizione.`
       );
       return;
     }
@@ -554,64 +612,19 @@ export default function BoardScreen({ navigation }: any) {
     [canEdit]
   );
 
-  const handleOpenLink = useCallback(async (url: string) => {
-    const target = url.trim();
-    try {
-      const canOpen = await Linking.canOpenURL(target);
-      if (!canOpen) {
-        Alert.alert("Link non valido", "Impossibile aprire questo indirizzo.");
-        return;
-      }
-      await Linking.openURL(target);
-    } catch (err) {
-      console.warn("[Board] open link error", err);
-      Alert.alert("Errore", "Impossibile aprire il link.");
+  const handlePressLink = useCallback((rawUrl: string) => {
+    let url = rawUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
     }
+    Linking.openURL(url).catch((err) => {
+      console.warn("[Board] Impossibile aprire il link:", url, err);
+    });
   }, []);
-
-  const renderDescriptionParts = useCallback(
-    (text: string) => {
-      const parts: { type: "text" | "link"; value: string }[] = [];
-      const urlRegex = /(https?:\/\/[^\s]+)/gi;
-      let lastIndex = 0;
-      let match: RegExpExecArray | null;
-
-      while ((match = urlRegex.exec(text)) !== null) {
-        const offset = match.index;
-        const url = match[0];
-        if (offset > lastIndex) {
-          parts.push({ type: "text", value: text.slice(lastIndex, offset) });
-        }
-        parts.push({ type: "link", value: url });
-        lastIndex = offset + url.length;
-      }
-
-      if (lastIndex < text.length) {
-        parts.push({ type: "text", value: text.slice(lastIndex) });
-      }
-
-      return parts.map((part, idx) =>
-        part.type === "link" ? (
-          <Text
-            key={`link-${idx}`}
-            style={styles.descriptionLink}
-            onPress={() => handleOpenLink(part.value)}
-            accessibilityRole="link"
-          >
-            {part.value}
-          </Text>
-        ) : (
-          <Text key={`text-${idx}`}>
-            {part.value}
-          </Text>
-        )
-      );
-    },
-    [handleOpenLink]
-  );
 
   const renderItem = useCallback(
     ({ item }: { item: BoardItem }) => {
+      const isIOS = Platform.OS === "ios";
       const dateLabel = item.createdAt
         ? item.createdAt.toLocaleDateString("it-IT", {
             day: "2-digit",
@@ -626,6 +639,7 @@ export default function BoardScreen({ navigation }: any) {
       const imageUri = item.imageBase64
         ? `data:image/jpeg;base64,${item.imageBase64}`
         : item.imageUrl || PLACEHOLDER;
+      const collapsedStyle = !isExpanded && shouldShowToggle ? styles.cardDescriptionCollapsed : null;
 
       return (
         <View style={styles.card}>
@@ -664,13 +678,29 @@ export default function BoardScreen({ navigation }: any) {
           ) : null}
           {descriptionText ? (
             <View style={styles.cardDescriptionBox}>
-              <Text
-                style={styles.cardDescription}
-                numberOfLines={isExpanded || !shouldShowToggle ? undefined : 5}
-                selectable
-              >
-                {renderDescriptionParts(descriptionText)}
-              </Text>
+              {isIOS ? (
+                <TextInput
+                  style={[styles.cardDescription, styles.cardDescriptionInput, collapsedStyle]}
+                  value={descriptionText}
+                  editable={false}
+                  multiline
+                  scrollEnabled={false}
+                  selectTextOnFocus
+                  dataDetectorTypes={["link"]}
+                  textAlignVertical="top"
+                  underlineColorAndroid="transparent"
+                  pointerEvents="auto"
+                  contextMenuHidden={false}
+                />
+              ) : (
+                <Text
+                  style={styles.cardDescription}
+                  numberOfLines={isExpanded || !shouldShowToggle ? undefined : 5}
+                  selectable
+                >
+                  {renderLinkedText(descriptionText, handlePressLink)}
+                </Text>
+              )}
               {shouldShowToggle && (
                 <Pressable
                   onPress={() =>
@@ -737,7 +767,7 @@ export default function BoardScreen({ navigation }: any) {
         </View>
       );
     },
-    [canEdit, confirmArchive, confirmUnarchive, confirmDelete, handleEdit, expandedDescriptions, renderDescriptionParts]
+    [canEdit, confirmArchive, confirmUnarchive, confirmDelete, handleEdit, expandedDescriptions]
   );
 
   return (
@@ -1153,8 +1183,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  descriptionLink: {
-    color: "#2563eb",
+  cardDescriptionInput: {
+    padding: 0,
+    margin: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+  },
+  cardDescriptionCollapsed: {
+    maxHeight: 20 * 5,
+    overflow: "hidden",
+  },
+  cardDescriptionLink: {
+    color: UI.colors.primary,
     textDecorationLine: "underline",
   },
   descriptionToggle: {

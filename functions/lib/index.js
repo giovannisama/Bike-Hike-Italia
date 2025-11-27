@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onUserCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
@@ -180,6 +180,34 @@ exports.onUserCreated = functions.firestore
     });
     functions.logger.info(`[onUserCreated] pending profile=${uid} displayName=${displayName}`);
     results.forEach((result, index) => functions.logger.info(`[onUserCreated] ${uid} chunk ${index} status=${result.status} ok=${result.ok}`));
+});
+// -----------------------------
+// 6) Trigger su nuova news in Bacheca
+// -----------------------------
+exports.onBoardPostCreated = functions.firestore
+    .document("boardPosts/{postId}")
+    .onCreate(async (snap, context) => {
+    const data = snap.data() || {};
+    const postId = snap.id;
+    const title = "Nuova news in bacheca";
+    const body = typeof data.title === "string" && data.title.trim().length > 0
+        ? data.title.trim()
+        : "Apri l'app per leggere la nuova comunicazione";
+    const { tokens, approvedUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokensForBoardPost)();
+    functions.logger.info(`[onBoardPostCreated] ${postId} approved users=${approvedUsersCount} tokens=${tokens.length}`);
+    if (!tokens.length) {
+        functions.logger.info(`[onBoardPostCreated] ${postId} no recipients`);
+        return;
+    }
+    const results = await (0, expoPush_1.sendExpoPushNotification)({
+        to: tokens,
+        title,
+        body,
+        data: { type: "boardPost", postId },
+    });
+    results.forEach((result, index) => {
+        functions.logger.info(`[onBoardPostCreated] ${postId} chunk ${index} status=${result.status} ok=${result.ok}`);
+    });
 });
 // ------------------------------------------
 // 5) HTTP endpoint di test: sendTestPush

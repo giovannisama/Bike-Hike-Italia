@@ -99,3 +99,10 @@ export async function fetchOwnerExpoTokens(
     tokens: Array.from(tokensSet),
   };
 }
+
+// Variante dedicata per le notifiche BoardPost (Bacheca)
+export async function fetchApprovedExpoTokensForBoardPost(): Promise<ApprovedTokensResult> {
+  return fetchApprovedExpoTokens({
+    eventFlagField: "notificationsDisabledForBoardPost",
+  });
+}

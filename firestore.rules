@@ -110,7 +110,8 @@ service cloud.firestore {
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
           'notificationsDisabledForCancelledRide',
-          'notificationsDisabledForPendingUser'
+          'notificationsDisabledForPendingUser',
+          'notificationsDisabledForBoardPost'
         ];
       }
 
@@ -133,7 +134,8 @@ service cloud.firestore {
           && (!has('notificationsDisabled') || request.resource.data.notificationsDisabled is bool)
           && (!has('notificationsDisabledForCreatedRide') || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!has('notificationsDisabledForCancelledRide') || request.resource.data.notificationsDisabledForCancelledRide is bool)
-          && (!has('notificationsDisabledForPendingUser') || request.resource.data.notificationsDisabledForPendingUser is bool);
+          && (!has('notificationsDisabledForPendingUser') || request.resource.data.notificationsDisabledForPendingUser is bool)
+          && (!has('notificationsDisabledForBoardPost') || request.resource.data.notificationsDisabledForBoardPost is bool);
       }
 
       function validUserUpdateAdmin() {
@@ -161,7 +163,8 @@ service cloud.firestore {
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
           && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
-          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool);
+          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool)
+          && (!changed.hasAny(['notificationsDisabledForBoardPost']) || request.resource.data.notificationsDisabledForBoardPost is bool);
       }
 
       function validUserUpdateSelf() {
@@ -171,7 +174,8 @@ service cloud.firestore {
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
           'notificationsDisabledForCancelledRide',
-          'notificationsDisabledForPendingUser'
+          'notificationsDisabledForPendingUser',
+          'notificationsDisabledForBoardPost'
         ];
         let diff = request.resource.data.diff(resource.data);
         let changed = diff.changedKeys();
@@ -186,7 +190,8 @@ service cloud.firestore {
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
           && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
-          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool);
+          && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool)
+          && (!changed.hasAny(['notificationsDisabledForBoardPost']) || request.resource.data.notificationsDisabledForBoardPost is bool);
       }
 
       function validUserDelete() {

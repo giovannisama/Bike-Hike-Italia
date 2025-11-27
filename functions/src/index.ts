@@ -4,6 +4,7 @@ import { sendExpoPushNotification } from "./expoPush";
 import {
   fetchApprovedExpoTokens,
   fetchOwnerExpoTokens,
+  fetchApprovedExpoTokensForBoardPost,
 } from "./userTokens";
 
 if (!admin.apps.length) {
@@ -205,6 +206,46 @@ export const onUserCreated = functions.firestore
         `[onUserCreated] ${uid} chunk ${index} status=${result.status} ok=${result.ok}`
       )
     );
+  });
+
+// -----------------------------
+// 6) Trigger su nuova news in Bacheca
+// -----------------------------
+export const onBoardPostCreated = functions.firestore
+  .document("boardPosts/{postId}")
+  .onCreate(async (snap, context) => {
+    const data = snap.data() || {};
+    const postId = snap.id;
+
+    const title = "Nuova news in bacheca";
+    const body =
+      typeof data.title === "string" && data.title.trim().length > 0
+        ? data.title.trim()
+        : "Apri l'app per leggere la nuova comunicazione";
+
+    const { tokens, approvedUsersCount } = await fetchApprovedExpoTokensForBoardPost();
+
+    functions.logger.info(
+      `[onBoardPostCreated] ${postId} approved users=${approvedUsersCount} tokens=${tokens.length}`
+    );
+
+    if (!tokens.length) {
+      functions.logger.info(`[onBoardPostCreated] ${postId} no recipients`);
+      return;
+    }
+
+    const results = await sendExpoPushNotification({
+      to: tokens,
+      title,
+      body,
+      data: { type: "boardPost", postId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onBoardPostCreated] ${postId} chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
   });
 
 // ------------------------------------------

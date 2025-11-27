@@ -15,6 +15,7 @@ const NotificationSettingsScreen: React.FC = () => {
   const [rideCreatedEnabled, setRideCreatedEnabled] = useState(true);
   const [rideCancelledEnabled, setRideCancelledEnabled] = useState(true);
   const [pendingUserEnabled, setPendingUserEnabled] = useState(true);
+  const [boardPostEnabled, setBoardPostEnabled] = useState(true);
 
   const [isOwner, setIsOwner] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,10 +43,12 @@ const NotificationSettingsScreen: React.FC = () => {
           const disabledCreated = data.notificationsDisabledForCreatedRide === true;
           const disabledCancelled = data.notificationsDisabledForCancelledRide === true;
           const disabledPending = data.notificationsDisabledForPendingUser === true;
+          const disabledBoardPost = data.notificationsDisabledForBoardPost === true;
 
           setRideCreatedEnabled(!disabledCreated);
           setRideCancelledEnabled(!disabledCancelled);
           setPendingUserEnabled(!disabledPending);
+          setBoardPostEnabled(!disabledBoardPost);
         }
       } catch (e) {
         console.error("Error loading notification settings", e);
@@ -137,6 +140,34 @@ const NotificationSettingsScreen: React.FC = () => {
       Alert.alert(
         "Errore",
         "Si è verificato un errore aggiornando le impostazioni per le nuove uscite."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: news bacheca -------
+  const handleBoardPostToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = boardPostEnabled;
+    setBoardPostEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForBoardPost: !value,
+      });
+    } catch (e) {
+      console.error("Error updating boardPost notification setting", e);
+      setBoardPostEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per le news in bacheca."
       );
     } finally {
       setSaving(false);
@@ -297,6 +328,28 @@ const NotificationSettingsScreen: React.FC = () => {
             <Switch
               value={rideCancelledEnabled}
               onValueChange={handleRideCancelledToggle}
+              disabled={eventSwitchDisabled}
+            />
+          </View>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+          onPress={() => handleBoardPostToggle(!boardPostEnabled)}
+          disabled={eventSwitchDisabled}
+          android_ripple={{ color: UI.colors.tint }}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.eventTitle}>News in bacheca</Text>
+            <Text style={styles.eventSubtitle}>
+              Ricevi una notifica quando viene pubblicata una nuova news in bacheca.
+            </Text>
+          </View>
+          <View style={styles.switchWrapper}>
+            <Switch
+              value={boardPostEnabled}
+              onValueChange={handleBoardPostToggle}
               disabled={eventSwitchDisabled}
             />
           </View>

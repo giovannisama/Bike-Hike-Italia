@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchApprovedExpoTokens = fetchApprovedExpoTokens;
 exports.fetchOwnerExpoTokens = fetchOwnerExpoTokens;
+exports.fetchApprovedExpoTokensForBoardPost = fetchApprovedExpoTokensForBoardPost;
 const firebaseAdmin_1 = require("./firebaseAdmin");
 async function fetchApprovedExpoTokens(options) {
     const snapshot = await firebaseAdmin_1.db
@@ -64,4 +65,10 @@ async function fetchOwnerExpoTokens(options) {
         roleUsersCount: snapshot.docs.length,
         tokens: Array.from(tokensSet),
     };
+}
+// Variante dedicata per le notifiche BoardPost (Bacheca)
+async function fetchApprovedExpoTokensForBoardPost() {
+    return fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForBoardPost",
+    });
 }

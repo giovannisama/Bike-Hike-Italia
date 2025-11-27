@@ -14,6 +14,7 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -553,6 +554,62 @@ export default function BoardScreen({ navigation }: any) {
     [canEdit]
   );
 
+  const handleOpenLink = useCallback(async (url: string) => {
+    const target = url.trim();
+    try {
+      const canOpen = await Linking.canOpenURL(target);
+      if (!canOpen) {
+        Alert.alert("Link non valido", "Impossibile aprire questo indirizzo.");
+        return;
+      }
+      await Linking.openURL(target);
+    } catch (err) {
+      console.warn("[Board] open link error", err);
+      Alert.alert("Errore", "Impossibile aprire il link.");
+    }
+  }, []);
+
+  const renderDescriptionParts = useCallback(
+    (text: string) => {
+      const parts: { type: "text" | "link"; value: string }[] = [];
+      const urlRegex = /(https?:\/\/[^\s]+)/gi;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = urlRegex.exec(text)) !== null) {
+        const offset = match.index;
+        const url = match[0];
+        if (offset > lastIndex) {
+          parts.push({ type: "text", value: text.slice(lastIndex, offset) });
+        }
+        parts.push({ type: "link", value: url });
+        lastIndex = offset + url.length;
+      }
+
+      if (lastIndex < text.length) {
+        parts.push({ type: "text", value: text.slice(lastIndex) });
+      }
+
+      return parts.map((part, idx) =>
+        part.type === "link" ? (
+          <Text
+            key={`link-${idx}`}
+            style={styles.descriptionLink}
+            onPress={() => handleOpenLink(part.value)}
+            accessibilityRole="link"
+          >
+            {part.value}
+          </Text>
+        ) : (
+          <Text key={`text-${idx}`}>
+            {part.value}
+          </Text>
+        )
+      );
+    },
+    [handleOpenLink]
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: BoardItem }) => {
       const dateLabel = item.createdAt
@@ -610,8 +667,9 @@ export default function BoardScreen({ navigation }: any) {
               <Text
                 style={styles.cardDescription}
                 numberOfLines={isExpanded || !shouldShowToggle ? undefined : 5}
+                selectable
               >
-                {descriptionText}
+                {renderDescriptionParts(descriptionText)}
               </Text>
               {shouldShowToggle && (
                 <Pressable
@@ -679,7 +737,7 @@ export default function BoardScreen({ navigation }: any) {
         </View>
       );
     },
-    [canEdit, confirmArchive, confirmUnarchive, confirmDelete, handleEdit, expandedDescriptions]
+    [canEdit, confirmArchive, confirmUnarchive, confirmDelete, handleEdit, expandedDescriptions, renderDescriptionParts]
   );
 
   return (
@@ -1094,6 +1152,10 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontSize: 14,
     lineHeight: 20,
+  },
+  descriptionLink: {
+    color: "#2563eb",
+    textDecorationLine: "underline",
   },
   descriptionToggle: {
     alignSelf: "flex-start",

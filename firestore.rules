@@ -545,7 +545,11 @@ service cloud.firestore {
 
         allow delete: if
           canReadRides()
-          && request.auth.uid == uid;
+          && (
+            request.auth.uid == uid
+            || isAdmin()
+            || isOwner()
+          );
 
         function parentRideIsBookable() {
           let ride = get(/databases/$(database)/documents/rides/$(rideId)).data;

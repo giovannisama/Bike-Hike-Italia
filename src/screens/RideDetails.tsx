@@ -1347,7 +1347,8 @@ export default function RideDetails() {
         onRequestClose={closeManualModal}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          enabled={Platform.OS === "ios"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
           style={styles.modalWrap}
         >

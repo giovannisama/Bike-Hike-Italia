@@ -157,6 +157,7 @@ const UI = {
 // Spaziatore verticale
 // ---- LOGO ----
 const logo = require("./assets/images/logo.jpg");
+const SELF_DELETED_SENTINEL = "__self_deleted__";
 
 const APP_VERSION_LABEL = (() => {
   const platformKey = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : Platform.OS;
@@ -540,6 +541,19 @@ function SignupScreen({
       >
         <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
           <Image source={logo} style={styles.authLogo} />
+          <Text
+            style={{
+              marginBottom: 12,
+              color: "#475569",
+              textAlign: "center",
+              fontSize: 14,
+              lineHeight: 20,
+            }}
+          >
+            App riservata ai membri di Bike and Hike Italia.
+            {"\n"}
+            Info e richieste: Domenico (presidente) al +39 349 4108388 (telefono/WhatsApp).
+          </Text>
           <Text style={styles.authTitle}>Registrati</Text>
 
           <Text style={styles.inputLabel}>Nome *</Text>
@@ -668,6 +682,51 @@ function AttesaApprovazioneScreen() {
   );
 }
 
+function RejectedScreen({ profile }: { profile: UserDoc }) {
+  const name =
+    (typeof profile.firstName === "string" && profile.firstName.trim()) ||
+    (profile as any)?.name ||
+    (typeof profile.displayName === "string" && profile.displayName.trim()) ||
+    profile.email ||
+    "utente";
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch {}
+  };
+
+  return (
+    <SafeAreaView style={styles.authContainer}>
+      <ScrollView contentContainerStyle={styles.authScroll} keyboardShouldPersistTaps="handled">
+        <Image source={logo} style={styles.authLogo} />
+        <Text style={styles.authTitle}>Richiesta non approvata</Text>
+        <Text style={{ color: "#475569", lineHeight: 22, textAlign: "center", marginBottom: 20 }}>
+          Ciao {name},
+          {"\n\n"}
+          grazie per il tuo interesse verso la nostra associazione: ci fa davvero piacere che tu abbia pensato a Bike
+          and Hike Italia.
+          {"\n\n"}
+          Ti informiamo che l’app è riservata ai soli soci dell’associazione Bike and Hike Italia e, al momento, non
+          possiamo approvare la tua richiesta di accesso.
+          {"\n\n"}
+          Se fossi interessato a diventare socio, saremo felici di valutare la tua candidatura e darti tutte le
+          informazioni necessarie. Puoi contattare il nostro presidente Domenico (telefono/WhatsApp) al +39 349 4108388.
+          {"\n\n"}
+          Speriamo di poterti avere presto tra i nostri soci.
+          {"\n\n"}
+          Un caro saluto,
+          {"\n"}
+          Bike and Hike Italia
+        </Text>
+        <Pressable onPress={handleLogout} style={[styles.btnSecondary, { marginTop: 4 }]}>
+          <Text style={styles.btnSecondaryText}>Esci</Text>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const { profile, loading: profileLoading } = useCurrentProfile();
@@ -683,6 +742,12 @@ export default function App() {
     (((profile as any).disabled === true) ||
       ((profile as any).disabled === "true") ||
       ((profile as any).disabled === 1));
+  const isSelfDeleted =
+    !!profile &&
+    (((profile as any).selfDeleted === true) ||
+      ((profile as any).displayName === SELF_DELETED_SENTINEL));
+  const isPending = !!profile && !isSelfDeleted && !approvedOk && !disabledOn;
+  const isDisabledOnly = !!profile && !isSelfDeleted && disabledOn === true;
 
   // 1) Ascolta lo stato di autenticazione
   useEffect(() => {
@@ -740,13 +805,22 @@ export default function App() {
         </Stack.Navigator>
       ) : (
         // ---------- BLOCCO SE NON APPROVATO/DISABILITATO ----------
-        (profile && (!approvedOk || disabledOn)) ? (
+        profile && (isSelfDeleted || isPending || isDisabledOnly) ? (
           <Stack.Navigator screenOptions={{ headerTitleAlign: "center" }}>
-            <Stack.Screen
-              name="Attesa"
-              component={AttesaApprovazioneScreen}
-              options={{ title: "In attesa", headerShown: false }}
-            />
+            {isPending || isSelfDeleted ? (
+              <Stack.Screen
+                name="Attesa"
+                component={AttesaApprovazioneScreen}
+                options={{ title: "In attesa", headerShown: false }}
+              />
+            ) : (
+              <Stack.Screen
+                name="Rejected"
+                options={{ title: "Accesso non approvato", headerShown: false }}
+              >
+                {() => <RejectedScreen profile={profile as UserDoc} />}
+              </Stack.Screen>
+            )}
           </Stack.Navigator>
         ) : (
           // ---------- STACK APP ----------

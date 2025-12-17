@@ -61,7 +61,7 @@ type UserRow = {
 
 type FilterKey = "all" | "active" | "disabled" | "pending";
 
-type QuickAction = "approve" | "activate" | "deactivate" | null;
+type QuickAction = "approve" | "activate" | "deactivate" | "reject" | null;
 type BulkAction = "approve" | "activate" | "deactivate" | "delete";
 
 const normalize = (value?: string | null) =>
@@ -522,6 +522,37 @@ export default function UserListScreen() {
     }
   }, [requireOwner]);
 
+  const doReject = useCallback(
+    (uid: string) => {
+      if (!requireOwner()) return;
+      Alert.alert(
+        "Conferma",
+        "Rifiutare questa richiesta di accesso? L'utente verrà spostato tra i disattivati.",
+        [
+          { text: "Annulla", style: "cancel" },
+          {
+            text: "Rifiuta",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                setActionUid(uid);
+                setActionType("reject");
+                await updateDoc(doc(db, "users", uid), { approved: false, disabled: true });
+                await mergeUsersPublic(uid, { approved: false, disabled: true }, "UserList.reject");
+              } catch (e: any) {
+                Alert.alert("Errore", e?.message ?? "Impossibile rifiutare la richiesta.");
+              } finally {
+                setActionUid(null);
+                setActionType(null);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [requireOwner]
+  );
+
   const doActivate = useCallback(async (uid: string) => {
     if (!requireOwner()) return;
     try {
@@ -817,11 +848,19 @@ export default function UserListScreen() {
       if (isCurrentOwner && !isSelf && !isOwner && !isSelfDeleted) {
         if (isPending) {
           actionNode = (
-            <SmallBtn
-              title={busy && actionType === "approve" ? "…" : "Approva"}
-              onPress={() => doApprove(item.uid)}
-              disabled={busy}
-            />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <SmallBtn
+                title={busy && actionType === "approve" ? "…" : "Approva"}
+                onPress={() => doApprove(item.uid)}
+                disabled={busy}
+              />
+              <SmallBtn
+                title={busy && actionType === "reject" ? "…" : "Rifiuta"}
+                onPress={() => doReject(item.uid)}
+                disabled={busy}
+                kind="warning"
+              />
+            </View>
           );
         } else if (isDisabled) {
           actionNode = (
@@ -855,6 +894,7 @@ export default function UserListScreen() {
       actionUid,
       actionType,
       doApprove,
+      doReject,
       doActivate,
       isCurrentOwner,
       selected,

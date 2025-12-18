@@ -19,4 +19,8 @@ export type RootStackParamList = {
   Profile: undefined;
   Attesa: undefined;
   NotificationSettings: undefined;
+  TrekkingPlaceholder: undefined;
+  Info: undefined;
+  TabBacheca: undefined;
+  BoardPostDetail: { postId: string; title?: string };
 };

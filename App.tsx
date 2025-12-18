@@ -24,11 +24,12 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, createNavigationContainerRef, useNavigationState } from "@react-navigation/native";
 import {
   createNativeStackNavigator,
   NativeStackScreenProps,
 } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -57,6 +58,7 @@ import {
 import { auth, db } from "./src/firebase";
 import HomeScreen from "./src/screens/HomeScreen";
 import NotificationSettingsScreen from "./src/screens/NotificationSettingsScreen";
+import EventiHubScreen from "./src/screens/EventiHubScreen";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
 import { registerPushToken } from "./src/notifications/registerPushToken";
 import type { RootStackParamList } from "./src/navigation/types";
@@ -76,6 +78,9 @@ import BoardScreen from "./src/screens/BoardScreen";
 import AdminScreen from "./src/screens/AdminScreen";
 import UserListScreen from "./src/screens/admin/UserListScreen";
 import UserDetailScreen from "./src/screens/admin/UserDetailScreen";
+import TrekkingPlaceholderScreen from "./src/screens/TrekkingPlaceholderScreen";
+import InfoScreen from "./src/screens/InfoScreen";
+import BoardPostDetailScreen from "./src/screens/BoardPostDetailScreen";
 
 // Wrapper: protegge la sezione Amministrazione (solo admin/owner)
 function AdminGate() {
@@ -105,6 +110,7 @@ function AdminGate() {
 }
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator();
 // Navigation ref per future esigenze (es. deep link)
 export const navRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -267,7 +273,7 @@ function LoginScreen({
                 try {
                   await saveCredsSecurely(email.trim(), password);
                   setBioReady(true);
-                } catch {}
+                } catch { }
               },
             },
           ]
@@ -514,8 +520,8 @@ function SignupScreen({
             existingMethods.length === 0
               ? ""
               : existingMethods.includes("password")
-              ? " con email e password"
-              : ` con ${existingMethods.join(", ")}`;
+                ? " con email e password"
+                : ` con ${existingMethods.join(", ")}`;
           message = `Esiste già un account registrato per ${email.trim().toLowerCase()}${providerHint}. Se non ricordi la password, usa la funzione di reset oppure accedi con il metodo già collegato.`;
         } catch {
           message =
@@ -693,7 +699,7 @@ function RejectedScreen({ profile }: { profile: UserDoc }) {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-    } catch {}
+    } catch { }
   };
 
   return (
@@ -764,7 +770,7 @@ export default function App() {
       ) {
         try {
           await signOut(auth);
-        } catch {}
+        } catch { }
         setUser(null);
         return;
       }
@@ -829,7 +835,7 @@ export default function App() {
           >
             <Stack.Screen
               name="Home"
-              component={HomeScreen}
+              component={MainTabs}
               options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -845,6 +851,11 @@ export default function App() {
               name="Calendar"
               component={CalendarScreen}
               options={{ title: "Calendario" }}
+            />
+            <Stack.Screen
+              name="TrekkingPlaceholder"
+              component={TrekkingPlaceholderScreen}
+              options={{ title: "Trekking" }}
             />
             <Stack.Screen
               name="CreateRide"
@@ -863,15 +874,116 @@ export default function App() {
               options={({ route }) => ({ title: route.params?.title || "Dettagli Uscita" })}
             />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profilo Utente" }} />
+            <Stack.Screen name="BoardPostDetail" component={BoardPostDetailScreen} options={{ title: "Dettaglio News" }} />
             <Stack.Screen
               name="NotificationSettings"
               component={NotificationSettingsScreen}
               options={{ title: "Notifiche" }}
             />
+            {/* Info is now in Tabs as TabInfo */}
           </Stack.Navigator>
         )
       )}
     </NavigationContainer>
+  );
+}
+
+// ... (existing code)
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: "#0284C7", // Sky-600
+        tabBarInactiveTintColor: "#94A3B8", // Slate-400
+        tabBarLabelStyle: { fontWeight: "700", fontSize: 12, marginBottom: 0 },
+        tabBarStyle: {
+          height: 74,
+          paddingTop: 8,
+          paddingBottom: 12,
+          borderTopWidth: 0,
+          backgroundColor: "#fff",
+          shadowColor: "#000",
+          shadowOpacity: 0.05,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: -4 },
+          elevation: 5,
+        },
+        tabBarItemStyle: { paddingHorizontal: 6 },
+        tabBarButton: (props) => <PillTabButton {...props} routeName={route.name} />,
+        tabBarIcon: ({ color, size }) => {
+          const iconSize = size + 2;
+          switch (route.name) {
+            case "TabHome":
+              return <Ionicons name="home-outline" size={iconSize} color={color} />;
+            case "TabEventi":
+              return <MaterialCommunityIcons name="star-outline" size={iconSize} color={color} />;
+            case "TabCalendar":
+              return <Ionicons name="calendar-outline" size={iconSize} color={color} />;
+            case "TabProfile":
+              return <Ionicons name="person-outline" size={iconSize} color={color} />;
+            case "TabBacheca":
+              return <Ionicons name="newspaper-outline" size={iconSize} color={color} />;
+            default:
+              return null;
+          }
+        },
+      })}
+    >
+      <Tab.Screen name="TabHome" component={HomeScreen} options={{ title: "Home" }} />
+      <Tab.Screen name="TabEventi" component={EventiHubScreen} options={{ title: "Eventi" }} />
+      <Tab.Screen name="TabBacheca" component={BoardScreen} options={{ title: "Bacheca" }} />
+      <Tab.Screen name="TabCalendar" component={CalendarScreen} options={{ title: "Calendario" }} />
+      <Tab.Screen name="TabProfile" component={ProfileScreen} options={{ title: "Profilo" }} />
+    </Tab.Navigator>
+  );
+}
+
+function PillTabButton({ accessibilityState, children, onPress, routeName, ...rest }: any) {
+  // Use navigation state to determine focus robustly
+  const focused = useNavigationState((state) => {
+    if (!state) return false;
+    // Find the tab navigator state (it might be nested)
+    // For simple cases, state.routes[state.index].name works if we are in the tab navigator context
+    // But useNavigationState returns the root state if called from here?
+    // Actually, useNavigationState inside a component rendered by Tab.Navigator should return Tab state?
+    // Let's rely on the fact that we are inside the navigator.
+    const route = state.routes[state.index];
+    return route?.name === routeName;
+  });
+
+  // Fallback to accessibilityState if useNavigationState fails or returns root state unexpectedly
+  const isSelected = focused || accessibilityState?.selected === true;
+
+  return (
+    <Pressable
+      accessibilityState={accessibilityState}
+      onPress={onPress}
+      {...rest}
+      style={({ pressed }) => [
+        {
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+        pressed && { opacity: 0.9 },
+      ]}
+    >
+      <View
+        style={{
+          backgroundColor: isSelected ? "#E0F2FE" : "transparent",
+          paddingHorizontal: 16,
+          paddingVertical: 6,
+          borderRadius: 999,
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 64,
+        }}
+      >
+        {children}
+      </View>
+    </Pressable>
   );
 }
 

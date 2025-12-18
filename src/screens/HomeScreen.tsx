@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, Image, ViewStyle } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { signOut } from "firebase/auth";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen, UI } from "../components/Screen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
@@ -15,97 +15,12 @@ import { getCertificateStatus } from "../utils/medicalCertificate";
 
 const logo = require("../../assets/images/logo.jpg");
 
-const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
-  <View style={{ height: UI.spacing[size] }} />
-);
-
-type ShortcutCardProps = {
-  label: string;
-  caption?: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-  disabled?: boolean;
-  badgeCount?: number | null;
-  danger?: boolean;
-  style?: ViewStyle;
-  iconContainerStyle?: ViewStyle;
-  statusBadge?: React.ReactNode;
-};
-
-function ShortcutCard({
-  label,
-  caption,
-  icon,
-  onPress,
-  disabled = false,
-  badgeCount,
-  danger = false,
-  style,
-  iconContainerStyle,
-  statusBadge,
-}: ShortcutCardProps) {
-  return (
-    <Pressable
-      onPress={() => {
-        if (!disabled) onPress();
-      }}
-      style={({ pressed }) => [
-        {
-          width: "48%",
-          backgroundColor: UI.colors.card,
-          borderRadius: UI.radius.xl,
-          paddingVertical: UI.spacing.md,
-          paddingHorizontal: UI.spacing.sm,
-          alignItems: "center",
-          justifyContent: "center",
-          gap: UI.spacing.sm,
-          opacity: disabled ? 0.5 : 1,
-          transform: [{ scale: pressed && !disabled ? 0.96 : 1 }],
-          minHeight: 140,
-        },
-        style,
-        UI.shadow.card,
-      ]}
-    >
-      <View style={[styles.cardIconWrapper, iconContainerStyle]}>
-        {icon}
-        {statusBadge && <View style={styles.statusBadgeAnchor}>{statusBadge}</View>}
-      </View>
-      <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.85}
-        style={{
-          width: "100%",
-          fontSize: 16,
-          fontWeight: "800",
-          color: danger ? UI.colors.danger : UI.colors.text,
-          textAlign: "center",
-        }}
-      >
-        {label}
-      </Text>
-      {!!caption && (
-        <Text style={{ fontSize: 12, fontWeight: "600", color: UI.colors.muted, textAlign: "center" }}>
-          {caption}
-        </Text>
-      )}
-      {typeof badgeCount === "number" && (
-        <View style={styles.cardBadgeCount}>
-          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12, textAlign: "center" }}>
-            {badgeCount}
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
 type BoardPreviewItem = {
   id: string;
   title: string;
-  imageUrl: string | null;
   createdAt: Date | null;
+  imageUrl?: string | null;
+  imageBase64?: string | null;
 };
 
 function useActiveRidesCount() {
@@ -163,8 +78,9 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
           next.push({
             id: docSnap.id,
             title: data?.title ?? "",
-            imageUrl: data?.imageUrl ?? null,
             createdAt: data?.createdAt?.toDate?.() ?? null,
+            imageUrl: data?.imageUrl ?? null,
+            imageBase64: data?.imageBase64 ?? null,
           });
         });
         setItems(next);
@@ -195,36 +111,61 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
     return () => {
       try {
         unsub();
-      } catch {}
+      } catch { }
     };
   }, [lastSeen?.getTime(), enabled, permissionDenied]);
 
-  const latest = useMemo(() => items[0] ?? null, [items]);
+  const preview = useMemo(() => items.slice(0, 3), [items]);
 
-  return { latest, loading, unreadCount: unread };
+  return { preview, loading, unreadCount: unread };
 }
 
-const truncate = (value: string, max = 38) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+type EventRowProps = {
+  title: string;
+  caption?: string;
+  badge?: number | null;
+  onPress?: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  iconBgColor?: string;
+};
 
-type CertificateBadgeTone = "warning" | "danger";
-
-function CertificateStatusBadge({ tone }: { tone: CertificateBadgeTone }) {
-  const label = tone === "warning" ? "Certificato medico in scadenza" : "Certificato medico scaduto";
-  const toneStyle = tone === "warning" ? styles.certificateBadgeWarning : styles.certificateBadgeDanger;
+function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor }: EventRowProps) {
   return (
-    <View style={styles.certificateBadge} accessibilityRole="image" accessibilityLabel={label}>
-      <View style={[styles.certificateBadgeDot, toneStyle]} />
-    </View>
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={({ pressed }) => [
+        styles.eventRow,
+        disabled && styles.eventRowDisabled,
+        pressed && !disabled && { backgroundColor: "#F8FAFC" },
+      ]}
+    >
+      <View style={[styles.eventIcon, { backgroundColor: disabled ? "#F1F5F9" : (iconBgColor ?? "#E7F1FD") }]}>
+        {icon}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.eventTitle, disabled && styles.eventTitleDisabled]}>{title}</Text>
+        {!!caption && <Text style={styles.eventCaption}>{caption}</Text>}
+      </View>
+      <View style={styles.eventRight}>
+        {typeof badge === "number" && (
+          <View style={[styles.badge, disabled && styles.badgeDisabled]}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        )}
+        <Ionicons name="chevron-forward" size={20} color={disabled ? "#CBD5E1" : "#94A3B8"} />
+      </View>
+    </Pressable>
   );
 }
 
 export default function HomeScreen({ navigation }: any) {
-  const user = auth.currentUser;
-  const { profile, isAdmin, isOwner, loading } = useCurrentProfile();
+  const { profile, isAdmin, isOwner } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const rootNav = navigation?.getParent?.() ?? navigation;
 
   const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
-  const userUid = user?.uid ?? null;
+  const userUid = auth.currentUser?.uid ?? null;
   const boardPreviewAllowed =
     !!profile &&
     profile.approved === true &&
@@ -248,284 +189,535 @@ export default function HomeScreen({ navigation }: any) {
     }, [userUid])
   );
 
-  const { latest: latestBoard, loading: boardLoading, unreadCount } = useBoardPreview(
+  const { preview: boardPreview, loading: boardLoading, unreadCount } = useBoardPreview(
     boardLastSeen,
     boardPreviewAllowed
   );
 
   const { certificate } = useMedicalCertificate();
   const certificateStatus = useMemo(() => getCertificateStatus(certificate), [certificate]);
-  const profileCaption =
-    certificateStatus.kind === "warning"
-      ? "Certificato medico in scadenza"
-      : certificateStatus.kind === "expired"
-      ? "Certificato medico scaduto"
-      : "I tuoi dati";
-  const profileBadge =
-    certificateStatus.kind === "warning" ? (
-      <CertificateStatusBadge tone="warning" />
-    ) : certificateStatus.kind === "expired" ? (
-      <CertificateStatusBadge tone="danger" />
-    ) : null;
+  const showCertCard = certificateStatus.kind === "warning" || certificateStatus.kind === "expired";
+  const certLabel =
+    certificateStatus.kind === "expired" ? "Certificato scaduto" : "Certificato in scadenza";
 
   const firstName = (profile?.firstName ?? "").trim();
-  const lastName = (profile?.lastName ?? "").trim();
-  const nickname = (profile?.nickname ?? "").trim();
-  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const rawNickname = (profile?.nickname ?? "").trim();
+  // Remove starting @ if present to satisfy requirement
+  const nickname = rawNickname.replace(/^@/, "");
 
   const fallbackDisplay =
-    user?.displayName?.trim() ||
-    (user?.email ? user.email.split("@")[0] : "") ||
-    "Ciclista";
+    auth.currentUser?.displayName?.trim() ||
+    (auth.currentUser?.email ? auth.currentUser.email.split("@")[0] : "") ||
+    "Utente";
 
-  const formattedName = firstName && lastName ? `${lastName}, ${firstName}` : fullName || fallbackDisplay;
-  const secondaryLine = nickname || user?.email || "";
+  const greetingName = firstName || fallbackDisplay;
 
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 16) + 32;
+
+  // Header Gradient logic: subtle decoration
   return (
-    <Screen
-      useNativeHeader
-      scroll
-      keyboardShouldPersistTaps="handled"
-      // FIX: rimuovo il KeyboardAvoidingView su Home perché Android lasciava un blocco bianco dopo il ritorno da CreateRide
-      avoidKeyboard={false}
-    >
-      <LinearGradient
-        colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.heroCard}
-      >
-        <View style={{ gap: UI.spacing.lg }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: UI.spacing.md }}>
-            <View style={styles.heroLogoWrapper}>
-              <Image source={logo} style={{ width: 48, height: 48, resizeMode: "contain" }} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>Bike and Hike</Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  letterSpacing: 2,
-                  fontWeight: "700",
-                  color: UI.colors.accentWarm,
-                }}
-              >
-                ITALIA
-              </Text>
-            </View>
+    <Screen useNativeHeader scroll keyboardShouldPersistTaps="handled" avoidKeyboard={false} backgroundColor="#FDFCF8">
+      {/* Decorative Header Gradient Background */}
+      <View style={styles.headerGradientContainer}>
+        <LinearGradient
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+
+      <View style={[styles.page, { paddingBottom: bottomPadding }]}>
+
+        {/* HEADER */}
+        <View style={styles.headerSection}>
+          <View style={styles.headerRow}>
+            {/* Logo: clean, no borders */}
+            <Image source={logo} style={styles.logoImage} />
+
+            {/* Icon Info removed as requested */}
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 24, fontWeight: "900", color: "#fff" }}>{formattedName}</Text>
-              {!!secondaryLine && (
-                <Text
-                  style={{
-                    marginTop: 4,
-                    fontSize: 16,
-                    fontWeight: "600",
-                    color: "#EAF7F0",
-                  }}
-                >
-                  {secondaryLine}
-                </Text>
-              )}
-            </View>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={styles.appTitle}>Bike and Hike Italia</Text>
             {isAdmin && (
-              <View
-                style={{
-                  backgroundColor: isOwner ? "#1D4ED8" : UI.colors.accent,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: UI.radius.round,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>
-                  {isOwner ? "OWNER" : "ADMIN"}
-                </Text>
+              <View style={[styles.roleChip, isOwner ? styles.roleChipOwner : styles.roleChipAdmin]}>
+                <Text style={styles.roleChipText}>{isOwner ? "OWNER" : "ADMIN"}</Text>
               </View>
             )}
           </View>
+
+          <View style={styles.greetingContainer}>
+            <Text style={styles.greetingTitle}>Bentornato, {greetingName}!</Text>
+            {!!nickname && <Text style={styles.greetingSubtitle}>{nickname}</Text>}
+          </View>
         </View>
-      </LinearGradient>
-
-      {!loading && !(firstName || lastName || nickname) && (
-        <Pressable
-          onPress={() => navigation.navigate("Profile")}
-          style={({ pressed }) => [
-            {
-              padding: 12,
-              borderRadius: UI.radius.md,
-              backgroundColor: UI.colors.warningBg,
-              borderWidth: 1,
-              borderColor: UI.colors.warningBorder,
-              opacity: pressed ? 0.95 : 1,
-            },
-          ]}
-        >
-          <Text style={{ fontWeight: "700", color: "#7C2D12" }}>Completa il tuo profilo</Text>
-          <Text style={{ color: "#7C2D12", marginTop: 4 }}>
-            Aggiungi Nome, Cognome e (opzionale) Nickname per personalizzare il saluto.
-          </Text>
-        </Pressable>
-      )}
-
-      <VSpace size="lg" />
-
-      <View style={styles.grid}>
-        <ShortcutCard
-          label="Uscite"
-          caption="Calendario eventi"
-          badgeCount={activeCount ?? undefined}
-          icon={<MaterialCommunityIcons name="bike" size={32} color={UI.colors.primary} />}
-          onPress={() => navigation.navigate("UsciteList")}
-          iconContainerStyle={{ backgroundColor: "#E2F2E8" }}
-          style={{ marginBottom: UI.spacing.md }}
-        />
-
-        <ShortcutCard
-          label="Bacheca"
-          caption={
-            boardLoading ? "Caricamento…" : latestBoard ? truncate(latestBoard.title, 36) : "News e comunicazioni"
-          }
-          icon={
-            <MaterialCommunityIcons
-              name="newspaper-variant-outline"
-              size={32}
-              color={UI.colors.primary}
-            />
-          }
-          onPress={() => navigation.navigate("Board")}
-          iconContainerStyle={{ backgroundColor: "#E3F2FD" }}
-          style={{ marginBottom: UI.spacing.md }}
-          badgeCount={unreadCount > 0 ? unreadCount : undefined}
-        />
-
-        {isAdmin && (
-          <ShortcutCard
-            label="Nuova uscita"
-            caption="Admin e Owner"
-            icon={<MaterialCommunityIcons name="plus-circle-outline" size={32} color={UI.colors.accent} />}
-            onPress={() => navigation.navigate("CreateRide")}
-            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
-            style={{ marginBottom: UI.spacing.md }}
-          />
-        )}
-
-        <ShortcutCard
-          label="Calendario"
-          caption="Vista mensile"
-          icon={<MaterialCommunityIcons name="calendar-month" size={32} color={UI.colors.accentWarm} />}
-          onPress={() => navigation.navigate("Calendar")}
-          iconContainerStyle={{ backgroundColor: "#FFF4DC" }}
-          style={{ marginBottom: UI.spacing.md }}
-        />
 
         {isOwner && (
-          <ShortcutCard
-            label="Amministrazione"
-            caption="Solo Owner"
-            icon={<MaterialCommunityIcons name="shield-lock-outline" size={32} color={UI.colors.accent} />}
-            onPress={() => navigation.navigate("Amministrazione")}
-            iconContainerStyle={{ backgroundColor: "#FBE7F1" }}
-            style={{ marginBottom: UI.spacing.md }}
-          />
+          <Pressable
+            onPress={() => rootNav.navigate("Amministrazione")}
+            style={({ pressed }) => [styles.adminCard, pressed && { opacity: 0.95 }]}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <View style={styles.adminIconBox}>
+                <Ionicons name="shield-checkmark" size={24} color="#0F172A" />
+              </View>
+              <Text style={styles.adminText}>Amministrazione</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#0F172A" />
+          </Pressable>
         )}
 
-        <ShortcutCard
-          label="Profilo Utente"
-          caption={profileCaption}
-          icon={<MaterialCommunityIcons name="account" size={32} color={UI.colors.primary} />}
-          onPress={() => navigation.navigate("Profile")}
-          iconContainerStyle={{ backgroundColor: "#E6F0FA" }}
-          style={{ marginBottom: UI.spacing.md }}
-          statusBadge={profileBadge}
-        />
+        {/* INFO CARD (Visible to all) */}
+        <Pressable
+          onPress={() => rootNav.navigate("Info")}
+          style={({ pressed }) => [styles.infoCard, pressed && { opacity: 0.95 }]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <View style={styles.infoIconBox}>
+              <Ionicons name="information" size={24} color="#0F766E" />
+            </View>
+            <View>
+              <Text style={styles.infoTitle}>Informazioni</Text>
+              <Text style={styles.infoSubtitle}>Dati e contatti dell’associazione</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+        </Pressable>
 
-        <ShortcutCard
-          label="Esci"
-          caption="Chiudi la sessione"
-          icon={<MaterialCommunityIcons name="logout" size={32} color={UI.colors.danger} />}
-          onPress={() => signOut(auth)}
-          danger
-          iconContainerStyle={{ backgroundColor: "#FDE8E8" }}
-          style={{ marginBottom: UI.spacing.md }}
-        />
+        {showCertCard && (
+          <Pressable
+            onPress={() => rootNav.navigate("Profile")}
+            style={({ pressed }) => [styles.certCard, pressed && { opacity: 0.95 }]}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <MaterialCommunityIcons name="alert-circle" size={22} color="#92400E" />
+              <Text style={styles.certText}>{certLabel}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#92400E" />
+          </Pressable>
+        )}
+
+        {/* EVENTI SECTION - Unified container */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Eventi</Text>
+          </View>
+
+          <View style={styles.unifiedCard}>
+            <EventRow
+              title="Calendario Bici"
+              caption="Uscite attive"
+              badge={activeCount ?? 0}
+              onPress={() => rootNav.navigate("UsciteList")}
+              icon={<MaterialCommunityIcons name="bike" size={24} color="#15803D" />}
+              iconBgColor="#DCFCE7" // Green-100
+            />
+            <View style={styles.rowDivider} />
+            <EventRow
+              title="Calendario Trekking"
+              caption="In arrivo"
+              badge={0}
+              onPress={() => rootNav.navigate("TrekkingPlaceholder")}
+              icon={<MaterialCommunityIcons name="hiking" size={24} color="#0F766E" />}
+              iconBgColor="#CCFBF1" // Teal-100
+            />
+            <View style={styles.rowDivider} />
+            <EventRow
+              title="Bike Aut"
+              caption="COMING SOON"
+              disabled
+              badge={null}
+              icon={<MaterialCommunityIcons name="bike-fast" size={24} color="#9CA3AF" />}
+            />
+            <View style={styles.rowDivider} />
+            <EventRow
+              title="Viaggi"
+              caption="COMING SOON"
+              disabled
+              badge={null}
+              icon={<MaterialCommunityIcons name="bag-checked" size={24} color="#9CA3AF" />}
+            />
+          </View>
+        </View>
+
+        {/* BACHECA SECTION */}
+        <View style={styles.sectionContainer}>
+          <Pressable
+            onPress={() => navigation.navigate("TabBacheca")}
+            style={({ pressed }) => [styles.sectionHeaderRow, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.sectionTitle}>Bacheca</Text>
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>{unreadCount}</Text>
+            </View>
+            <View style={{ flex: 1 }} />
+            <Ionicons name="chevron-forward" size={18} color={UI.colors.text} />
+          </Pressable>
+
+          {boardLoading ? (
+            <View style={styles.loaderRow}>
+              <ActivityIndicator />
+              <Text style={{ marginLeft: 8, color: UI.colors.muted }}>Caricamento…</Text>
+            </View>
+          ) : boardPreview.length === 0 ? (
+            <Pressable onPress={() => navigation.navigate("TabBacheca")} style={({ pressed }) => [styles.emptyCard, pressed && { opacity: 0.92 }]}>
+              <Text style={styles.emptyText}>Nessuna news disponibile.</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.unifiedCard}>
+              {boardPreview.map((item, index) => {
+                const isFirst = index === 0;
+                return (
+                  <View key={item.id}>
+                    <Pressable
+                      onPress={() => rootNav.navigate("BoardPostDetail", { postId: item.id, title: item.title })}
+                      style={({ pressed }) => [
+                        styles.newsRow,
+                        pressed && { backgroundColor: "#F8FAFC" }
+                      ]}
+                    >
+                      {/* Thumbnail Left */}
+                      {item.imageUrl || item.imageBase64 ? (
+                        <Image
+                          source={{ uri: item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl as string }}
+                          style={styles.newsThumb}
+                        />
+                      ) : (
+                        <View style={styles.newsIconPlaceholder}>
+                          <MaterialCommunityIcons name="bullhorn-outline" size={20} color={UI.colors.primary} />
+                        </View>
+                      )}
+
+                      <View style={{ flex: 1, paddingVertical: 4 }}>
+                        <Text
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                          style={[styles.newsTitle, isFirst && styles.newsTitleHighlight]}
+                        >
+                          {item.title || "News"}
+                        </Text>
+                        {/* Optional date or simple text if needed, keeping it clean for now */}
+                      </View>
+                    </Pressable>
+                    {index < boardPreview.length - 1 && <View style={styles.rowDivider} />}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </View>
-    </Screen>
+    </Screen >
   );
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    borderRadius: UI.radius.xl,
-    padding: UI.spacing.lg,
-    paddingBottom: UI.spacing.lg + 4,
-    marginBottom: UI.spacing.lg,
+  page: {
+    gap: 24,
+    // Background is handled by Screen style wrapper
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  heroLogoWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "rgba(0,0,0,0.25)",
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+  headerGradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 240, // Fade out after header area
   },
-  grid: {
+  headerSection: {
+    gap: 8,
+    marginTop: 8,
+  },
+  headerRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 4,
   },
-  cardIconWrapper: {
-    width: 62,
-    height: 62,
-    borderRadius: UI.radius.md,
-    backgroundColor: UI.colors.tint,
+  logoImage: {
+    width: 60,
+    height: 60,
+    resizeMode: "contain",
+  },
+  roleChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  roleChipAdmin: {
+    backgroundColor: "#FCE7F3", // Pink-100
+  },
+  roleChipOwner: {
+    backgroundColor: "#DBEAFE", // Blue-100
+  },
+  roleChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0F172A",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  appTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#64748B",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  greetingContainer: {
+    gap: 2,
+  },
+  greetingTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#1E293B", // Slate-800
+    letterSpacing: -0.5,
+  },
+  greetingSubtitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#64748B", // Slate-500
+  },
+
+  // ADMIN CARD
+  adminCard: {
+    backgroundColor: "#EFF6FF", // Blue-50
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
+    justifyContent: "space-between",
+    borderLeftWidth: 4,
+    borderLeftColor: "#0F766E", // Teal-700
+    shadowColor: "#0F766E",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  cardBadgeCount: {
-    position: "absolute",
-    top: 12,
-    right: 16,
-    minWidth: 24,
-    paddingHorizontal: 6,
+  adminIconBox: {
+    // Just a container if we want sizing
+  },
+  adminText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+
+  // CERT CARD
+  certCard: {
+    backgroundColor: "#FEF9C3",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  certText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#92400E",
+  },
+
+  // SECTIONS
+  sectionContainer: {
+    gap: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#334155", // Slate-700
+  },
+  headerBadge: {
+    marginLeft: 8,
+    backgroundColor: "#E0F2FE",
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: UI.colors.accent,
+    borderRadius: 99,
   },
-  statusBadgeAnchor: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    zIndex: 2,
-    pointerEvents: "none",
+  headerBadgeText: {
+    color: "#0369A1",
+    fontSize: 12,
+    fontWeight: "700",
   },
-  certificateBadge: {
-    backgroundColor: "#fff",
-    borderRadius: UI.radius.round,
-    padding: 3,
+
+  // UNIFIED CARD CONTAINER
+  unifiedCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#F1F5F9", // Slate-100
+    paddingVertical: 4,
+    shadowColor: "#64748B",
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    overflow: "hidden", // for internal dividers
+  },
+
+  // EVENT ROW
+  eventRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  eventRowDisabled: {
+    // opacity handled by icons
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: "#F1F5F9",
+    marginLeft: 76, // Align with text start
+  },
+  eventIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: UI.shadow.card.shadowColor,
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: UI.shadow.card.elevation,
+    marginRight: 12,
   },
-  certificateBadgeDot: {
-    width: 16,
-    height: 16,
-    borderRadius: UI.radius.round,
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
   },
-  certificateBadgeWarning: {
-    backgroundColor: "#F97316",
+  eventTitleDisabled: {
+    color: "#94A3B8",
   },
-  certificateBadgeDanger: {
-    backgroundColor: "#DC2626",
+  eventCaption: {
+    marginTop: 1,
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  eventRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  badge: {
+    minWidth: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#E0F2FE", // Sky-100
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeDisabled: {
+    backgroundColor: "#F1F5F9",
+  },
+  badgeText: {
+    color: "#0369A1", // Sky-700
+    fontWeight: "700",
+    fontSize: 13,
+  },
+
+  // NEWS / BOARD
+  loaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  emptyCard: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    padding: 20,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+  },
+  emptyText: {
+    fontWeight: "600",
+    color: "#64748B",
+  },
+
+  newsRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  newsThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#E2E8F0",
+  },
+  newsIconPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  newsTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#334155",
+    lineHeight: 20,
+  },
+  newsTitleHighlight: {
+    fontWeight: "700",
+    color: "#1E293B",
+    fontSize: 16,
+  },
+
+  // INFO CARD
+  infoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    borderLeftWidth: 4,
+    borderLeftColor: "#0F766E", // Teal-700 (Same as Admin)
+    shadowColor: "#64748B", // Softer shadow than Admin
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  infoIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#CCFBF1", // Teal-100
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  infoSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#64748B",
   },
 });

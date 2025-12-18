@@ -16,6 +16,7 @@ import {
   View,
   Linking,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import {
   collection,
@@ -255,24 +256,24 @@ export default function BoardScreen({ navigation }: any) {
       (snap) => {
         const next: BoardItem[] = [];
         snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        const hasTitle = data?.hasTitle ?? (!!data?.title && String(data.title).trim().length > 0);
-        const hasImage = data?.hasImage ?? (!!data?.imageUrl || !!data?.imageBase64);
-        const hasDescription = data?.hasDescription ?? (!!data?.description && String(data.description).trim().length > 0);
-        next.push({
-          id: docSnap.id,
-          title: data?.title ?? null,
-          description: data?.description ?? null,
-          imageUrl: data?.imageUrl ?? null,
-          imageBase64: data?.imageBase64 ?? null,
-          imageStoragePath: data?.imageStoragePath ?? null,
-          archived: data?.archived === true,
-          createdAt: data?.createdAt?.toDate?.() ?? null,
-          createdBy: data?.createdBy ?? null,
-          hasTitle,
-          hasImage,
-          hasDescription,
-        });
+          const data = docSnap.data() as any;
+          const hasTitle = data?.hasTitle ?? (!!data?.title && String(data.title).trim().length > 0);
+          const hasImage = data?.hasImage ?? (!!data?.imageUrl || !!data?.imageBase64);
+          const hasDescription = data?.hasDescription ?? (!!data?.description && String(data.description).trim().length > 0);
+          next.push({
+            id: docSnap.id,
+            title: data?.title ?? null,
+            description: data?.description ?? null,
+            imageUrl: data?.imageUrl ?? null,
+            imageBase64: data?.imageBase64 ?? null,
+            imageStoragePath: data?.imageStoragePath ?? null,
+            archived: data?.archived === true,
+            createdAt: data?.createdAt?.toDate?.() ?? null,
+            createdBy: data?.createdBy ?? null,
+            hasTitle,
+            hasImage,
+            hasDescription,
+          });
         });
         setItems(next);
         setLoading(false);
@@ -285,7 +286,7 @@ export default function BoardScreen({ navigation }: any) {
     return () => {
       try {
         unsub();
-      } catch {}
+      } catch { }
     };
   }, []);
 
@@ -563,9 +564,8 @@ export default function BoardScreen({ navigation }: any) {
     (item: BoardItem) => {
       if (!canEdit) return;
       const newsLabel = item.hasTitle && item.title ? `"${item.title}"` : "Questa news";
-      const deleteMessage = `${newsLabel} sarà eliminata definitivamente. Questa operazione non può essere annullata.${
-        item.hasImage ? " L'immagine collegata verrà rimossa." : ""
-      }`;
+      const deleteMessage = `${newsLabel} sarà eliminata definitivamente. Questa operazione non può essere annullata.${item.hasImage ? " L'immagine collegata verrà rimossa." : ""
+        }`;
       Alert.alert(
         "Eliminare definitivamente?",
         deleteMessage,
@@ -627,10 +627,10 @@ export default function BoardScreen({ navigation }: any) {
       const isIOS = Platform.OS === "ios";
       const dateLabel = item.createdAt
         ? item.createdAt.toLocaleDateString("it-IT", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
         : "—";
       const descriptionText =
         item.hasDescription && item.description ? item.description.trim() : "";
@@ -643,82 +643,42 @@ export default function BoardScreen({ navigation }: any) {
 
       return (
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardDate}>{dateLabel}</Text>
-            {item.hasTitle && item.title ? (
-              <Text style={styles.cardTitle}>{item.title}</Text>
-            ) : (
-              canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
-            )}
-          </View>
-          {item.hasImage ? (
-            <Pressable
-              onPress={() =>
-                {
-                  lastScaleRef.current = 1;
-                  baseScale.setValue(1);
-                  pinchScale.setValue(1);
-                  lastPanRef.current = { x: 0, y: 0 };
-                  pan.setValue({ x: 0, y: 0 });
-                  pan.setOffset({ x: 0, y: 0 });
-                  setCanPan(false);
-                  setPreviewImage(imageUri);
-                }
-              }
-              style={styles.cardImageWrapper}
-            >
-              <Image
-                source={{
-                  uri: imageUri,
-                }}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
-            </Pressable>
-          ) : null}
-          {descriptionText ? (
-            <View style={styles.cardDescriptionBox}>
-              {isIOS ? (
-                <TextInput
-                  style={[styles.cardDescription, styles.cardDescriptionInput, collapsedStyle]}
-                  value={descriptionText}
-                  editable={false}
-                  multiline
-                  scrollEnabled={false}
-                  selectTextOnFocus
-                  dataDetectorTypes={["link"]}
-                  textAlignVertical="top"
-                  underlineColorAndroid="transparent"
-                  pointerEvents="auto"
-                  contextMenuHidden={false}
+          <Pressable
+            onPress={() => navigation.navigate("BoardPostDetail", { postId: item.id, title: item.title })}
+            style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.7 }]}
+          >
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardDate}>{dateLabel}</Text>
+              {item.hasTitle && item.title ? (
+                <Text style={styles.cardTitle}>{item.title}</Text>
+              ) : (
+                canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
+              )}
+              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" style={{ position: 'absolute', right: 0, top: 0 }} />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              {/* Thumbnail Left */}
+              {item.hasImage ? (
+                <Image
+                  source={{ uri: imageUri }}
+                  style={styles.cardThumb}
+                  resizeMode="cover"
                 />
               ) : (
-                <Text
-                  style={styles.cardDescription}
-                  numberOfLines={isExpanded || !shouldShowToggle ? undefined : 5}
-                  selectable
-                >
-                  {renderLinkedText(descriptionText, handlePressLink)}
+                <View style={styles.cardThumbPlaceholder}>
+                  <Ionicons name="newspaper-outline" size={24} color="#94A3B8" />
+                </View>
+              )}
+
+              {/* Snippet Right */}
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={3} style={styles.cardSnippet}>
+                  {descriptionText}
                 </Text>
-              )}
-              {shouldShowToggle && (
-                <Pressable
-                  onPress={() =>
-                    setExpandedDescriptions((prev) => ({
-                      ...prev,
-                      [item.id]: !prev[item.id],
-                    }))
-                  }
-                  accessibilityRole="button"
-                  style={styles.descriptionToggle}
-                >
-                  <Text style={styles.descriptionToggleText}>
-                    {isExpanded ? "Mostra meno..." : "Mostra di più..."}
-                  </Text>
-                </Pressable>
-              )}
+              </View>
             </View>
-          ) : null}
+          </Pressable>
           {canEdit && (
             <View style={styles.cardActions}>
               {!item.archived && (
@@ -775,7 +735,8 @@ export default function BoardScreen({ navigation }: any) {
       title="Bacheca"
       subtitle="Novità e comunicazioni"
       scroll={false}
-      keyboardShouldPersistTaps="handled"
+      useNativeHeader={false} // Custom header style if desired, or standard. Home uses custom? Home used Screen scroll=true. Info uses custom. Let's use standard but with custom BG.
+      backgroundColor="#FDFCF8"
     >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -981,7 +942,7 @@ export default function BoardScreen({ navigation }: any) {
                   onGestureEvent={handlePinchEvent}
                   onHandlerStateChange={handlePinchStateChange}
                 >
-                  <Animated.View style={[styles.previewImageWrapper, { transform: [{ scale: scaledValue }] }]}> 
+                  <Animated.View style={[styles.previewImageWrapper, { transform: [{ scale: scaledValue }] }]}>
                     <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="contain" />
                   </Animated.View>
                 </PinchGestureHandler>

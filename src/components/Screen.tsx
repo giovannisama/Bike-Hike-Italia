@@ -75,7 +75,8 @@ export function Screen({
   keyboardShouldPersistTaps = "always",
   headerContent,
   avoidKeyboard = true,
-}: ScreenProps) {
+  backgroundColor,
+}: ScreenProps & { backgroundColor?: string }) {
   const keyboardBehavior: KeyboardAvoidingViewProps["behavior"] = Platform.select({
     ios: "padding",
     android: "height",
@@ -88,7 +89,7 @@ export function Screen({
   });
   // render tree kept inline so we don't recreate components each render (avoids TextInput blur)
   const content = (
-    <View style={{ flex: 1, backgroundColor: UI.colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: backgroundColor ?? UI.colors.bg }}>
       {!useNativeHeader && (
         <LinearGradient
           colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
@@ -162,7 +163,7 @@ export function Screen({
         style={{
           flex: 1,
           marginTop: useNativeHeader ? 0 : -UI.radius.xl,
-          backgroundColor: UI.colors.bg,
+          backgroundColor: backgroundColor ?? UI.colors.bg,
           borderTopLeftRadius: useNativeHeader ? 0 : UI.radius.xl,
           borderTopRightRadius: useNativeHeader ? 0 : UI.radius.xl,
           padding: UI.spacing.lg,
@@ -177,7 +178,7 @@ export function Screen({
     <View
       style={{
         flex: 1,
-        backgroundColor: useNativeHeader ? UI.colors.bg : UI.colors.primary,
+        backgroundColor: useNativeHeader ? (backgroundColor ?? UI.colors.bg) : UI.colors.primary,
       }}
     >
       {scroll ? (

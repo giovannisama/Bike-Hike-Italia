@@ -874,13 +874,22 @@ export default function App() {
               options={({ route }) => ({ title: route.params?.title || "Dettagli Uscita" })}
             />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profilo Utente" }} />
-            <Stack.Screen name="BoardPostDetail" component={BoardPostDetailScreen} options={{ title: "Dettaglio News" }} />
+            <Stack.Screen
+              name="BoardPostDetail"
+              component={BoardPostDetailScreen}
+              options={{
+                headerShown: false,
+                headerBackTitleVisible: false,
+                title: "",
+              }}
+            />
             <Stack.Screen
               name="NotificationSettings"
               component={NotificationSettingsScreen}
               options={{ title: "Notifiche" }}
             />
-            {/* Info is now in Tabs as TabInfo */}
+            <Stack.Screen name="Info" component={InfoScreen} options={{ title: "Informazioni" }} />
+            {/* Info is now in Tabs as TabInfo - corrected: kept in stack for Home card access */}
           </Stack.Navigator>
         )
       )}

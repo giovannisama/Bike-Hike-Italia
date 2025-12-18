@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -36,9 +34,11 @@ import { PrimaryButton, PillButton } from "../components/Button";
 import { auth, db, storage } from "../firebase";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import * as ImageManipulator from "expo-image-manipulator";
-import { GestureHandlerRootView, PinchGestureHandler, PanGestureHandler, State } from "react-native-gesture-handler";
 import { useFocusEffect } from "@react-navigation/native";
 import { saveBoardLastSeen } from "../utils/boardStorage";
+import { renderLinkedText } from "../utils/renderLinkedText";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type BoardItem = {
   id: string;
@@ -65,6 +65,7 @@ type EditorState = {
   title: string;
   description: string;
   image: LocalImage | null;
+  // Toggles
   includeTitle: boolean;
   includeImage: boolean;
   includeDescription: boolean;
@@ -77,7 +78,7 @@ const createEmptyEditorState = (): EditorState => ({
   image: null,
   includeTitle: true,
   includeImage: true,
-  includeDescription: false,
+  includeDescription: true,
 });
 
 const normalize = (value: string) =>
@@ -91,64 +92,11 @@ const normalize = (value: string) =>
 
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
-const MAX_BOARD_DESCRIPTION_LENGTH = 3000;
 
-const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
-
-const renderLinkedText = (
-  text: string,
-  onPressLink: (url: string) => void
-) => {
-  const nodes: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  URL_REGEX_GLOBAL.lastIndex = 0;
-
-  while ((match = URL_REGEX_GLOBAL.exec(text)) !== null) {
-    const url = match[0];
-    const start = match.index;
-
-    // testo normale prima del link
-    if (start > lastIndex) {
-      nodes.push(text.slice(lastIndex, start));
-    }
-
-    // il link cliccabile
-    nodes.push(
-      <Text
-        key={`link-${nodes.length}`}
-        style={styles.cardDescriptionLink}
-        onPress={() => onPressLink(url)}
-        selectable={false}
-        accessibilityRole="link"
-      >
-        {url}
-      </Text>
-    );
-
-    lastIndex = start + url.length;
-  }
-
-  // eventuale testo rimanente dopo l’ultimo link
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-
-  // se non ci sono match, restituisci il testo intero
-  if (nodes.length === 0) {
-    return text;
-  }
-
-  return nodes;
-};
-
-const window = Dimensions.get("window");
-
-export default function BoardScreen({ navigation }: any) {
+export default function BoardScreen({ navigation, route }: any) {
   const { isAdmin, isOwner, loading: profileLoading } = useCurrentProfile();
   const canEdit = isAdmin || isOwner;
-  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
+  const insets = useSafeAreaInsets();
 
   const [items, setItems] = useState<BoardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,507 +106,247 @@ export default function BoardScreen({ navigation }: any) {
   const [composeOpen, setComposeOpen] = useState(false);
   const [editor, setEditor] = useState<EditorState>(createEmptyEditorState());
   const [saving, setSaving] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const baseScale = useRef(new Animated.Value(1)).current;
-  const pinchScale = useRef(new Animated.Value(1)).current;
-  const lastScaleRef = useRef(1);
-  const scaledValue = Animated.multiply(baseScale, pinchScale);
-  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const lastPanRef = useRef({ x: 0, y: 0 });
-  const panRef = useRef(null);
-  const pinchRef = useRef(null);
-  const [canPan, setCanPan] = useState(false);
+
   const userId = auth.currentUser?.uid ?? null;
 
-  const editingItem = useMemo(
-    () => (editor.id ? items.find((itm) => itm.id === editor.id) ?? null : null),
-    [editor.id, items]
-  );
-  const editorPreviewUri = useMemo(() => {
-    if (!editor.includeImage) return null;
-    if (editor.image?.uri) return editor.image.uri;
-    if (editingItem?.imageBase64) return `data:image/jpeg;base64,${editingItem.imageBase64}`;
-    if (editingItem?.imageUrl) return editingItem.imageUrl;
-    return null;
-  }, [editor.image, editingItem, editor.includeImage]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!userId) return;
-      saveBoardLastSeen(userId);
-    }, [userId])
-  );
-  const handlePinchEvent = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { scale: pinchScale } }], {
-        useNativeDriver: true,
-      }),
-    [pinchScale]
-  );
-
-  const handlePinchStateChange = useCallback(
-    (event: any) => {
-      const { state, scale } = event.nativeEvent;
-      if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
-        lastScaleRef.current = Math.min(Math.max(lastScaleRef.current * scale, 1), 4);
-        baseScale.setValue(lastScaleRef.current);
-        pinchScale.setValue(1);
-        setCanPan(lastScaleRef.current > 1.01);
-      } else if (state === State.BEGAN) {
-        pinchScale.setValue(1);
-      }
-    },
-    [baseScale, pinchScale]
-  );
-
-  // TODO: logica di preview/zoom immagine (pinch/pan) potrebbe essere incapsulata in hook o componente modale dedicato.
-  const handlePanEvent = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { translationX: pan.x, translationY: pan.y } }], {
-        useNativeDriver: true,
-      }),
-    [pan.x, pan.y]
-  );
-
-  const handlePanStateChange = useCallback(
-    (event: any) => {
-      const { state, translationX, translationY } = event.nativeEvent;
-      if (state === State.BEGAN) {
-        pan.setOffset(lastPanRef.current);
-        pan.setValue({ x: 0, y: 0 });
-      } else if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
-        lastPanRef.current = {
-          x: lastPanRef.current.x + translationX,
-          y: lastPanRef.current.y + translationY,
-        };
-        pan.setOffset(lastPanRef.current);
-        pan.setValue({ x: 0, y: 0 });
-      }
-    },
-    [pan]
-  );
-
-  const closePreview = useCallback(() => {
-    setPreviewImage(null);
-    lastScaleRef.current = 1;
-    baseScale.setValue(1);
-    pinchScale.setValue(1);
-    lastPanRef.current = { x: 0, y: 0 };
-    pan.setValue({ x: 0, y: 0 });
-    pan.setOffset({ x: 0, y: 0 });
-    setCanPan(false);
-  }, [baseScale, pinchScale, pan]);
-
+  // Real-time subscription
   useEffect(() => {
-    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const next: BoardItem[] = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          const hasTitle = data?.hasTitle ?? (!!data?.title && String(data.title).trim().length > 0);
-          const hasImage = data?.hasImage ?? (!!data?.imageUrl || !!data?.imageBase64);
-          const hasDescription = data?.hasDescription ?? (!!data?.description && String(data.description).trim().length > 0);
-          next.push({
-            id: docSnap.id,
-            title: data?.title ?? null,
-            description: data?.description ?? null,
-            imageUrl: data?.imageUrl ?? null,
-            imageBase64: data?.imageBase64 ?? null,
-            imageStoragePath: data?.imageStoragePath ?? null,
-            archived: data?.archived === true,
-            createdAt: data?.createdAt?.toDate?.() ?? null,
-            createdBy: data?.createdBy ?? null,
-            hasTitle,
-            hasImage,
-            hasDescription,
-          });
-        });
-        setItems(next);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("[BoardScreen] onSnapshot error:", err);
-        setLoading(false);
-      }
+    const q = query(
+      collection(db, "boardPosts"),
+      orderBy("createdAt", "desc")
     );
-    return () => {
-      try {
-        unsub();
-      } catch { }
-    };
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: BoardItem[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        list.push({
+          id: docSnap.id,
+          title: d.title || null,
+          description: d.description || null,
+          imageBase64: d.imageBase64 || null,
+          imageUrl: d.imageUrl || null,
+          imageStoragePath: d.imageStoragePath || null,
+          createdAt: d.createdAt ? d.createdAt.toDate() : null,
+          archived: !!d.archived,
+          createdBy: d.createdBy || null,
+          hasTitle: !!d.title,
+          hasImage: !!(d.imageBase64 || d.imageUrl),
+          hasDescription: !!d.description,
+        });
+      });
+      setItems(list);
+      setLoading(false);
+    });
+    return () => unsub();
   }, []);
 
-  const searchNormalized = useMemo(() => normalize(search), [search]);
-
-  // TODO: logica filtri/ordinamento board potrebbe essere estratta in hook dedicato per testabilità.
+  // Filter Logic
   const filteredItems = useMemo(() => {
-    return items
-      .filter((item) => {
-        if (filter === "active") {
-          if (item.archived) return false;
-        } else if (!item.archived) {
-          return false;
-        }
-        if (!searchNormalized) return true;
-        const target = `${item.title ?? ""} ${item.description ?? ""}`;
-        return normalize(target).includes(searchNormalized);
-      })
-      .sort((a, b) => {
-        const timeA = a.createdAt ? a.createdAt.getTime() : 0;
-        const timeB = b.createdAt ? b.createdAt.getTime() : 0;
-        return timeB - timeA;
-      });
-  }, [items, filter, searchNormalized]);
+    let result = items;
+    // Filter by tab
+    if (filter === "active") {
+      result = result.filter(i => !i.archived);
+    } else {
+      result = result.filter(i => i.archived);
+    }
+    // Filter by search
+    if (search.trim()) {
+      const q = normalize(search);
+      result = result.filter(i =>
+        (i.title && normalize(i.title).includes(q)) ||
+        (i.description && normalize(i.description).includes(q))
+      );
+    }
+    return result;
+  }, [items, filter, search]);
 
+  // Mark as seen on navigation
+  useFocusEffect(
+    useCallback(() => {
+      saveBoardLastSeen();
+    }, [])
+  );
+
+  // Helper: Open Editor
+  const handleEdit = useCallback((item: BoardItem) => {
+    setEditor({
+      id: item.id,
+      title: item.title || "",
+      description: item.description || "",
+      image: item.imageUrl ? { uri: item.imageUrl } : null,
+      includeTitle: !!item.title,
+      includeImage: !!(item.imageBase64 || item.imageUrl),
+      includeDescription: !!item.description,
+    });
+    setComposeOpen(true);
+  }, []);
+
+  // Handle Edit Param from Navigation
+  useEffect(() => {
+    if (route.params?.editPostId) {
+      const target = items.find(i => i.id === route.params.editPostId);
+      if (target) {
+        handleEdit(target);
+        navigation.setParams({ editPostId: undefined });
+      }
+    }
+  }, [route.params?.editPostId, items, handleEdit, navigation]);
+
+  // Helper: Reset Editor
   const resetCompose = () => {
     setEditor(createEmptyEditorState());
     setComposeOpen(false);
   };
 
-  const requestMediaPermission = useCallback(async () => {
-    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!granted) {
-      Alert.alert(
-        "Permesso richiesto",
-        "Per caricare un'immagine devi autorizzare l'accesso alla libreria foto."
-      );
+  // Image Picker
+  const handlePickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permesso negato", "Serve accesso alla galleria per caricare immagini.");
+      return;
     }
-    return granted;
-  }, []);
-
-  const handlePickImage = useCallback(async () => {
-    if (!(await requestMediaPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8,
+      allowsEditing: true,
+      quality: 0.7,
     });
-    if (!result.canceled && result.assets?.length) {
+    if (!result.canceled) {
       const asset = result.assets[0];
-      setEditor((prev) => ({ ...prev, image: { uri: asset.uri, mimeType: asset.mimeType } }));
+      setEditor(prev => ({
+        ...prev,
+        image: { uri: asset.uri, mimeType: asset.mimeType },
+        includeImage: true
+      }));
     }
-  }, [requestMediaPermission]);
+  };
 
-  // TODO: flusso creazione/modifica post (titolo/descrizione/immagine) abbastanza coeso per estrazione in hook/useBoardPostForm.
-  const handleSave = useCallback(async () => {
-    if (!canEdit) return;
+  const editorPreviewUri = editor.image ? editor.image.uri : null;
 
-    if (!editor.includeTitle && !editor.includeImage && !editor.includeDescription) {
-      Alert.alert("Seleziona il contenuto", "Scegli almeno un elemento tra titolo, immagine o descrizione.");
+  // Save Logic
+  const handleSave = async () => {
+    if (!userId) return;
+
+    // Validate
+    if (editor.includeTitle && !editor.title.trim()) {
+      Alert.alert("Titolo mancante", "Inserisci un titolo o disabilitalo.");
+      return;
+    }
+    if (editor.includeDescription && !editor.description.trim()) {
+      Alert.alert("Descrizione mancante", "Inserisci una descrizione o disabilitala.");
+      return;
+    }
+    if (editor.includeImage && !editor.image) {
+      Alert.alert("Immagine mancante", "Seleziona un'immagine o disabilitala.");
+      return;
+    }
+    if (!editor.includeTitle && !editor.includeDescription && !editor.includeImage) {
+      Alert.alert("Vuoto", "La news deve contenere almeno un elemento.");
       return;
     }
 
-    const trimmedTitle = editor.title.trim();
-    if (editor.includeTitle && !trimmedTitle) {
-      Alert.alert(
-        "Titolo obbligatorio",
-        'Inserisci un titolo oppure disattiva la voce "Titolo".'
-      );
-      return;
-    }
-
-    const trimmedDescription = editor.description.trim();
-    if (editor.includeDescription && !trimmedDescription) {
-      Alert.alert(
-        "Descrizione obbligatoria",
-        'Inserisci una descrizione oppure disattiva la voce "Descrizione".'
-      );
-      return;
-    }
-    if (editor.includeDescription && trimmedDescription.length > MAX_BOARD_DESCRIPTION_LENGTH) {
-      Alert.alert(
-        "Descrizione troppo lunga",
-        `Hai superato il limite massimo di ${MAX_BOARD_DESCRIPTION_LENGTH} caratteri consentiti per la descrizione.`
-      );
-      return;
-    }
-
-    const editingExisting = !!editor.id;
-    const existingItem = editingExisting ? items.find((itm) => itm.id === editor.id) ?? null : null;
-    const hasExistingImage = existingItem?.hasImage
-      ? !!(existingItem.imageUrl || existingItem.imageBase64)
-      : false;
-
-    if (editor.includeImage && !editor.image?.uri && !hasExistingImage) {
-      Alert.alert(
-        "Immagine mancante",
-        'Seleziona un\'immagine oppure disattiva la voce "Immagine".'
-      );
-      return;
-    }
-
+    setSaving(true);
     try {
-      setSaving(true);
-      const docRef = editingExisting ? doc(db, "boardPosts", editor.id!) : doc(collection(db, "boardPosts"));
+      const docData: any = {
+        updatedAt: serverTimestamp(),
+      };
 
-      let imageUrlValue: any = undefined;
-      let imageStoragePathValue: any = undefined;
-      let imageBase64Value: any = undefined;
+      // Handle Title
+      if (editor.includeTitle) docData.title = editor.title.trim();
+      else docData.title = deleteField();
 
-      if (editor.includeImage) {
-        imageUrlValue = existingItem?.imageUrl ?? null;
-        imageStoragePathValue = existingItem?.imageStoragePath ?? null;
-        imageBase64Value = existingItem?.imageBase64 ?? null;
+      // Handle Description
+      if (editor.includeDescription) docData.description = editor.description.trim();
+      else docData.description = deleteField();
 
-        if (editor.image?.uri) {
-          try {
-            const newStoragePath = `board/${docRef.id}_${Date.now()}.jpg`;
-            const storageRef = ref(storage, newStoragePath);
-            const response = await fetch(editor.image.uri);
-            if (!response.ok) {
-              throw new Error("Impossibile leggere il file selezionato.");
-            }
-            const blob = await response.blob();
+      // Handle Image
+      if (editor.includeImage && editor.image) {
+        const isNewImage = !editor.image.uri.startsWith("http");
 
-            await uploadBytes(storageRef, blob, {
-              contentType: editor.image.mimeType ?? "image/jpeg",
-            });
-            imageUrlValue = await getDownloadURL(storageRef);
-            if (imageStoragePathValue && imageStoragePathValue !== newStoragePath) {
-              try {
-                await deleteObject(ref(storage, imageStoragePathValue));
-              } catch (delErr) {
-                console.warn("[Board] Impossibile eliminare immagine precedente:", delErr);
-              }
-            }
-            imageStoragePathValue = newStoragePath;
-            imageBase64Value = editingExisting ? deleteField() : null;
-          } catch (uploadErr: any) {
-            console.warn("[Board] upload storage fallito, fallback base64:", uploadErr);
-            imageStoragePathValue = null;
-            let compressQuality = 0.75;
-            let attempts = 0;
-            let manipulated = await ImageManipulator.manipulateAsync(
-              editor.image.uri,
-              [{ resize: { width: 1200 } }],
-              { compress: compressQuality, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-            );
-            while (manipulated.base64 && manipulated.base64.length > 380000 && attempts < 3) {
-              compressQuality = Math.max(0.45, compressQuality - 0.1);
-              manipulated = await ImageManipulator.manipulateAsync(
-                editor.image.uri,
-                [{ resize: { width: 1024 } }],
-                { compress: compressQuality, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-              );
-              attempts += 1;
-            }
-            if (!manipulated.base64 || manipulated.base64.length > 400000) {
-              throw uploadErr;
-            }
-            imageBase64Value = manipulated.base64;
-            imageUrlValue = null;
-            if (existingItem?.imageStoragePath) {
-              try {
-                await deleteObject(ref(storage, existingItem.imageStoragePath));
-              } catch (delErr) {
-                console.warn("[Board] delete old storage (fallback)", delErr);
-              }
-            }
-          }
+        if (isNewImage) {
+          const manipResult = await ImageManipulator.manipulateAsync(
+            editor.image.uri,
+            [{ resize: { width: 1080 } }],
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+          );
+
+          const response = await fetch(manipResult.uri);
+          const blob = await response.blob();
+          const filename = `board/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+          const storageRef = ref(storage, filename);
+          await uploadBytes(storageRef, blob);
+          const downloadUrl = await getDownloadURL(storageRef);
+
+          docData.imageUrl = downloadUrl;
+          docData.imageStoragePath = filename;
+          docData.imageBase64 = deleteField();
         }
-      } else if (editingExisting) {
-        imageUrlValue = deleteField();
-        imageStoragePathValue = deleteField();
-        imageBase64Value = deleteField();
-        if (existingItem?.imageStoragePath) {
-          try {
-            await deleteObject(ref(storage, existingItem.imageStoragePath));
-          } catch (delErr) {
-            console.warn("[Board] delete image after disable:", delErr);
-          }
-        }
-      }
-
-      const payload: any = {};
-
-      if (editor.includeTitle) {
-        payload.title = trimmedTitle;
-      } else if (editingExisting) {
-        payload.title = deleteField();
-      }
-
-      if (editor.includeDescription) {
-        payload.description = trimmedDescription;
-      } else if (editingExisting) {
-        payload.description = deleteField();
-      }
-
-      if (!editingExisting) {
-        payload.createdAt = serverTimestamp();
-        payload.createdBy = auth.currentUser?.uid ?? null;
-        payload.archived = false;
       } else {
-        payload.archivedAt = deleteField();
-        payload.hasTitle = deleteField();
-        payload.hasImage = deleteField();
-        payload.hasDescription = deleteField();
+        docData.imageUrl = deleteField();
+        docData.imageStoragePath = deleteField();
+        docData.imageBase64 = deleteField();
       }
 
-      if (imageUrlValue !== undefined) payload.imageUrl = imageUrlValue;
-      if (imageStoragePathValue !== undefined) payload.imageStoragePath = imageStoragePathValue;
-      if (imageBase64Value !== undefined) payload.imageBase64 = imageBase64Value;
-
-      await setDoc(docRef, payload, { merge: editingExisting });
-
+      if (editor.id) {
+        await updateDoc(doc(db, "boardPosts", editor.id), docData);
+        Alert.alert("Successo", "News aggiornata.");
+      } else {
+        docData.createdAt = serverTimestamp();
+        docData.createdBy = userId;
+        docData.archived = false;
+        await setDoc(doc(collection(db, "boardPosts")), docData);
+        Alert.alert("Successo", "News pubblicata.");
+      }
       resetCompose();
-    } catch (err: any) {
-      console.error("[Board] create error:", err);
-      Alert.alert("Errore", err?.message ?? "Impossibile salvare la news.");
+
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Errore", "Impossibile salvare la news.");
     } finally {
       setSaving(false);
     }
-  }, [canEdit, editor, items, resetCompose]);
+  };
 
-  const confirmArchive = useCallback(
-    (item: BoardItem) => {
-      if (!canEdit) return;
-      const newsLabel = item.hasTitle && item.title ? `"${item.title}"` : "Questa news";
-      Alert.alert("Archiviare la news?", `${newsLabel} non sarà più visibile nella bacheca.`, [
-        { text: "Annulla", style: "cancel" },
-        {
-          text: "Archivia",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await updateDoc(doc(db, "boardPosts", item.id), {
-                archived: true,
-                archivedAt: serverTimestamp(),
-              });
-            } catch (err: any) {
-              Alert.alert("Errore", err?.message ?? "Impossibile archiviare la news.");
-            }
-          },
-        },
-      ]);
-    },
-    [canEdit]
-  );
-
-  const confirmUnarchive = useCallback(
-    (item: BoardItem) => {
-      if (!canEdit) return;
-      const newsLabel = item.hasTitle && item.title ? `"${item.title}"` : "La news";
-      Alert.alert("Riattivare la news?", `${newsLabel} tornerà visibile nella bacheca.`, [
-        { text: "Annulla", style: "cancel" },
-        {
-          text: "Riattiva",
-          onPress: async () => {
-            try {
-              await updateDoc(doc(db, "boardPosts", item.id), {
-                archived: false,
-                archivedAt: deleteField(),
-              });
-            } catch (err: any) {
-              Alert.alert("Errore", err?.message ?? "Impossibile riattivare la news.");
-            }
-          },
-        },
-      ]);
-    },
-    [canEdit]
-  );
-
-  const confirmDelete = useCallback(
-    (item: BoardItem) => {
-      if (!canEdit) return;
-      const newsLabel = item.hasTitle && item.title ? `"${item.title}"` : "Questa news";
-      const deleteMessage = `${newsLabel} sarà eliminata definitivamente. Questa operazione non può essere annullata.${item.hasImage ? " L'immagine collegata verrà rimossa." : ""
-        }`;
-      Alert.alert(
-        "Eliminare definitivamente?",
-        deleteMessage,
-        [
-          { text: "Annulla", style: "cancel" },
-          {
-            text: "Elimina",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deleteDoc(doc(db, "boardPosts", item.id));
-                if (item.imageStoragePath) {
-                  try {
-                    await deleteObject(ref(storage, item.imageStoragePath));
-                  } catch (storageErr) {
-                    console.warn("[Board] delete image fallback:", storageErr);
-                  }
-                }
-              } catch (err: any) {
-                Alert.alert("Errore", err?.message ?? "Impossibile eliminare la news.");
-              }
-            },
-          },
-        ]
-      );
-    },
-    [canEdit]
-  );
-
-  const handleEdit = useCallback(
-    (item: BoardItem) => {
-      if (!canEdit || item.archived) return;
-      setEditor({
-        id: item.id,
-        title: item.title ?? "",
-        description: item.description ?? "",
-        image: null,
-        includeTitle: item.hasTitle,
-        includeImage: item.hasImage,
-        includeDescription: item.hasDescription,
-      });
-      setComposeOpen(true);
-    },
-    [canEdit]
-  );
-
-  const handlePressLink = useCallback((rawUrl: string) => {
-    let url = rawUrl.trim();
-    if (!/^https?:\/\//i.test(url)) {
-      url = `https://${url}`;
-    }
-    Linking.openURL(url).catch((err) => {
-      console.warn("[Board] Impossibile aprire il link:", url, err);
-    });
-  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: BoardItem }) => {
-      const isIOS = Platform.OS === "ios";
-      const dateLabel = item.createdAt
-        ? item.createdAt.toLocaleDateString("it-IT", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-        : "—";
+      const dateObj = item.createdAt;
+      // Date components
+      const day = dateObj ? dateObj.toLocaleDateString("it-IT", { day: "2-digit" }) : "--";
+      const monthShort = dateObj ? dateObj.toLocaleDateString("it-IT", { month: "short" }).toUpperCase().replace(".", "") : "";
+      const year = dateObj ? dateObj.getFullYear() : "----";
+
       const descriptionText =
         item.hasDescription && item.description ? item.description.trim() : "";
-      const isExpanded = expandedDescriptions[item.id] === true;
-      const shouldShowToggle = descriptionText.length > 240 || descriptionText.split(/\r?\n/).length > 4;
+
       const imageUri = item.imageBase64
         ? `data:image/jpeg;base64,${item.imageBase64}`
         : item.imageUrl || PLACEHOLDER;
-      const collapsedStyle = !isExpanded && shouldShowToggle ? styles.cardDescriptionCollapsed : null;
 
       return (
         <View style={styles.card}>
           <Pressable
             onPress={() => navigation.navigate("BoardPostDetail", { postId: item.id, title: item.title })}
-            style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.7 }]}
           >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardDate}>{dateLabel}</Text>
-              {item.hasTitle && item.title ? (
-                <Text style={styles.cardTitle}>{item.title}</Text>
-              ) : (
-                canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
-              )}
-              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" style={{ position: 'absolute', right: 0, top: 0 }} />
-            </View>
+            {/* Left Column: Date + Thumbnail */}
+            <View style={styles.dateColumn}>
+              {/* Fixed Single Line Day+Month */}
+              <Text
+                style={styles.dateTopLine}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                {`${day} ${monthShort}`}
+              </Text>
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {/* Thumbnail Left */}
+              {/* Fixed Year */}
+              <Text style={styles.dateYear} numberOfLines={1}>
+                {year}
+              </Text>
+
+              <View style={{ height: 8 }} />
+
               {item.hasImage ? (
                 <Image
                   source={{ uri: imageUri }}
@@ -667,77 +355,52 @@ export default function BoardScreen({ navigation }: any) {
                 />
               ) : (
                 <View style={styles.cardThumbPlaceholder}>
-                  <Ionicons name="newspaper-outline" size={24} color="#94A3B8" />
+                  <Ionicons name="newspaper-outline" size={20} color="#94A3B8" />
                 </View>
               )}
+            </View>
 
-              {/* Snippet Right */}
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={3} style={styles.cardSnippet}>
-                  {descriptionText}
-                </Text>
+            {/* Right Column: Content */}
+            <View style={{ flex: 1, paddingLeft: 4 }}>
+              <View style={styles.cardHeader}>
+                {item.hasTitle && item.title ? (
+                  <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+                ) : (
+                  canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
+                )}
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" style={{ marginTop: 2 }} />
               </View>
+
+              <Text numberOfLines={3} style={styles.cardSnippet}>
+                {descriptionText}
+              </Text>
             </View>
+
           </Pressable>
-          {canEdit && (
-            <View style={styles.cardActions}>
-              {!item.archived && (
-                <Pressable
-                  onPress={() => handleEdit(item)}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    { backgroundColor: "#e0f2fe", borderColor: "#2563eb", opacity: pressed ? 0.8 : 1 },
-                  ]}
-                >
-                  <Text style={[styles.actionText, { color: "#1d4ed8" }]}>Modifica</Text>
-                </Pressable>
-              )}
-              {item.archived ? (
-                <Pressable
-                  onPress={() => confirmUnarchive(item)}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    { backgroundColor: "#dcfce7", borderColor: "#22c55e", opacity: pressed ? 0.8 : 1 },
-                  ]}
-                >
-                  <Text style={[styles.actionText, { color: "#166534" }]}>Riattiva</Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={() => confirmArchive(item)}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    { backgroundColor: "#fef3c7", borderColor: "#f59e0b", opacity: pressed ? 0.8 : 1 },
-                  ]}
-                >
-                  <Text style={[styles.actionText, { color: "#92400e" }]}>Archivia</Text>
-                </Pressable>
-              )}
-              <Pressable
-                onPress={() => confirmDelete(item)}
-                style={({ pressed }) => [
-                  styles.actionBtn,
-                  { backgroundColor: "#fee2e2", borderColor: "#ef4444", opacity: pressed ? 0.8 : 1 },
-                ]}
-              >
-                <Text style={[styles.actionText, { color: "#b91c1c" }]}>Elimina</Text>
-              </Pressable>
-            </View>
-          )}
         </View>
       );
     },
-    [canEdit, confirmArchive, confirmUnarchive, confirmDelete, handleEdit, expandedDescriptions]
+    [canEdit, navigation]
   );
 
   return (
     <Screen
-      title="Bacheca"
-      subtitle="Novità e comunicazioni"
+      useNativeHeader
       scroll={false}
-      useNativeHeader={false} // Custom header style if desired, or standard. Home uses custom? Home used Screen scroll=true. Info uses custom. Let's use standard but with custom BG.
+      keyboardShouldPersistTaps="handled"
+      avoidKeyboard={false}
       backgroundColor="#FDFCF8"
     >
+      {/* Decorative Header Gradient */}
+      <View style={styles.headerGradientContainer}>
+        <LinearGradient
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
@@ -748,13 +411,22 @@ export default function BoardScreen({ navigation }: any) {
           data={filteredItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: UI.spacing.xl }}
+          contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
           ListHeaderComponent={
             <View style={styles.headerBlock}>
+              {/* Custom Header Title */}
+              <View style={styles.headerRow}>
+                <View>
+                  <Text style={styles.headerTitle}>BACHECA</Text>
+                  <Text style={styles.headerSubtitle}>Novità e comunicazioni</Text>
+                </View>
+              </View>
+
               <View style={styles.searchRow}>
+                <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Cerca per titolo o descrizione"
+                  placeholder="Cerca news..."
                   placeholderTextColor="#9ca3af"
                   value={search}
                   onChangeText={setSearch}
@@ -763,24 +435,32 @@ export default function BoardScreen({ navigation }: any) {
               </View>
 
               <View style={styles.filterRow}>
-                <PillButton label="Attive" active={filter === "active"} onPress={() => setFilter("active")} />
-                <PillButton label="Archiviate" active={filter === "archived"} onPress={() => setFilter("archived")} />
-                {canEdit && (
-                  <PrimaryButton
-                    label={composeOpen ? "Annulla" : "Nuova news"}
-                    onPress={() =>
-                      composeOpen
-                        ? resetCompose()
-                        : (setEditor(createEmptyEditorState()), setComposeOpen(true))
-                    }
-                    style={styles.newBtn}
-                  />
-                )}
+                <View style={styles.segmentedControl}>
+                  <Pressable
+                    onPress={() => setFilter("active")}
+                    style={[styles.segmentBtn, filter === "active" && styles.segmentBtnActive]}
+                  >
+                    <Text style={[styles.segmentText, filter === "active" && styles.segmentTextActive]}>Attive</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setFilter("archived")}
+                    style={[styles.segmentBtn, filter === "archived" && styles.segmentBtnActive]}
+                  >
+                    <Text style={[styles.segmentText, filter === "archived" && styles.segmentTextActive]}>Archiviate</Text>
+                  </Pressable>
+                </View>
+                {/* No inline add button */}
               </View>
 
               {composeOpen && canEdit && (
                 <View style={styles.composeCard}>
-                  <Text style={styles.composeTitle}>{editor.id ? "Modifica news" : "Crea nuova news"}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.composeTitle}>{editor.id ? "Modifica news" : "Crea nuova news"}</Text>
+                    <Pressable onPress={resetCompose} hitSlop={10}>
+                      <Ionicons name="close-circle" size={24} color="#94A3B8" />
+                    </Pressable>
+                  </View>
+
                   <View style={styles.composeOptions}>
                     <Text style={styles.composeSubtitle}>Come vuoi comporre la news?</Text>
                     <View style={styles.composeToggleRow}>
@@ -918,77 +598,106 @@ export default function BoardScreen({ navigation }: any) {
           keyboardDismissMode="interactive"
         />
       </KeyboardAvoidingView>
-      <Modal
-        visible={!!previewImage}
-        transparent
-        animationType="fade"
-        onRequestClose={closePreview}
-      >
-        <GestureHandlerRootView style={styles.previewBackdrop}>
-          {previewImage ? (
-            <PanGestureHandler
-              ref={panRef}
-              simultaneousHandlers={pinchRef}
-              onGestureEvent={handlePanEvent}
-              onHandlerStateChange={handlePanStateChange}
-              minPointers={1}
-              enabled={canPan}
-              minDist={canPan ? 2 : 20}
-            >
-              <Animated.View style={{ transform: [...pan.getTranslateTransform()] }}>
-                <PinchGestureHandler
-                  ref={pinchRef}
-                  simultaneousHandlers={panRef}
-                  onGestureEvent={handlePinchEvent}
-                  onHandlerStateChange={handlePinchStateChange}
-                >
-                  <Animated.View style={[styles.previewImageWrapper, { transform: [{ scale: scaledValue }] }]}>
-                    <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="contain" />
-                  </Animated.View>
-                </PinchGestureHandler>
-              </Animated.View>
-            </PanGestureHandler>
-          ) : null}
-          <Pressable style={styles.previewClose} onPress={closePreview}>
-            <Text style={styles.previewCloseText}>Chiudi</Text>
-          </Pressable>
-          <Text style={styles.previewHint}>Pizzica per zoomare</Text>
-        </GestureHandlerRootView>
-      </Modal>
+
+      {/* FAB */}
+      {canEdit && !composeOpen && (
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9, transform: [{ scale: 0.96 }] }]}
+          onPress={() => {
+            setEditor(createEmptyEditorState());
+            setComposeOpen(true);
+          }}
+        >
+          <Ionicons name="add" size={32} color="#fff" />
+        </Pressable>
+      )}
+
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  headerGradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
   headerBlock: {
-    gap: UI.spacing.md,
-    marginBottom: UI.spacing.md,
+    gap: 16,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  headerRow: {
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 2,
   },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: UI.radius.md,
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
     backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: "#64748B",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: UI.colors.text,
+    fontSize: 15,
+    color: "#0F172A",
   },
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: UI.spacing.sm,
-    flexWrap: "wrap",
+    justifyContent: "space-between",
   },
-  newBtn: {
-    marginBottom: 0,
-    paddingHorizontal: UI.spacing.md,
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: "#F1F5F9",
+    padding: 4,
+    borderRadius: 12,
+    alignSelf: "flex-start",
   },
+  segmentBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  segmentBtnActive: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  segmentTextActive: {
+    color: "#0F172A",
+    fontWeight: "700",
+  },
+  // COMPOSE
   composeCard: {
     borderWidth: 1,
     borderColor: "#bfdbfe",
@@ -996,6 +705,7 @@ const styles = StyleSheet.create({
     borderRadius: UI.radius.lg,
     padding: UI.spacing.md,
     gap: UI.spacing.sm,
+    marginTop: 16,
   },
   composeTitle: {
     fontSize: 16,
@@ -1094,128 +804,104 @@ const styles = StyleSheet.create({
     paddingVertical: UI.spacing.xl,
     gap: 4,
   },
+  // CARD
   card: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: UI.radius.lg,
-    overflow: "hidden",
     backgroundColor: "#fff",
-    marginBottom: UI.spacing.sm,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    shadowColor: "#64748B",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    overflow: "hidden",
+  },
+  cardInner: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+    alignItems: 'flex-start'
   },
   cardHeader: {
-    paddingHorizontal: UI.spacing.md,
-    paddingTop: UI.spacing.md,
-    paddingBottom: UI.spacing.sm,
-    gap: 4,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 4,
   },
-  cardImageWrapper: {
-    height: 320,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: UI.spacing.sm,
+  dateColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    width: 72,
+    marginTop: 2,
+    flexShrink: 0,
+    paddingHorizontal: 0,
   },
-  cardImage: {
-    width: "100%",
-    height: "100%",
+  dateTopLine: {
+    color: "#166534", // Green-800
+    fontWeight: "800",
+    fontSize: 15,
+    letterSpacing: 0.2,
+    textAlign: "center"
   },
-  cardDate: {
-    fontSize: 12,
-    color: "#64748b",
+  dateYear: {
+    color: "#15803D", // Green-700
+    fontWeight: "700",
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 2
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: "800",
-    color: UI.colors.text,
+    fontWeight: "700",
+    color: "#1E293B",
+    flex: 1,
+    marginRight: 8,
+    lineHeight: 22
   },
   cardTitleMuted: {
     fontSize: 16,
     fontWeight: "700",
     color: "#94a3b8",
   },
-  cardDescriptionBox: {
-    paddingHorizontal: UI.spacing.md,
-    paddingBottom: UI.spacing.sm,
-    marginTop: UI.spacing.sm,
-    gap: UI.spacing.xs,
+  cardThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "#E2E8F0",
   },
-  cardDescription: {
-    color: "#475569",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  cardDescriptionInput: {
-    padding: 0,
-    margin: 0,
-    backgroundColor: "transparent",
-    borderWidth: 0,
-  },
-  cardDescriptionCollapsed: {
-    maxHeight: 20 * 5,
-    overflow: "hidden",
-  },
-  cardDescriptionLink: {
-    color: UI.colors.primary,
-    textDecorationLine: "underline",
-  },
-  descriptionToggle: {
-    alignSelf: "flex-start",
-    paddingVertical: 4,
-    paddingHorizontal: 0,
-  },
-  descriptionToggleText: {
-    color: UI.colors.primary,
-    fontWeight: "700",
-  },
-  cardActions: {
-    marginTop: UI.spacing.md,
-    flexDirection: "row",
-    gap: UI.spacing.sm,
-    paddingHorizontal: UI.spacing.md,
-    paddingBottom: UI.spacing.md,
-  },
-  actionBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: UI.radius.round,
+  cardThumbPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  actionText: {
-    fontWeight: "700",
+  cardSnippet: {
+    fontSize: 14,
+    color: "#64748B",
+    lineHeight: 20,
+    marginTop: 2,
   },
-  previewBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
+  fab: {
+    position: "absolute",
+    bottom: 24,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: UI.colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: UI.spacing.md,
-  },
-  previewImageWrapper: {
-    width: window.width * 0.9,
-    height: window.height * 0.75,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  previewImage: {
-    width: window.width * 0.9,
-    height: window.height * 0.75,
-  },
-  previewClose: {
-    marginTop: UI.spacing.md,
-    paddingHorizontal: UI.spacing.lg,
-    paddingVertical: UI.spacing.sm,
-    borderRadius: UI.radius.round,
-    backgroundColor: "rgba(255,255,255,0.15)",
-  },
-  previewCloseText: {
-    color: "#f8fafc",
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  previewHint: {
-    marginTop: UI.spacing.xs,
-    color: "#cbd5f5",
-    fontSize: 12,
-  },
+    shadowColor: UI.colors.primary,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 100,
+  }
 });

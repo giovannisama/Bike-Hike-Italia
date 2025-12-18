@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -12,6 +13,7 @@ import { auth, db } from "../firebase";
 import { loadBoardLastSeen } from "../utils/boardStorage";
 import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
+import type { MainTabParamList } from "../navigation/types";
 
 const logo = require("../../assets/images/logo.jpg");
 
@@ -163,6 +165,7 @@ export default function HomeScreen({ navigation }: any) {
   const { profile, isAdmin, isOwner } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
+  const tabNavigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
 
   const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
   const userUid = auth.currentUser?.uid ?? null;
@@ -260,10 +263,15 @@ export default function HomeScreen({ navigation }: any) {
             style={({ pressed }) => [styles.adminCard, pressed && { opacity: 0.95 }]}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <View style={styles.adminIconBox}>
-                <Ionicons name="shield-checkmark" size={24} color="#0F172A" />
+              <View style={styles.infoIconBox}>
+                <Ionicons name="people-circle-outline" size={24} color="#0F172A" />
               </View>
-              <Text style={styles.adminText}>Amministrazione</Text>
+              <View>
+                <Text style={styles.adminText}>Amministrazione</Text>
+                <Text style={styles.infoSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                  Gestione utenti e permessi
+                </Text>
+              </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#0F172A" />
           </Pressable>
@@ -271,7 +279,11 @@ export default function HomeScreen({ navigation }: any) {
 
         {/* INFO CARD (Visible to all) */}
         <Pressable
-          onPress={() => rootNav.navigate("Info")}
+          onPress={() =>
+            tabNavigation.navigate("TabMore", {
+              screen: "Info",
+            })
+          }
           style={({ pressed }) => [styles.infoCard, pressed && { opacity: 0.95 }]}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
@@ -288,7 +300,7 @@ export default function HomeScreen({ navigation }: any) {
 
         {showCertCard && (
           <Pressable
-            onPress={() => rootNav.navigate("Profile")}
+            onPress={() => rootNav.navigate("TabMore", { screen: "Profile" })}
             style={({ pressed }) => [styles.certCard, pressed && { opacity: 0.95 }]}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -499,9 +511,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
-  },
-  adminIconBox: {
-    // Just a container if we want sizing
   },
   adminText: {
     fontSize: 16,

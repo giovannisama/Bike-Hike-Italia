@@ -24,3 +24,15 @@ export type RootStackParamList = {
   TabBacheca: undefined;
   BoardPostDetail: { postId: string; title?: string };
 };
+
+// Tipi per il Tab Navigator principale (vedi MainTabs in App.tsx).
+export type MainTabParamList = {
+  TabHome: undefined;
+  TabEventi: undefined;
+  TabBacheca: undefined;
+  TabCalendar: undefined;
+  TabMore: {
+    screen?: "Info" | "MoreHome" | "Amministrazione" | "Profile";
+    params?: any;
+  };
+};

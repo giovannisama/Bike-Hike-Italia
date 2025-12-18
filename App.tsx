@@ -16,6 +16,7 @@ import {
   Pressable,
   ActivityIndicator,
   StyleSheet,
+  FlatList,
   ScrollView,
   Platform,
   TextInput,
@@ -109,8 +110,62 @@ function AdminGate() {
   return <AdminScreen />;
 }
 
+// ---- STACK "ALTRO" ----
+function MoreHomeScreen({ navigation }: any) {
+  const { isOwner } = useCurrentProfile();
+  const items = [
+    { key: "info", label: "Informazioni", onPress: () => navigation.navigate("Info") },
+    { key: "profile", label: "Profilo", onPress: () => navigation.navigate("Profile") },
+    ...(isOwner ? [{ key: "admin", label: "Amministrazione", onPress: () => navigation.navigate("Amministrazione") }] : []),
+  ];
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FDFCF8" }}>
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={{ padding: 20, gap: 10 }}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={item.onPress}
+            style={({ pressed }) => [
+              {
+                paddingVertical: 14,
+                paddingHorizontal: 16,
+                backgroundColor: "#fff",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <Text style={{ fontWeight: "700", color: "#0F172A" }}>{item.label}</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </Pressable>
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+function MoreStackNavigator() {
+  return (
+    <MoreStack.Navigator screenOptions={{ headerShown: false }}>
+      <MoreStack.Screen name="MoreHome" component={MoreHomeScreen} />
+      <MoreStack.Screen name="Info" component={InfoScreen} />
+      <MoreStack.Screen name="Profile" component={ProfileScreen} />
+      <MoreStack.Screen name="Amministrazione" component={AdminGate} />
+    </MoreStack.Navigator>
+  );
+}
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
+const MoreStack = createNativeStackNavigator();
 // Navigation ref per future esigenze (es. deep link)
 export const navRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -846,6 +901,7 @@ export default function App() {
             <Stack.Screen name="UserList" component={UserListScreen} options={{ title: "Gestione Utenti" }} />
             <Stack.Screen name="UserDetail" component={UserDetailScreen} options={{ title: "Dettagli Utente" }} />
             <Stack.Screen name="UsciteList" component={UsciteList} options={{ title: "Uscite" }} />
+            {/* NOTE: legacy stack route. Prefer TabBacheca to keep bottom bar. */}
             <Stack.Screen name="Board" component={BoardScreen} options={{ title: "Bacheca" }} />
             <Stack.Screen
               name="Calendar"
@@ -888,8 +944,8 @@ export default function App() {
               component={NotificationSettingsScreen}
               options={{ title: "Notifiche" }}
             />
-            <Stack.Screen name="Info" component={InfoScreen} options={{ title: "Informazioni" }} />
-            {/* Info is now in Tabs as TabInfo - corrected: kept in stack for Home card access */}
+            <Stack.Screen name="Info" component={InfoScreen} options={{ title: "Informazioni", headerShown: false }} />
+            {/* Info is now in Tabs as TabInfo - keep stack only for legacy; prefer TabInfo to preserve bottom bar */}
           </Stack.Navigator>
         )
       )}
@@ -906,7 +962,32 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: "#0284C7", // Sky-600
         tabBarInactiveTintColor: "#94A3B8", // Slate-400
-        tabBarLabelStyle: { fontWeight: "700", fontSize: 12, marginBottom: 0 },
+        tabBarLabel: ({ focused }) => {
+          let label = route.name;
+          switch (route.name) {
+            case "TabHome":
+              label = "Home";
+              break;
+            case "TabEventi":
+              label = "Eventi";
+              break;
+            case "TabBacheca":
+              label = "Bacheca";
+              break;
+            case "TabCalendar":
+              label = "Calendario";
+              break;
+            case "TabMore":
+              label = "Altro";
+              break;
+          }
+          return (
+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.tabLabel}>
+              {label}
+            </Text>
+          );
+        },
+        tabBarLabelStyle: { fontWeight: "700", fontSize: 10, marginBottom: 0 },
         tabBarStyle: {
           height: 74,
           paddingTop: 8,
@@ -920,7 +1001,6 @@ function MainTabs() {
           elevation: 5,
         },
         tabBarItemStyle: { paddingHorizontal: 6 },
-        tabBarButton: (props) => <PillTabButton {...props} routeName={route.name} />,
         tabBarIcon: ({ color, size }) => {
           const iconSize = size + 2;
           switch (route.name) {
@@ -930,10 +1010,10 @@ function MainTabs() {
               return <MaterialCommunityIcons name="star-outline" size={iconSize} color={color} />;
             case "TabCalendar":
               return <Ionicons name="calendar-outline" size={iconSize} color={color} />;
-            case "TabProfile":
-              return <Ionicons name="person-outline" size={iconSize} color={color} />;
             case "TabBacheca":
               return <Ionicons name="newspaper-outline" size={iconSize} color={color} />;
+            case "TabMore":
+              return <Ionicons name="ellipsis-horizontal-circle-outline" size={iconSize} color={color} />;
             default:
               return null;
           }
@@ -944,7 +1024,7 @@ function MainTabs() {
       <Tab.Screen name="TabEventi" component={EventiHubScreen} options={{ title: "Eventi" }} />
       <Tab.Screen name="TabBacheca" component={BoardScreen} options={{ title: "Bacheca" }} />
       <Tab.Screen name="TabCalendar" component={CalendarScreen} options={{ title: "Calendario" }} />
-      <Tab.Screen name="TabProfile" component={ProfileScreen} options={{ title: "Profilo" }} />
+      <Tab.Screen name="TabMore" component={MoreStackNavigator} options={{ title: "Altro" }} />
     </Tab.Navigator>
   );
 }
@@ -964,6 +1044,9 @@ function PillTabButton({ accessibilityState, children, onPress, routeName, ...re
 
   // Fallback to accessibilityState if useNavigationState fails or returns root state unexpectedly
   const isSelected = focused || accessibilityState?.selected === true;
+  const normalizedChildren = React.Children.map(children, (child) =>
+    typeof child === "string" ? <Text style={{ fontWeight: "700", fontSize: 12 }}>{child}</Text> : child
+  );
 
   return (
     <Pressable
@@ -990,7 +1073,7 @@ function PillTabButton({ accessibilityState, children, onPress, routeName, ...re
           minWidth: 64,
         }}
       >
-        {children}
+        {normalizedChildren}
       </View>
     </Pressable>
   );
@@ -1006,6 +1089,7 @@ const AppTheme = {
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   homeContainer: { paddingHorizontal: 18, paddingTop: 12 },
+  tabLabel: { fontWeight: "700", fontSize: 10, marginBottom: 0 },
 
   // HERO
   heroCard: {
@@ -1041,6 +1125,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  tabLabel: { fontWeight: "800", fontSize: 10, marginBottom: 0, maxWidth: 70, textAlign: "center" },
 
   // Callout profilo incompleto
   profileCallout: {

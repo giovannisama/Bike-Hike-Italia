@@ -98,6 +98,13 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
         }, 100);
     };
 
+    const handleEdit = () => {
+        navigation.navigate("Home", {
+            screen: "TabBacheca",
+            params: { editPostId: data.id },
+        });
+    };
+
     const confirmArchive = async () => {
         if (!data) return;
         const isArchived = data.archived === true;
@@ -155,9 +162,7 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
         );
     };
 
-    const handleEdit = () => {
-        navigation.navigate("TabBacheca", { screen: "Board", params: { editPostId: data.id } });
-    };
+
 
     if (loading) {
         return (
@@ -250,7 +255,7 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                                     multiline
                                     scrollEnabled={false}
                                     contextMenuHidden={false}
-                                    dataDetectorTypes="link"
+                                    dataDetectorTypes={["link"]}
                                     style={[styles.bodyText, { padding: 0 }]}
                                 />
                             ) : (

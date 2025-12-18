@@ -6,6 +6,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -424,14 +425,28 @@ export default function BoardScreen({ navigation, route }: any) {
 
               <View style={styles.searchRow}>
                 <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Cerca news..."
-                  placeholderTextColor="#9ca3af"
-                  value={search}
-                  onChangeText={setSearch}
-                  returnKeyType="search"
-                />
+                <View style={{ flex: 1, position: "relative" }}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Cerca news..."
+                    placeholderTextColor="#9ca3af"
+                    value={search}
+                    onChangeText={setSearch}
+                    returnKeyType="search"
+                  />
+                  {search.trim().length > 0 && (
+                    <Pressable
+                      onPress={() => {
+                        setSearch("");
+                        Keyboard.dismiss();
+                      }}
+                      hitSlop={10}
+                      style={styles.searchClear}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    </Pressable>
+                  )}
+                </View>
               </View>
 
               <View style={styles.filterRow}>
@@ -545,8 +560,9 @@ export default function BoardScreen({ navigation, route }: any) {
                       onChangeText={(value) => setEditor((prev) => ({ ...prev, description: value }))}
                       placeholderTextColor="#9ca3af"
                       multiline
-                      numberOfLines={4}
+                      numberOfLines={10}
                       textAlignVertical="top"
+                      scrollEnabled
                     />
                   )}
 
@@ -658,6 +674,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+  },
+  searchClear: {
+    position: "absolute",
+    right: 4,
+    top: "50%",
+    transform: [{ translateY: -9 }],
   },
   searchInput: {
     flex: 1,
@@ -776,7 +798,8 @@ const styles = StyleSheet.create({
     paddingVertical: UI.spacing.xs,
     backgroundColor: "#fff",
     color: UI.colors.text,
-    minHeight: 120,
+    minHeight: 200,
+    maxHeight: 320,
   },
   imagePicker: {
     borderWidth: 1,

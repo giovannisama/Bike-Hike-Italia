@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, FlatList } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { collection, onSnapshot } from "firebase/firestore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -130,11 +130,12 @@ export default function EventiHubScreen({ navigation }: any) {
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const containerPaddingHorizontal = 20;
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
   const gridGap = 12;
-  const containerWidth = width - containerPaddingHorizontal * 2;
-  const cardWidth = (containerWidth - gridGap) / 2;
+  const cardWidth =
+    gridWidth
+      ? Math.floor((gridWidth - gridGap) / 2)
+      : undefined;
 
   const iconMap: Record<string, { name: string; color: string }> = {
     bici: { name: "bike", color: "#15803D" },
@@ -189,6 +190,9 @@ export default function EventiHubScreen({ navigation }: any) {
 
   const enabledSections = sections.filter(s => s.enabled);
   const disabledSections = sections.filter(s => !s.enabled);
+  const renderGridItem = ({ item }: { item: EventSection }) => (
+    <GridCard item={item} cardWidth={cardWidth} />
+  );
 
   return (
     <Screen
@@ -212,7 +216,10 @@ export default function EventiHubScreen({ navigation }: any) {
         <Text style={styles.pageSubtitle}>Scegli una categoria</Text>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}>
+      {/* Spacer to ensure cards never visually overlap the header */}
+      <View style={styles.headerSpacer} />
+
+      <View style={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}>
 
         {/* 2. ADAPTIVE LAYOUT */}
         {enabledSections.length === 1 ? (
@@ -222,8 +229,19 @@ export default function EventiHubScreen({ navigation }: any) {
           </View>
         ) : (
           // GRID LAYOUT
-          <View style={styles.gridContainer}>
-            {enabledSections.map(item => <GridCard key={item.id} item={item} cardWidth={cardWidth} />)}
+          <View
+            style={styles.gridWrapper}
+            onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+          >
+            <FlatList
+              data={enabledSections}
+              renderItem={renderGridItem}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.gridRow}
+              scrollEnabled={false}
+              extraData={cardWidth}
+            />
           </View>
         )}
 
@@ -232,13 +250,21 @@ export default function EventiHubScreen({ navigation }: any) {
           <>
             <View style={styles.divider} />
             <Text style={styles.sectionLabel}>In arrivo</Text>
-            <View style={styles.gridContainer}>
-              {disabledSections.map(item => <GridCard key={item.id} item={item} cardWidth={cardWidth} />)}
+            <View style={styles.gridWrapper}>
+              <FlatList
+                data={disabledSections}
+                renderItem={renderGridItem}
+                keyExtractor={(item) => item.id}
+                numColumns={2}
+                columnWrapperStyle={styles.gridRow}
+                scrollEnabled={false}
+                extraData={cardWidth}
+              />
             </View>
           </>
         )}
 
-      </ScrollView>
+      </View>
     </Screen>
   );
 }
@@ -249,8 +275,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
     marginTop: 8,
-    marginBottom: 16,
     // Removed white wrapper: rely on header background/gradient only
+  },
+  headerSpacer: {
+    height: 16,
   },
   headerGradientContainer: {
     position: "absolute",
@@ -262,7 +290,7 @@ const styles = StyleSheet.create({
   // BODY
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16, // Added spacing to keep cards clear of header (avoid overlap)
+    paddingTop: 0,
   },
   pageTitle: {
     fontSize: 28,
@@ -348,11 +376,12 @@ const styles = StyleSheet.create({
   },
 
   // GRID CARD
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12, // Gap between cols
-    justifyContent: "space-between", // Ensures 2 columns push to edges
+  gridWrapper: {
+    width: "100%",
+  },
+  gridRow: {
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
   gridCard: {
     backgroundColor: "#fff",

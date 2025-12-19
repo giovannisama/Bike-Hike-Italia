@@ -39,6 +39,7 @@ import { PrimaryButton } from "../components/Button";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "./calendar/StatusBadge";
 import { deriveGuideSummary } from "../utils/guideHelpers";
+import { renderLinkedText } from "../utils/renderLinkedText";
 import type { RootStackParamList } from "../navigation/types";
 import type { ParticipantDoc, RideDoc, UserDoc } from "../types/firestore";
 
@@ -1059,12 +1060,34 @@ export default function RideDetails() {
             const approxLines = descriptionText.split(/\r?\n/).length;
             const shouldShowToggle =
               descriptionText.length > 400 || approxLines > 5;
+            const collapsedStyle =
+              !showFullDescription && shouldShowToggle
+                ? { maxHeight: 110, overflow: "hidden" as const }
+                : null;
 
             return (
               <View>
-                <Text style={{ color: "#222" }} numberOfLines={showFullDescription || !shouldShowToggle ? undefined : 5}>
-                  {descriptionText}
-                </Text>
+                {Platform.OS === "ios" ? (
+                  <View style={collapsedStyle}>
+                    <TextInput
+                      value={descriptionText}
+                      editable={false}
+                      multiline
+                      scrollEnabled={false}
+                      contextMenuHidden={false}
+                      dataDetectorTypes={["link"]}
+                      style={{ color: "#222", padding: 0 }}
+                    />
+                  </View>
+                ) : (
+                  <Text
+                    style={{ color: "#222" }}
+                    selectable
+                    numberOfLines={showFullDescription || !shouldShowToggle ? undefined : 5}
+                  >
+                    {renderLinkedText(descriptionText)}
+                  </Text>
+                )}
                 {shouldShowToggle && (
                   <TouchableOpacity
                     onPress={() => setShowFullDescription((prev) => !prev)}
@@ -1172,10 +1195,10 @@ export default function RideDetails() {
         {loadingParts ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <ActivityIndicator />
-            <Text>Carico partecipanti…</Text>
+            <Text style={styles.participantPlaceholder}>Carico partecipanti…</Text>
           </View>
         ) : combinedParticipants.length === 0 ? (
-          <Text style={{ color: "#666" }}>Ancora nessun partecipante.</Text>
+          <Text style={styles.participantPlaceholder}>Ancora nessun partecipante.</Text>
         ) : (
           <FlatList
             data={combinedParticipants}
@@ -1184,7 +1207,7 @@ export default function RideDetails() {
             renderItem={({ item, index }) => (
               <View style={styles.participantRow}>
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={{ fontWeight: "600" }}>
+                  <Text style={styles.participantName}>
                     {index + 1}. {formatCognomeNome(item.uid, item.name)}
                   </Text>
                   {item.manual && (
@@ -1248,13 +1271,17 @@ export default function RideDetails() {
         onRequestClose={closeNoteModal}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          enabled={Platform.OS === "ios"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
           style={styles.modalWrap}
         >
           <ScrollView
             style={styles.modalScroll}
-            contentContainerStyle={styles.modalScrollContent}
+            contentContainerStyle={[
+              styles.modalScrollContent,
+              Platform.OS === "android" && styles.modalScrollContentAndroid,
+            ]}
             keyboardShouldPersistTaps="handled"
             bounces={false}
           >
@@ -1482,7 +1509,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginTop: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8, color: UI.colors.text },
   participantRow: {
     borderWidth: 1,
     borderColor: "#eee",
@@ -1498,8 +1525,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  participantName: {
+    fontWeight: "600",
+    color: UI.colors.text,
+  },
   participantNote: {
-    color: "#444",
+    color: UI.colors.text,
+  },
+  participantPlaceholder: {
+    color: UI.colors.text,
   },
   participantAdminBtn: {
     backgroundColor: UI.colors.danger,
@@ -1616,6 +1650,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 16,
+  },
+  modalScrollContentAndroid: {
+    justifyContent: "flex-start",
+    paddingBottom: 24,
   },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
   modalField: {

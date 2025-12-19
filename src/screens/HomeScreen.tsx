@@ -165,7 +165,6 @@ export default function HomeScreen({ navigation }: any) {
   const { profile, isAdmin, isOwner } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
-  const tabNavigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
 
   const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
   const userUid = auth.currentUser?.uid ?? null;
@@ -259,7 +258,11 @@ export default function HomeScreen({ navigation }: any) {
 
         {isOwner && (
           <Pressable
-            onPress={() => rootNav.navigate("Amministrazione")}
+            onPress={() =>
+              navigation.navigate("TabMore", {
+                screen: "Amministrazione",
+              })
+            }
             style={({ pressed }) => [styles.adminCard, pressed && { opacity: 0.95 }]}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
@@ -280,7 +283,7 @@ export default function HomeScreen({ navigation }: any) {
         {/* INFO CARD (Visible to all) */}
         <Pressable
           onPress={() =>
-            tabNavigation.navigate("TabMore", {
+            navigation.navigate("TabMore", {
               screen: "Info",
             })
           }
@@ -300,7 +303,7 @@ export default function HomeScreen({ navigation }: any) {
 
         {showCertCard && (
           <Pressable
-            onPress={() => rootNav.navigate("TabMore", { screen: "Profile" })}
+            onPress={() => rootNav.navigate("TabProfile")}
             style={({ pressed }) => [styles.certCard, pressed && { opacity: 0.95 }]}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -319,7 +322,7 @@ export default function HomeScreen({ navigation }: any) {
 
           <View style={styles.unifiedCard}>
             <EventRow
-              title="Calendario Bici"
+              title="Ciclismo"
               caption="Uscite attive"
               badge={activeCount ?? 0}
               onPress={() => rootNav.navigate("UsciteList")}
@@ -328,7 +331,7 @@ export default function HomeScreen({ navigation }: any) {
             />
             <View style={styles.rowDivider} />
             <EventRow
-              title="Calendario Trekking"
+              title="Trekking"
               caption="In arrivo"
               badge={0}
               onPress={() => rootNav.navigate("TrekkingPlaceholder")}

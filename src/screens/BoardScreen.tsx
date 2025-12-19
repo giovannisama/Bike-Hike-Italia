@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
   Linking,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -417,10 +418,26 @@ export default function BoardScreen({ navigation, route }: any) {
             <View style={styles.headerBlock}>
               {/* Custom Header Title */}
               <View style={styles.headerRow}>
-                <View>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8, marginTop: 4 }}>
+                  <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.headerTitle}>BACHECA</Text>
                   <Text style={styles.headerSubtitle}>Novità e comunicazioni</Text>
                 </View>
+                {canEdit && (
+                  <TouchableOpacity
+                    style={styles.headerAddBtn}
+                    onPress={() => {
+                      setEditor(createEmptyEditorState());
+                      setComposeOpen(true);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Crea nuova news"
+                  >
+                    <Ionicons name="add" size={24} color="#fff" />
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.searchRow}>
@@ -615,18 +632,7 @@ export default function BoardScreen({ navigation, route }: any) {
         />
       </KeyboardAvoidingView>
 
-      {/* FAB */}
-      {canEdit && !composeOpen && (
-        <Pressable
-          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9, transform: [{ scale: 0.96 }] }]}
-          onPress={() => {
-            setEditor(createEmptyEditorState());
-            setComposeOpen(true);
-          }}
-        >
-          <Ionicons name="add" size={32} color="#fff" />
-        </Pressable>
-      )}
+
 
     </Screen>
   );
@@ -646,6 +652,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   headerRow: {
+    flexDirection: "row",
     marginBottom: 8,
   },
   headerTitle: {
@@ -658,6 +665,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: "#64748B",
+    marginTop: 2,
+  },
+  headerAddBtn: {
+    backgroundColor: "#166534", // Green-800
+    width: 44,
+    height: 44,
+    borderRadius: 22, // Circle
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 4,
     marginTop: 2,
   },
   searchRow: {

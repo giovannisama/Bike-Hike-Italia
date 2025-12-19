@@ -10,6 +10,10 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,12 +28,10 @@ import {
   Timestamp,
   Unsubscribe,
   getCountFromServer,
-  DocumentData,
 } from "firebase/firestore";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
-import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
 import { StatusBadge } from "./calendar/StatusBadge";
 import { deriveGuideSummary } from "../utils/guideHelpers";
 
@@ -43,7 +45,7 @@ type Ride = {
   date?: Timestamp | null;
   dateTime?: Timestamp | null;
   maxParticipants?: number | null;
-  participantsCount?: number; // server-side (se mai lo aggiornerai con CF)
+  participantsCount?: number;
   guidaName?: string | null;
   guidaNames?: string[];
   status?: "active" | "cancelled";
@@ -73,12 +75,65 @@ function ParticipantsBadge({ count, max }: { count?: number; max?: number | null
   );
 }
 
+// -- Bike type filter helpers (UI-only) --
+const normalizeBikeTypes = (value: any): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  }
+  if (typeof value === "string") {
+    // Robustness: split by comma if mixed string, though unlikely based on type
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+  return [];
+};
+
+const matchesBikeFilter = (
+  ride: Ride,
+  filter: "Tutte" | "MTBGravel" | "BDC" | "Enduro"
+): boolean => {
+  if (filter === "Tutte") return true;
+
+  const typeList = normalizeBikeTypes(ride.bikes);
+  // Case-insensitive check helper
+  const hasType = (t: string) =>
+    typeList.some((x) => x.toLowerCase() === t.toLowerCase());
+
+  if (filter === "Enduro") {
+    // Rule: Contains "Enduro" AND only allowed extras are ["eBike"]
+    // "Enduro" -> OK
+    // "Enduro, eBike" -> OK
+    // "Enduro, MTB" -> NO
+    const allowedExtras = ["enduro", "ebike"];
+    const isStrictlyEnduro = typeList.every((t) =>
+      allowedExtras.includes(t.toLowerCase())
+    );
+    return hasType("Enduro") && isStrictlyEnduro;
+  }
+
+  if (filter === "MTBGravel") {
+    // Rule: Contains "MTB" OR "Gravel" (mixed with Enduro ok)
+    // NOTE: An output with ["MTB", "Enduro"] will appear in BOTH Enduro and MTBGravel filters.
+    return hasType("MTB") || hasType("Gravel");
+  }
+
+  if (filter === "BDC") {
+    // Rule: EXACTLY and ONLY "BDC"
+    return typeList.length === 1 && hasType("BDC");
+  }
+
+  return true;
+};
+
 // ---- Schermata lista uscite ----
 export default function UsciteList() {
   const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions(); // Used for deterministic chip width
   const { isAdmin, profile, loading: profileLoading } = useCurrentProfile() as any;
 
-  // Gate di accesso coerente con le rules: utente attivo = approved true e non disabled
   const approvedOk =
     !!profile &&
     ((profile.approved === true) ||
@@ -94,10 +149,13 @@ export default function UsciteList() {
   const [rides, setRides] = useState<Ride[]>([]);
   const ridesRef = useRef<Ride[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showArchived, setShowArchived] = useState(false);
-  const [searchText, setSearchText] = useState("");
 
-  // 🔢 mappa dinamica dei conteggi partecipanti per rideId (Aggregate)
+  // 🗂️ FILTRI CATEGORIA
+  const [activeCategory, setActiveCategory] = useState<"Tutte" | "MTBGravel" | "BDC" | "Enduro">("Tutte");
+  // 🗂️ FILTRO STATO (Attive/Archiviate)
+  const [filterType, setFilterType] = useState<"active" | "archived">("active");
+
+  const [searchText, setSearchText] = useState("");
   const [counts, setCounts] = useState<Record<string, number>>({});
 
   // Pull-to-refresh
@@ -108,31 +166,35 @@ export default function UsciteList() {
   const normalizedSearch = useMemo(() => normalizeForSearch(searchText), [searchText]);
 
   const filteredRides = useMemo(() => {
-    if (!normalizedSearch) return rides;
-    return rides.filter((ride) => {
-      const bikesLabel = Array.isArray(ride.bikes) ? ride.bikes.join(" ") : ride.bikes ?? "";
-      const haystackSource = [
-        ride.title,
-        ride.meetingPoint,
-        bikesLabel,
-        ride.difficulty ?? "",
-      ]
-        .join(" ");
-      const haystack = normalizeForSearch(haystackSource);
-      return haystack.includes(normalizedSearch);
-    });
-  }, [rides, normalizedSearch]);
+    // 1. Base filter: ACTIVE vs ARCHIVED
+    let result = rides.filter(r => (filterType === "active" ? !r.archived : r.archived));
 
-  const filterChips = useMemo(() => {
-    const chips: string[] = [];
-    if (normalizedSearch) chips.push(`Testo: "${searchText.trim()}"`);
-    if (showArchived) chips.push("Archivio");
-    return chips;
-  }, [normalizedSearch, searchText, showArchived]);
+    // 2. Category Filter
+    if (activeCategory !== "Tutte") {
+      result = result.filter((r) => matchesBikeFilter(r, activeCategory));
+    }
+
+    // 3. Search Filter
+    if (normalizedSearch) {
+      result = result.filter((ride) => {
+        const bikesLabel = Array.isArray(ride.bikes) ? ride.bikes.join(" ") : ride.bikes ?? "";
+        const haystackSource = [
+          ride.title,
+          ride.meetingPoint,
+          bikesLabel,
+          ride.difficulty ?? "",
+        ].join(" ");
+        const haystack = normalizeForSearch(haystackSource);
+        return haystack.includes(normalizedSearch);
+      });
+    }
+
+    return result;
+  }, [rides, normalizedSearch, activeCategory, filterType]);
 
   const clearFilters = useCallback(() => {
     setSearchText("");
-    setShowArchived(false);
+    setActiveCategory("Tutte");
   }, []);
 
   // Helper: preleva il conteggio server-side dei partecipanti per una singola uscita
@@ -148,12 +210,11 @@ export default function UsciteList() {
         return { ...prev, [rideId]: cnt };
       });
     } catch (e) {
-      // Se fallisce (permessi/altro), lasciamo il valore attuale
-      // opzionalmente potremmo fare console.warn, ma evitiamo rumore
+      // Ignore
     }
   }, []);
 
-  // Real-time counters for visible rows (avoid aggregation quota)
+  // Real-time counters for visible rows
   const MAX_VISIBLE_SUBS = 8;
   const subsRef = useRef<Map<string, Unsubscribe>>(new Map());
   const visibleSetRef = useRef<Set<string>>(new Set());
@@ -163,7 +224,6 @@ export default function UsciteList() {
     if (!rideId || subsRef.current.has(rideId)) return;
     if (subsRef.current.size >= MAX_VISIBLE_SUBS) return;
     const colRef = collection(db, "rides", rideId, "participants");
-    // Prima di sottoscrivere, recupera un conteggio iniziale dal server (una volta)
     fetchCountForRide(rideId);
     const unsub = onSnapshot(
       colRef,
@@ -176,7 +236,6 @@ export default function UsciteList() {
         });
       },
       (_err) => {
-        // In caso di errore sul listener (permessi, ecc.), usa il fallback server-side
         fetchCountForRide(rideId);
       }
     );
@@ -186,7 +245,7 @@ export default function UsciteList() {
   const unsubscribeFor = useCallback((rideId: string) => {
     const unsub = subsRef.current.get(rideId);
     if (unsub) {
-      try { unsub(); } catch {}
+      try { unsub(); } catch { }
       subsRef.current.delete(rideId);
     }
   }, []);
@@ -194,29 +253,22 @@ export default function UsciteList() {
   // Clean up all subs on unmount
   useEffect(() => {
     return () => {
-      subsRef.current.forEach((u) => { try { u(); } catch {} });
+      subsRef.current.forEach((u) => { try { u(); } catch { } });
       subsRef.current.clear();
       visibleSetRef.current.clear();
     };
   }, []);
 
-  // Nascondi header stack (usiamo header custom)
-    useLayoutEffect(() => {
-      navigation.setOptions({
-        headerShown: true,
-        headerTitle: "Uscite",
-        headerTitleAlign: "center",
-        headerBackTitle: "Home",
-        headerBackTitleVisible: true,
-      });
-    }, [navigation]);
+  // Hide native stack header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
 
-  // Caricamento rides ordinate per data più recente (dateTime DESC)
-  // 👉 Nessun where() per evitare indice composito: filtro client-side su "archived"
+  // Caricamento rides
   useEffect(() => {
-    // Se il profilo è in caricamento non montiamo ancora i listener
     if (profileLoading) return;
-    // Se l'utente non è attivo (o non admin), non apriamo il listener
     if (!canReadRides) {
       setRides([]);
       setLoading(false);
@@ -229,12 +281,9 @@ export default function UsciteList() {
       q,
       async (snap) => {
         const rows: Ride[] = [];
-        const ids: string[] = [];
-
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
           const archived = !!d?.archived;
-          if (archived !== showArchived) return;
           const manualCount = Array.isArray(d?.manualParticipants) ? d.manualParticipants.length : 0;
 
           rows.push({
@@ -254,10 +303,8 @@ export default function UsciteList() {
             archived,
             manualCount,
           });
-          ids.push(docSnap.id);
         });
 
-        // Initialize counts from doc (fallback 0) so badges show a number immediately
         const initial: Record<string, number> = {};
         rows.forEach((r) => {
           const fallbackTotal =
@@ -270,78 +317,58 @@ export default function UsciteList() {
 
         ridesRef.current = rows;
         setRides(rows);
-
-        // Pre-carica i conteggi (fallback) per i primi elementi
-        const prefetchIds = rows.slice(0, MAX_VISIBLE_SUBS).map((r) => r.id);
-        prefetchIds.forEach((id) => { fetchCountForRide(id); });
-
         setLoading(false);
-
-        // Pre-subscribe the first N visible items (top of the list)
-        const topIds = prefetchIds;
-        topIds.forEach((id) => {
-          visibleSetRef.current.add(id);
-          subscribeFor(id);
-        });
       },
       (err) => {
         console.error("Errore caricamento rides:", err);
         setLoading(false);
-        try {
-          Alert.alert("Uscite", String(err));
-        } catch {}
       }
     );
 
     return () => {
-      try { unsub(); } catch {}
-      // Clear any per-ride participant subscriptions when switching archived filter
-      subsRef.current.forEach((u) => { try { u(); } catch {} });
+      try { unsub(); } catch { }
+      subsRef.current.forEach((u) => { try { u(); } catch { } });
       subsRef.current.clear();
       visibleSetRef.current.clear();
     };
-  }, [showArchived, profileLoading, canReadRides]);
+  }, [profileLoading, canReadRides]);
 
-  // 🔄 Utility: ricalcola i conteggi correnti (usata su focus + pull-to-refresh)
+  // Utility: refresh counts
   const refreshCounts = useCallback(async () => {
     if (rides.length === 0) return;
-    // no aggregation queue, just rely on subscriptions
   }, [rides]);
 
-  // ✅ Al ritorno su questa schermata, aggiorna i contatori
   useFocusEffect(
     useCallback(() => {
       refreshCounts();
-      return () => {};
+      return () => { };
     }, [refreshCounts])
   );
 
-useEffect(() => {
-  listRef.current?.scrollToOffset({ offset: 0, animated: false });
-  subsRef.current.forEach((unsub) => {
-    try { unsub(); } catch {}
-  });
-  subsRef.current.clear();
-  visibleSetRef.current.clear();
-}, [normalizedSearch, showArchived]);
+  // Reset scroll on filter change
+  useEffect(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    subsRef.current.forEach((unsub) => { try { unsub(); } catch { } });
+    subsRef.current.clear();
+    visibleSetRef.current.clear();
+  }, [normalizedSearch, activeCategory, filterType]);
 
-useEffect(() => {
-  const topIds = filteredRides.slice(0, MAX_VISIBLE_SUBS).map((ride) => ride.id);
-  topIds.forEach((id) => {
-    fetchCountForRide(id);
-    subscribeFor(id);
-    visibleSetRef.current.add(id);
-  });
-}, [filteredRides, fetchCountForRide, subscribeFor]);
+  // Subscription management for filtered list
+  useEffect(() => {
+    const topIds = filteredRides.slice(0, MAX_VISIBLE_SUBS).map((ride) => ride.id);
+    topIds.forEach((id) => {
+      fetchCountForRide(id);
+      subscribeFor(id);
+      visibleSetRef.current.add(id);
+    });
+  }, [filteredRides, fetchCountForRide, subscribeFor]);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Ride }> }) => {
     const newlyVisible = new Set(viewableItems.map((vi) => vi.item.id));
-    // subscribe new
     newlyVisible.forEach((id) => {
       visibleSetRef.current.add(id);
       subscribeFor(id);
     });
-    // unsubscribe those no longer visible
     Array.from(subsRef.current.keys()).forEach((id) => {
       if (!newlyVisible.has(id)) {
         unsubscribeFor(id);
@@ -352,16 +379,13 @@ useEffect(() => {
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
-  // Pull-to-refresh handler
   const onRefresh = useCallback(async () => {
     if (!canReadRides) { setRefreshing(false); return; }
     setRefreshing(true);
     try {
-      // force refresh by briefly unsubscribing and resubscribing visible
       const ids = Array.from(subsRef.current.keys());
       ids.forEach((id) => unsubscribeFor(id));
       ids.forEach((id) => {
-        // aggiorna subito con un conteggio server-side e poi riattacca il listener
         fetchCountForRide(id);
         subscribeFor(id);
       });
@@ -370,6 +394,7 @@ useEffect(() => {
     }
   }, [subscribeFor, unsubscribeFor, canReadRides, fetchCountForRide]);
 
+  // Render item
   const renderItem = ({ item }: { item: Ride }) => {
     const { main: mainGuide } = deriveGuideSummary({
       guidaName: item.guidaName,
@@ -414,62 +439,72 @@ useEffect(() => {
           })
         }
       >
-        <View style={{ flex: 1, gap: 6 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.dateLine} numberOfLines={1}>
-                {when}
-              </Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <Text
-                  style={[
-                    styles.title,
-                    isCancelled && {
-                      textDecorationLine: "line-through",
-                      color: "#991B1B",
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.title || "Uscita"}
-                </Text>
-                {statusBadge}
-              </View>
-            </View>
+        <View style={{ flex: 1 }}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.dateLine} numberOfLines={1}>
+              {when}
+            </Text>
             <ParticipantsBadge count={participantTotal} max={item.maxParticipants ?? null} />
           </View>
 
-          <Text style={styles.row}>
-            <Text style={styles.label}>Guida: </Text>
-            <Text style={styles.value} numberOfLines={1}>
-              {guideText}
-            </Text>
+          <Text
+            style={[
+              styles.cardTitle,
+              isCancelled && { textDecorationLine: "line-through", color: "#991B1B" },
+            ]}
+            numberOfLines={2}
+          >
+            {item.title || "Uscita"}
           </Text>
 
-          <Text style={styles.row}>
-            <Text style={styles.label}>Tipo bici: </Text>
-            <Text style={styles.value} numberOfLines={1}>
-              {bikeLabel}
-            </Text>
-          </Text>
+          <View style={{ marginTop: 4, alignSelf: 'flex-start' }}>{statusBadge}</View>
 
-          <Text style={styles.row}>
-            <Text style={styles.label}>Difficoltà: </Text>
-            <Text style={styles.value} numberOfLines={1}>
-              {item.difficulty || "—"}
-            </Text>
-          </Text>
-
-          <Text style={styles.row}>
-            <Text style={styles.label}>Ritrovo: </Text>
-            <Text style={styles.value} numberOfLines={1}>
-              {item.meetingPoint || "—"}
-            </Text>
-          </Text>
+          <View style={styles.detailsBlock}>
+            <View style={styles.row}>
+              <Text style={styles.label}>Guida: </Text>
+              <Text style={styles.value} numberOfLines={1}>{guideText}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.label}>Tipo bici: </Text>
+              <Text style={styles.value} numberOfLines={1}>{bikeLabel}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={[styles.label, { width: undefined, marginRight: 8, flexShrink: 0 }]}>Difficoltà:</Text>
+              <Text style={[styles.value, { flexShrink: 1 }]} numberOfLines={1}>{item.difficulty || "—"}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.label}>Ritrovo: </Text>
+              <Text style={styles.value} numberOfLines={1}>{item.meetingPoint || "—"}</Text>
+            </View>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
+
+  const categories: Array<"Tutte" | "MTBGravel" | "BDC" | "Enduro"> = [
+    "MTBGravel",
+    "BDC",
+    "Enduro",
+    // "Tutte" is handled separately in the first row
+  ] as const;
+
+  const categoryLabels: Record<string, string> = {
+    "MTBGravel": "MTB/Gravel",
+    "BDC": "Bici da Corsa",
+    "Enduro": "Enduro",
+    "Tutte": "Tutte",
+  };
+
+  // --- CALCULATION OF CHIP WIDTH (DETERMINISTIC) ---
+  const H_PADDING = 16;
+  const GAP = 10;
+  // Reduced by SAFETY (24) to ensure they always fit without overflow from rounding or borders
+  const SAFETY = 24;
+  // Width available for 3 chips
+  const containerWidth = width - (H_PADDING * 2) - SAFETY;
+  // Remove gaps (2 gaps between 3 items) and divide by 3
+  const chipWidth = Math.floor((containerWidth - (GAP * 2)) / 3);
 
   if (loading) {
     return (
@@ -481,235 +516,383 @@ useEffect(() => {
   }
 
   return (
-    <Screen useNativeHeader={true} scroll={false}>
-      <View style={{ flex: 1 }}>
-        {/* Hero grafico sotto l'header nativo */}
+    <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
+      {/* Decorative Header Gradient */}
+      <View style={styles.headerGradientContainer}>
         <LinearGradient
-          colors={[UI.colors.primary, UI.colors.secondary]}
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 20,
-            paddingVertical: 16,
-            paddingHorizontal: 16,
-            marginBottom: 10,
-          }}
-        >
-          <Text style={{ fontSize: 22, fontWeight: "900", color: "#fff" }}>Uscite</Text>
-          <Text style={{ fontSize: 16, fontWeight: "600", color: "#F0F9FF", marginTop: 4 }}>
-            {isAdmin ? "Crea, gestisci e partecipa" : "Elenco uscite e prenotazioni"}
-          </Text>
-        </LinearGradient>
-        {/* Toggle Attive / Archivio */}
-        <View style={styles.toggleRow}>
-          <Pressable
-            onPress={() => setShowArchived(false)}
-            style={[styles.toggleBtn, !showArchived && styles.toggleBtnActive]}
-          >
-            <Text style={[styles.toggleText, !showArchived && styles.toggleTextActive]}>
-              Attive
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setShowArchived(true)}
-            style={[styles.toggleBtn, showArchived && styles.toggleBtnActive]}
-          >
-            <Text style={[styles.toggleText, showArchived && styles.toggleTextActive]}>
-              Archivio
-            </Text>
-          </Pressable>
-          <Text style={styles.toggleCount}>{filteredRides.length}</Text>
-        </View>
-
-        {/* Barra ricerca */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#6B7280" style={{ marginRight: 8 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Cerca per titolo, luogo, bici o difficoltà"
-            placeholderTextColor="#9CA3AF"
-            value={searchText}
-            onChangeText={setSearchText}
-            returnKeyType="search"
-          />
-          {searchText.trim().length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText("")} accessibilityLabel="Pulisci ricerca">
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {filterChips.length > 0 && (
-          <ActiveFiltersBanner chips={filterChips} onClear={clearFilters} />
-        )}
-
-        {filteredRides.length === 0 ? (
-          <View style={[styles.center, { padding: 16 }]}> 
-            <Text style={{ marginBottom: 12, textAlign: "center" }}>
-              {normalizedSearch
-                ? "Nessuna uscita corrisponde ai filtri attivi."
-                : showArchived
-                ? "Nessuna uscita archiviata."
-                : "Nessuna uscita disponibile."}
-            </Text>
-
-            {filterChips.length > 0 ? (
-              <Pressable onPress={clearFilters} style={styles.clearFiltersBtn}>
-                <Text style={styles.clearFiltersText}>Rimuovi filtri</Text>
-              </Pressable>
-            ) : isAdmin && !showArchived ? (
-              <>
-                <TouchableOpacity
-                  style={styles.fab}
-                  onPress={() => navigation.navigate("CreateRide")}
-                  accessibilityRole="button"
-                  accessibilityLabel="Crea nuova uscita"
-                >
-                  <Text style={styles.fabPlus}>＋</Text>
-                </TouchableOpacity>
-                <Text style={{ marginTop: 8, color: "#666", fontSize: 12 }}>
-                  Tocca il “+” per creare la prima uscita.
-                </Text>
-              </>
-            ) : null}
-          </View>
-        ) : (
-          <FlatList
-            ref={listRef}
-            data={filteredRides}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            contentContainerStyle={{ padding: 12, paddingBottom: 90 }}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
-          />
-        )}
-
-        {/* Floating Action Button “+” — solo Admin e solo quando si guardano le non archiviate */}
-        {isAdmin && !showArchived && (
-          <TouchableOpacity
-            style={styles.fab}
-            onPress={() => navigation.navigate("CreateRide")}
-            accessibilityRole="button"
-            accessibilityLabel="Crea nuova uscita"
-          >
-            <Text style={styles.fabPlus}>＋</Text>
-          </TouchableOpacity>
-        )}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
       </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+      >
+        <FlatList
+          ref={listRef}
+          data={filteredRides}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          ListHeaderComponent={
+            <View style={styles.headerBlock}>
+              {/* Header: Back - Title - ADD BUTTON */}
+              <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8, marginTop: 4 }}>
+                  <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.headerTitle}>CICLISMO</Text>
+                  <Text style={styles.headerSubtitle}>Esplora le uscite</Text>
+                </View>
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={styles.headerAddBtn}
+                    onPress={() => navigation.navigate("CreateRide")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Crea nuova uscita"
+                  >
+                    <Ionicons name="add" size={24} color="#fff" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Search Bar */}
+              <View style={styles.searchRow}>
+                <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
+                <View style={{ flex: 1, position: 'relative' }}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Cerca per titolo, luogo, bici..."
+                    placeholderTextColor="#9ca3af"
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    returnKeyType="search"
+                  />
+                  {searchText.trim().length > 0 && (
+                    <Pressable
+                      onPress={() => {
+                        setSearchText("");
+                        Keyboard.dismiss();
+                      }}
+                      hitSlop={10}
+                      style={styles.searchClear}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+
+              {/* Tabs Attive / Archiviate e Contatore */}
+              <View style={styles.tabsRow}>
+                <View style={styles.tabsContainer}>
+                  <Pressable
+                    onPress={() => setFilterType("active")}
+                    style={[styles.tabBtn, filterType === "active" && styles.tabBtnActive]}
+                  >
+                    <Text style={[styles.tabText, filterType === "active" && styles.tabTextActive]}>
+                      Attive
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setFilterType("archived")}
+                    style={[styles.tabBtn, filterType === "archived" && styles.tabBtnActive]}
+                  >
+                    <Text style={[styles.tabText, filterType === "archived" && styles.tabTextActive]}>
+                      Archiviate
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.countText}>
+                  {filteredRides.length} {filteredRides.length === 1 ? "evento" : "eventi"}
+                </Text>
+              </View>
+
+              {/* Filtri Categoria a due righe: Tutte / Others */}
+              <View style={styles.filterSection}>
+                {/* Riga 1: Tutte */}
+                <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+                  <Pressable
+                    onPress={() => setActiveCategory("Tutte")}
+                    style={[styles.catBtn, activeCategory === "Tutte" && styles.catBtnActive]}
+                  >
+                    <Text style={[styles.catText, activeCategory === "Tutte" && styles.catTextActive]}>
+                      Tutte
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Riga 2: Altre categorie (Exactly 3, deterministic width) */}
+                <View style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  flexWrap: 'nowrap',
+                  overflow: 'hidden',
+                  width: '100%'
+                }}>
+                  {categories.map((cat) => (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setActiveCategory(cat)}
+                      style={[
+                        styles.catBtn,
+                        activeCategory === cat && styles.catBtnActive,
+                        {
+                          width: chipWidth,
+                          maxWidth: chipWidth,
+                          minWidth: chipWidth,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        allowFontScaling={false}
+                        style={[styles.catText, activeCategory === cat && styles.catTextActive]}
+                      >
+                        {categoryLabels[cat]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={{ fontWeight: "700", color: UI.colors.muted, textAlign: 'center' }}>
+                {normalizedSearch
+                  ? "Nessuna uscita corrisponde ai filtri."
+                  : filterType === "archived"
+                    ? "Nessuna uscita archiviata."
+                    : "Nessuna uscita disponibile."}
+              </Text>
+              {isAdmin && filteredRides.length === 0 && !normalizedSearch && activeCategory === "Tutte" && filterType === "active" && (
+                <Text style={{ marginTop: 8, color: "#666", fontSize: 12, textAlign: 'center' }}>
+                  Tocca il “+” in alto per creare la prima uscita.
+                </Text>
+              )}
+            </View>
+          }
+          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+        />
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  // Toggle pillole
-  toggleRow: {
+  headerGradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+  headerBlock: {
+    marginBottom: 16,
+    marginTop: 8,
+    gap: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 2,
+  },
+  // ACTION BUTTON NEL HEADER FIX
+  headerAddBtn: {
+    backgroundColor: "#166534", // Green-800
+    width: 44,
+    height: 44,
+    borderRadius: 22, // Circle
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 4,
+    marginTop: 2,
+  },
+  searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingVertical: 10,
+    shadowColor: "#64748B",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  toggleBtn: {
-    paddingHorizontal: 12,
+  searchClear: {
+    position: "absolute",
+    right: 4,
+    top: "50%",
+    transform: [{ translateY: -9 }],
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#0F172A",
+  },
+  // STILE TABS RECTANGULAR
+  tabsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  tabsContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F1F5F9",
+    padding: 4,
+    borderRadius: 12, // Rectangular-ish with small radius
+  },
+  tabBtn: {
     paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8, // Rectangular-ish
+  },
+  tabBtnActive: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  tabTextActive: {
+    color: "#0F172A",
+    fontWeight: "800",
+  },
+  countText: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  // FILTRI CATEGORIA
+  filterSection: {
+    gap: 0,
+    marginTop: 8,
+  },
+  catBtn: {
+    paddingVertical: 8, // slightly taller
+    paddingHorizontal: 4, // reduced horiz padding to fit text if needed
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e5e5e5",
     backgroundColor: "#fff",
-  },
-  toggleBtnActive: {
-    backgroundColor: "#111",
-    borderColor: "#111",
-  },
-  toggleText: { color: "#111", fontWeight: "700" },
-  toggleTextActive: { color: "#fff" },
-  toggleCount: { marginLeft: 6, color: "#6b7280", fontWeight: "700" },
-
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 12,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e5e5",
-    backgroundColor: "#fff",
+    borderColor: "#E2E8F0",
   },
-  searchInput: { flex: 1, color: "#111", fontSize: 14 },
-
+  catBtnActive: {
+    backgroundColor: "#F0FDF4", // Light green
+    borderColor: "#166534", // Dark green border
+  },
+  catText: {
+    fontSize: 13, // Fixed font size
+    fontWeight: "600",
+    color: "#64748B",
+    textAlign: 'center',
+  },
+  catTextActive: {
+    color: "#166534",
+    fontWeight: "700",
+    // No fontSize change allowed
+  },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#e5e5e5",
-    backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  dateLine: { fontSize: 12, color: "#6B7280", fontWeight: "600" },
-  title: { fontSize: 16, fontWeight: "700", marginBottom: 2, color: "#111" },
-  row: { marginTop: 2 },
-  label: { fontWeight: "700", color: "#222" },
-  value: { color: "#333" },
-
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  dateLine: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1E293B",
+    lineHeight: 24,
+    marginBottom: 6,
+  },
+  detailsBlock: {
+    marginTop: 12,
+    gap: 6,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+    width: 80,
+  },
+  value: {
+    fontSize: 14,
+    color: "#1E293B",
+    flex: 1,
+  },
   badge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: "#0F172A",
-    alignSelf: "flex-start",
+    backgroundColor: "#F1F5F9",
   },
-  badgeIcon: { color: "#fff", fontSize: 12 },
-  badgeText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-
-  clearFiltersBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#111",
+  badgeIcon: { fontSize: 12 },
+  badgeText: { color: "#475569", fontWeight: "600", fontSize: 12 },
+  emptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
   },
-  clearFiltersText: { color: "#fff", fontWeight: "700" },
-
-  // Header button (solo Admin)
-  headerBtn: {
-    backgroundColor: "#111",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 6,
-  },
-  headerBtnText: { color: "#fff", fontWeight: "700" },
-
-  // Floating Action Button (solo Admin)
-  fab: {
-    position: "absolute",
-    right: 16,
-    bottom: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#111",
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-  fabPlus: { color: "#fff", fontSize: 28, lineHeight: 28, marginTop: -2 },
 });

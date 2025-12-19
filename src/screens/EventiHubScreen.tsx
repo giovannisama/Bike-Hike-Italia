@@ -148,7 +148,7 @@ export default function EventiHubScreen({ navigation }: any) {
   const sections: EventSection[] = [
     {
       id: "bici",
-      title: "Calendario Bici",
+      title: "Ciclismo",
       subtitle: "Gestisci o partecipa alle uscite in Mtb ed E-Bike.",
       caption: "Uscite attive",
       icon: iconMap.bici.name,
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
     // Removed white wrapper: rely on header background/gradient only
   },
   headerSpacer: {
-    height: 16,
+    height: 24,
   },
   headerGradientContainer: {
     position: "absolute",

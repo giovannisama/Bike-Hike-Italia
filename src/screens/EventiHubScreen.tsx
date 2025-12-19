@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, useWindowDimensions } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { collection, onSnapshot } from "firebase/firestore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -85,16 +85,13 @@ function HeroCard({ item }: { item: EventSection }) {
 }
 
 // 2. GRID CARD (Used when 2+ sections are enabled)
-function GridCard({ item }: { item: EventSection }) {
-  const width = Dimensions.get("window").width;
-  // Simple 2-col calculation: (Screen - Padding*2 - Gap) / 2
-  // We'll let flexbox handle it with width: '48%'
-
+function GridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }) {
   return (
     <Pressable
       onPress={item.enabled ? item.onPress : undefined}
       style={({ pressed }) => [
         styles.gridCard,
+        { width: cardWidth },
         !item.enabled && styles.gridCardDisabled,
         pressed && item.enabled && { opacity: 0.9, transform: [{ scale: 0.98 }] },
       ]}
@@ -133,6 +130,11 @@ export default function EventiHubScreen({ navigation }: any) {
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const containerPaddingHorizontal = 20;
+  const gridGap = 12;
+  const containerWidth = width - containerPaddingHorizontal * 2;
+  const cardWidth = (containerWidth - gridGap) / 2;
 
   const iconMap: Record<string, { name: string; color: string }> = {
     bici: { name: "bike", color: "#15803D" },
@@ -221,7 +223,7 @@ export default function EventiHubScreen({ navigation }: any) {
         ) : (
           // GRID LAYOUT
           <View style={styles.gridContainer}>
-            {enabledSections.map(item => <GridCard key={item.id} item={item} />)}
+            {enabledSections.map(item => <GridCard key={item.id} item={item} cardWidth={cardWidth} />)}
           </View>
         )}
 
@@ -231,7 +233,7 @@ export default function EventiHubScreen({ navigation }: any) {
             <View style={styles.divider} />
             <Text style={styles.sectionLabel}>In arrivo</Text>
             <View style={styles.gridContainer}>
-              {disabledSections.map(item => <GridCard key={item.id} item={item} />)}
+              {disabledSections.map(item => <GridCard key={item.id} item={item} cardWidth={cardWidth} />)}
             </View>
           </>
         )}
@@ -353,7 +355,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between", // Ensures 2 columns push to edges
   },
   gridCard: {
-    width: "48%", // 2 cols
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 16,

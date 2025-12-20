@@ -210,16 +210,14 @@ export default function EventiHubScreen({ navigation }: any) {
         />
       </View>
 
-      {/* 1. STANDARD HEADER */}
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 8 }]}>
-        <Text style={styles.pageTitle}>Eventi</Text>
-        <Text style={styles.pageSubtitle}>Scegli una categoria</Text>
-      </View>
+      <View style={styles.pageContent}>
+        {/* 1. STANDARD HEADER */}
+        <View style={[styles.headerContainer, { paddingTop: insets.top + 8 }]}>
+          <Text style={styles.pageTitle}>Eventi</Text>
+          <Text style={styles.pageSubtitle}>Scegli una categoria</Text>
+        </View>
 
-      {/* Spacer to ensure cards never visually overlap the header */}
-      <View style={styles.headerSpacer} />
-
-      <View style={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}>
+        <View style={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}>
 
         {/* 2. ADAPTIVE LAYOUT */}
         {enabledSections.length === 1 ? (
@@ -239,6 +237,7 @@ export default function EventiHubScreen({ navigation }: any) {
               keyExtractor={(item) => item.id}
               numColumns={2}
               columnWrapperStyle={styles.gridRow}
+              contentContainerStyle={styles.enabledGridContent}
               scrollEnabled={false}
               extraData={cardWidth}
             />
@@ -264,6 +263,7 @@ export default function EventiHubScreen({ navigation }: any) {
           </>
         )}
 
+        </View>
       </View>
     </Screen>
   );
@@ -277,8 +277,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     // Removed white wrapper: rely on header background/gradient only
   },
-  headerSpacer: {
-    height: 24,
+  pageContent: {
+    gap: 16,
   },
   headerGradientContainer: {
     position: "absolute",
@@ -322,6 +322,7 @@ const styles = StyleSheet.create({
   // HERO CARD
   heroContainer: {
     gap: 16,
+    marginTop: 32,
   },
   heroCard: {
     backgroundColor: "#fff",
@@ -378,6 +379,9 @@ const styles = StyleSheet.create({
   // GRID CARD
   gridWrapper: {
     width: "100%",
+  },
+  enabledGridContent: {
+    paddingTop: 32,
   },
   gridRow: {
     justifyContent: "space-between",

@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen } from "../components/Screen";
 import { CalendarSearchModal } from "./calendar/CalendarSearchModal";
@@ -11,6 +12,8 @@ import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
 
 export default function CalendarScreen() {
   const [calendarArea, setCalendarArea] = useState({ width: 0, height: 0 });
+  const insets = useSafeAreaInsets();
+  const headerTopPadding = insets.top + 8;
 
   // Use the measured container size as the single source of truth.
   // This avoids incorrect sizing caused by native header/safe area/tab bar differences.
@@ -50,6 +53,7 @@ export default function CalendarScreen() {
             alignItems: "center",
             paddingHorizontal: 16,
             paddingVertical: 16,
+            paddingTop: headerTopPadding,
             backgroundColor: "#fff",
             borderBottomWidth: hasActiveFilters ? 0 : 1,
             borderBottomColor: "#F3F4F6",

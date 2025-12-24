@@ -1,5 +1,6 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
 import { pad2 } from "./helpers";
 import { MarkedDates } from "./types";
@@ -165,6 +166,22 @@ export function CalendarHeaderSection({
     return Math.min(gridHeight, total);
   }, [cellH, gridHeight, weeksCount]);
 
+  const handleTodayPress = useCallback(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const day = now.getDate();
+    const todayKey = `${year}-${pad2(month)}-${pad2(day)}`;
+    const payload: DateData = {
+      dateString: todayKey,
+      day,
+      month,
+      year,
+      timestamp: Date.UTC(year, month - 1, day),
+    };
+    onDayPress(payload);
+  }, [onDayPress]);
+
   useEffect(() => {
     if (!SHOW_LAYOUT_DEBUG) return;
     // eslint-disable-next-line no-console
@@ -230,6 +247,25 @@ export function CalendarHeaderSection({
             <Calendar
               key={`cal-${visibleMonth}`}
               current={visibleMonth}
+              renderArrow={(direction) => {
+                const iconName = direction === "left" ? "chevron-back" : "chevron-forward";
+                if (direction === "left") {
+                  return (
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <TouchableOpacity
+                        onPress={handleTodayPress}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4, marginRight: 6 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Oggi"
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "700", color: ACTION_GREEN }}>Oggi</Text>
+                      </TouchableOpacity>
+                      <Ionicons name={iconName} size={18} color="#111827" />
+                    </View>
+                  );
+                }
+                return <Ionicons name={iconName} size={18} color="#111827" />;
+              }}
               style={{
                 width: gridW,
                 height: "100%",

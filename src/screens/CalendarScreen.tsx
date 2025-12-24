@@ -54,10 +54,14 @@ export default function CalendarScreen() {
 
   const handleDayPress = useCallback(
     (day: DateData) => {
-      // Single entry point for day view
+      const isMarked = !!calendar.markedDates[day.dateString]?.marked;
+      if (!isMarked) {
+        calendar.onDayPress(day);
+        return;
+      }
       actions.openDayPage(day.dateString);
     },
-    [actions]
+    [actions, calendar]
   );
 
   const handleBack = useCallback(() => {

@@ -437,7 +437,8 @@ export function CalendarHeaderSection({
                       style={{
                         flex: 1,
                         alignItems: "center",
-                        justifyContent: "center",
+                        justifyContent: "flex-start",
+                        paddingTop: 6,
                       }}
                       onPress={!isDisabled ? handlePress : undefined}
                       disabled={isDisabled}

@@ -8,10 +8,12 @@ import {
   Animated,
   Easing,
   useWindowDimensions,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateData } from "react-native-calendars";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { Screen } from "../components/Screen";
 import { CalendarSearchModal } from "./calendar/CalendarSearchModal";
@@ -91,6 +93,14 @@ export default function CalendarScreen() {
 
   return (
     <Screen useNativeHeader={true} scroll={false} backgroundColor="#fff">
+      <View style={styles.headerGradientContainer}>
+        <LinearGradient
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
       <View style={{ flex: 1 }}>
         {/* Custom Clean Header */}
         <View
@@ -101,7 +111,7 @@ export default function CalendarScreen() {
             paddingHorizontal: 16,
             paddingVertical: 16,
             paddingTop: headerTopPadding,
-            backgroundColor: "#fff",
+            backgroundColor: "transparent",
             borderBottomWidth: hasActiveFilters ? 0 : 1,
             borderBottomColor: "#F3F4F6",
           }}
@@ -223,3 +233,13 @@ export default function CalendarScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  headerGradientContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+});

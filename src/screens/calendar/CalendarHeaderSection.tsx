@@ -288,11 +288,14 @@ export function CalendarHeaderSection({
                 monthTextColor: "#111827",
                 selectedDayBackgroundColor: "transparent",
                 selectedDayTextColor: "#111827",
-                todayTextColor: ACTION_GREEN,
-                arrowColor: "#111827",
+            todayTextColor: ACTION_GREEN,
+            arrowColor: "#111827",
+            arrowStyle: {
+              padding: 0,
+            },
 
-                // --- CRITICAL LAYOUT OVERRIDES ---
-                "stylesheet.calendar.main": {
+            // --- CRITICAL LAYOUT OVERRIDES ---
+            "stylesheet.calendar.main": {
                   container: {
                     paddingLeft: 0,
                     paddingRight: 0,
@@ -328,21 +331,27 @@ export function CalendarHeaderSection({
                 },
                 "stylesheet.calendar.header": {
                   // Month Title Row
-                  header: {
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    paddingTop: 0,
-                    paddingBottom: 0,
-                    marginTop: 0,
-                    marginBottom: 0,
-                    height: HEADER_TITLE_HEIGHT, // Force fixed height
-                  },
-                  monthText: {
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: "#111827",
-                    margin: 0, // Remove uncontrolled margins
+              header: {
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingLeft: 0,
+                paddingRight: 0,
+                marginTop: 0,
+                marginBottom: 0,
+                height: HEADER_TITLE_HEIGHT, // Force fixed height
+              },
+              headerContainer: {
+                flex: 1,
+                alignItems: "center",
+              },
+              monthText: {
+                fontSize: 16,
+                fontWeight: "700",
+                color: "#111827",
+                margin: 0, // Remove uncontrolled margins
                   },
                   // Weekday Row (L M M G V S D)
                   week: {

@@ -51,7 +51,7 @@ type Ride = {
   status?: "active" | "cancelled";
   difficulty?: string | null;
   archived?: boolean;
-  manualCount?: number;
+  manualParticipants?: any[];
 };
 
 const normalizeForSearch = (value?: string) =>
@@ -63,6 +63,8 @@ const normalizeForSearch = (value?: string) =>
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+const ACTION_GREEN = "#22c55e";
 
 // ---- Badge partecipanti ----
 function ParticipantsBadge({ count, max }: { count?: number; max?: number | null }) {
@@ -156,7 +158,9 @@ export default function UsciteList() {
   const [filterType, setFilterType] = useState<"active" | "archived">("active");
 
   const [searchText, setSearchText] = useState("");
+  // Deprecated: kept for legacy counting logic; badge now uses participantsCount from ride doc.
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const warnedMissingParticipantsCountRef = useRef<Set<string>>(new Set());
 
   // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
@@ -197,17 +201,34 @@ export default function UsciteList() {
     setActiveCategory("Tutte");
   }, []);
 
-  // Helper: preleva il conteggio server-side dei partecipanti per una singola uscita
-  const fetchCountForRide = useCallback(async (rideId: string) => {
+  const getManualParticipantsCount = useCallback((rideId: string) => {
+    const manualParticipants = ridesRef.current.find((r) => r.id === rideId)?.manualParticipants;
+    return Array.isArray(manualParticipants) ? manualParticipants.length : 0;
+  }, []);
+
+  // Cache timestamp for fetches
+  const lastFetchRef = useRef<Map<string, number>>(new Map());
+  const CACHE_TTL = 30000; // 30 seconds
+
+  // Helper: preleva il conteggio server-side dei partecipanti (SOLO self-registered)
+  const fetchCountForRide = useCallback(async (rideId: string, force = false) => {
     try {
+      const now = Date.now();
+      const last = lastFetchRef.current.get(rideId) ?? 0;
+      if (!force && now - last < CACHE_TTL) {
+        // Cache hit
+        return;
+      }
+
       const colRef = collection(db, "rides", rideId, "participants");
       const snapshot = await getCountFromServer(query(colRef));
-      const base = snapshot.data().count as number;
-      const manual = ridesRef.current.find((r) => r.id === rideId)?.manualCount ?? 0;
-      const cnt = base + manual;
+      const selfCount = snapshot.data().count as number;
+
+      lastFetchRef.current.set(rideId, now);
+
       setCounts((prev) => {
-        if (prev[rideId] === cnt) return prev;
-        return { ...prev, [rideId]: cnt };
+        if (prev[rideId] === selfCount) return prev;
+        return { ...prev, [rideId]: selfCount };
       });
     } catch (e) {
       // Ignore
@@ -223,20 +244,25 @@ export default function UsciteList() {
     if (!canReadRides) return;
     if (!rideId || subsRef.current.has(rideId)) return;
     if (subsRef.current.size >= MAX_VISIBLE_SUBS) return;
-    const colRef = collection(db, "rides", rideId, "participants");
+
+    // Initial fetch (if needed)
     fetchCountForRide(rideId);
+
+    const colRef = collection(db, "rides", rideId, "participants");
     const unsub = onSnapshot(
       colRef,
       (snap) => {
-        const manual = ridesRef.current.find((r) => r.id === rideId)?.manualCount ?? 0;
+        // Store ONLY self-registered count
+        const selfCount = snap.size;
         setCounts((prev) => {
-          const nextValue = snap.size + manual;
-          if (prev[rideId] === nextValue) return prev;
-          return { ...prev, [rideId]: nextValue };
+          if (prev[rideId] === selfCount) return prev;
+          return { ...prev, [rideId]: selfCount };
         });
+        // Update cache time since we have fresh data
+        lastFetchRef.current.set(rideId, Date.now());
       },
       (_err) => {
-        fetchCountForRide(rideId);
+        fetchCountForRide(rideId, true);
       }
     );
     subsRef.current.set(rideId, unsub);
@@ -284,7 +310,12 @@ export default function UsciteList() {
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
           const archived = !!d?.archived;
-          const manualCount = Array.isArray(d?.manualParticipants) ? d.manualParticipants.length : 0;
+          const manualParticipants = Array.isArray(d?.manualParticipants) ? d.manualParticipants : undefined;
+          const participantsCount = typeof d?.participantsCount === "number" ? d.participantsCount : undefined;
+
+          if (__DEV__ && typeof d?.participantsCount !== "number") {
+            // We don't rely on this anymore, but good for debug
+          }
 
           rows.push({
             id: docSnap.id,
@@ -295,25 +326,21 @@ export default function UsciteList() {
             date: d?.date ?? null,
             dateTime: d?.dateTime ?? null,
             maxParticipants: d?.maxParticipants ?? null,
-            participantsCount: d?.participantsCount ?? undefined,
+            participantsCount,
             guidaName: d?.guidaName ?? null,
             guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : undefined,
             status: d?.status ?? "active",
             difficulty: d?.difficulty ?? null,
             archived,
-            manualCount,
+            manualParticipants,
           });
         });
 
-        const initial: Record<string, number> = {};
-        rows.forEach((r) => {
-          const fallbackTotal =
-            typeof r.participantsCount === "number"
-              ? r.participantsCount!
-              : r.manualCount ?? 0;
-          initial[r.id] = fallbackTotal;
-        });
-        setCounts((prev) => ({ ...prev, ...initial }));
+        // Pre-fill counts with 0 or just manual?
+        // We prefer to wait for server count.
+        // But to avoid "0" flickering if we have stale data... better to start fresh.
+        // Actually, we can just let renderItem handle the "missing" state.
+        // OR we can init with 0.
 
         ridesRef.current = rows;
         setRides(rows);
@@ -336,7 +363,9 @@ export default function UsciteList() {
   // Utility: refresh counts
   const refreshCounts = useCallback(async () => {
     if (rides.length === 0) return;
-  }, [rides]);
+    // Potentially force refresh visible items?
+    visibleSetRef.current.forEach(id => fetchCountForRide(id));
+  }, [rides, fetchCountForRide]);
 
   useFocusEffect(
     useCallback(() => {
@@ -386,7 +415,8 @@ export default function UsciteList() {
       const ids = Array.from(subsRef.current.keys());
       ids.forEach((id) => unsubscribeFor(id));
       ids.forEach((id) => {
-        fetchCountForRide(id);
+        // Force refresh
+        fetchCountForRide(id, true);
         subscribeFor(id);
       });
     } finally {
@@ -419,7 +449,20 @@ export default function UsciteList() {
 
     const isCancelled = item.status === "cancelled";
     const isArchived = !!item.archived;
-    const participantTotal = counts[item.id] ?? (item.participantsCount ?? item.manualCount ?? 0);
+
+    // BADGE CALCULATION LOGIC
+    const manualCount = Array.isArray(item.manualParticipants) ? item.manualParticipants.length : 0;
+    const selfCount = counts[item.id]; // Only self-registered from server/snapshot
+    const hasCount = typeof selfCount === "number";
+
+    // Total count: always sum self + manual. 
+    // If selfCount is missing, we render partial (manual) or placeholder?
+    // User req: "mostra temporaneamente manualCount (o 0) + un placeholder discreto"
+    const displayTotal = hasCount ? (selfCount + manualCount) : manualCount;
+
+    if (__DEV__) {
+      // console.log(`[RideList] ${item.title}: manual=${manualCount} self=${selfCount} total=${displayTotal} (stale=${item.participantsCount})`);
+    }
 
     const statusBadge = isArchived ? (
       <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
@@ -444,7 +487,11 @@ export default function UsciteList() {
             <Text style={styles.dateLine} numberOfLines={1}>
               {when}
             </Text>
-            <ParticipantsBadge count={participantTotal} max={item.maxParticipants ?? null} />
+            {/* Show badge if we have data OR if we want to show placeholder */}
+            <ParticipantsBadge
+              count={displayTotal}
+              max={item.maxParticipants ?? null}
+            />
           </View>
 
           <Text
@@ -616,21 +663,9 @@ export default function UsciteList() {
                 </Text>
               </View>
 
-              {/* Filtri Categoria a due righe: Tutte / Others */}
+              {/* Filtri Categoria a una riga: MTB/BDC/Enduro + (Mostra tutte) */}
               <View style={styles.filterSection}>
-                {/* Riga 1: Tutte */}
-                <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-                  <Pressable
-                    onPress={() => setActiveCategory("Tutte")}
-                    style={[styles.catBtn, activeCategory === "Tutte" && styles.catBtnActive]}
-                  >
-                    <Text style={[styles.catText, activeCategory === "Tutte" && styles.catTextActive]}>
-                      Tutte
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Riga 2: Altre categorie (Exactly 3, deterministic width) */}
+                {/* Riga Filtri (Exactly 3, deterministic width) */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
@@ -638,33 +673,53 @@ export default function UsciteList() {
                   overflow: 'hidden',
                   width: '100%'
                 }}>
-                  {categories.map((cat) => (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setActiveCategory(cat)}
-                      style={[
-                        styles.catBtn,
-                        activeCategory === cat && styles.catBtnActive,
-                        {
-                          width: chipWidth,
-                          maxWidth: chipWidth,
-                          minWidth: chipWidth,
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        allowFontScaling={false}
-                        style={[styles.catText, activeCategory === cat && styles.catTextActive]}
+                  {categories.map((cat) => {
+                    // Implicit "Tutte" logic:
+                    // If activeCategory is "Tutte", NO chip is active.
+                    // If activeCategory matches cat, THIS chip is active.
+                    const isActive = activeCategory === cat;
+                    return (
+                      <Pressable
+                        key={cat}
+                        onPress={() => setActiveCategory(cat)}
+                        style={[
+                          styles.catBtn,
+                          isActive && styles.catBtnActive,
+                          {
+                            width: chipWidth,
+                            maxWidth: chipWidth,
+                            justifyContent: 'center', // Center content vertically/horizontally
+                            alignItems: 'center'
+                          }
+                        ]}
                       >
-                        {categoryLabels[cat]}
-                      </Text>
-                    </Pressable>
-                  ))}
+                        <Text
+                          style={[
+                            styles.catText,
+                            isActive && styles.catTextActive,
+                            { fontSize: 13 } // Force consistency
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {categoryLabels[cat]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
+
+                {/* Reset Action (Mostra tutte) - Only if filtering */}
+                {activeCategory !== "Tutte" && (
+                  <TouchableOpacity
+                    onPress={() => setActiveCategory("Tutte")}
+                    style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                    hitSlop={10}
+                  >
+                    <Text style={{ color: ACTION_GREEN, fontSize: 13, fontWeight: "600" }}>
+                      Mostra tutte
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           }
@@ -723,7 +778,7 @@ const styles = StyleSheet.create({
   },
   // ACTION BUTTON NEL HEADER FIX
   headerAddBtn: {
-    backgroundColor: "#166534", // Green-800
+    backgroundColor: ACTION_GREEN, // Green-800 -> ACTION_GREEN
     width: 44,
     height: 44,
     borderRadius: 22, // Circle
@@ -815,8 +870,8 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   catBtnActive: {
-    backgroundColor: "#F0FDF4", // Light green
-    borderColor: "#166534", // Dark green border
+    backgroundColor: "rgba(34, 197, 94, 0.15)", // Light green opaque
+    borderColor: ACTION_GREEN,
   },
   catText: {
     fontSize: 13, // Fixed font size
@@ -825,7 +880,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   catTextActive: {
-    color: "#166534",
+    color: ACTION_GREEN,
     fontWeight: "700",
     // No fontSize change allowed
   },

@@ -22,6 +22,16 @@ export function toISODate(ts?: Timestamp | null) {
   return d.toISOString().slice(0, 10);
 }
 
+// FIX: Timezone-safe key (YYYY-MM-DD based on Local Time)
+export function toLocalISODate(ts?: Timestamp | null) {
+  if (!ts?.toDate) return null;
+  const d = ts.toDate();
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  return `${y}-${m}-${dd}`;
+}
+
 export function rideDateValue(ride: { date?: Timestamp | null; dateTime?: Timestamp | null }) {
   const ts = ride.dateTime ?? ride.date;
   if (!ts?.toDate) return null;

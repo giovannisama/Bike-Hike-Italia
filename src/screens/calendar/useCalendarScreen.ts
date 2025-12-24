@@ -21,7 +21,7 @@ import {
   pad2,
   rideDateValue,
   startOfMonthISO,
-  toISODate,
+  toLocalISODate,
 } from "./helpers";
 import { MarkedDates, Ride } from "./types";
 
@@ -357,29 +357,64 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     };
   }, [currentMonth]);
 
-  const marked: MarkedDates = useMemo(() => {
-    const out: MarkedDates = {};
+  const applyCalendarFilters = (
+    source: Ride[],
+    {
+      searchText,
+      dateFrom,
+      dateTo,
+    }: { searchText: string; dateFrom: string; dateTo: string }
+  ) => {
     const qText = normalizeForSearch(searchText.trim());
-    const from = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dateFromInput.trim())
-      ? dateFromInput.trim()
-      : null;
-    const to = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dateToInput.trim())
-      ? dateToInput.trim()
-      : null;
+    const fromValue = inputDateValue(dateFrom);
+    const toValue = inputDateValue(dateTo);
+    const hasRange = fromValue != null || toValue != null;
 
-    const ridesForMarks = rides.filter((r) => {
-      const key = toISODate(r.dateTime || r.date);
-      if (!key) return false;
-      if (from && key < from) return false;
-      if (to && key > to) return false;
+    if (!qText && !hasRange) return source; // Fast path
 
+    return source.filter((r) => {
+      // 1. Date Range
+      if (hasRange) {
+        const value = rideDateValue(r);
+        if (value == null) return false;
+        if (fromValue != null && value < fromValue) return false;
+        if (toValue != null && value > toValue) return false;
+      }
+      // 2. Search Text
       if (qText && !rideMatchesSearch(r, qText)) return false;
+
       return true;
     });
+  };
+
+  // ... inside useCalendarScreen ...
+
+  // Policy: Calendar includes active + archived + cancelled; only decorates status.
+  // Single source of truth for "visible" rides in the current month view
+  const ridesVisible = useMemo(() => {
+    return applyCalendarFilters(rides, {
+      searchText,
+      dateFrom: dateFromInput,
+      dateTo: dateToInput,
+    });
+  }, [rides, searchText, dateFromInput, dateToInput]);
+
+  // Single source for "all known rides" filtered (for navigation/sequence)
+  const allRidesVisible = useMemo(() => {
+    const source = allRides.length > 0 ? allRides : rides;
+    return applyCalendarFilters(source, {
+      searchText,
+      dateFrom: dateFromInput,
+      dateTo: dateToInput,
+    });
+  }, [allRides, rides, searchText, dateFromInput, dateToInput]);
+
+  const marked: MarkedDates = useMemo(() => {
+    const out: MarkedDates = {};
 
     const byDay = new Map<string, Ride[]>();
-    for (const r of ridesForMarks) {
-      const key = toISODate(r.dateTime || r.date);
+    for (const r of ridesVisible) {
+      const key = toLocalISODate(r.dateTime || r.date);
       if (!key) continue;
       if (!byDay.has(key)) byDay.set(key, []);
       byDay.get(key)!.push(r);
@@ -407,61 +442,24 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     }
 
     return out;
-  }, [rides, selectedDay, searchText, dateFromInput, dateToInput]);
+  }, [ridesVisible, selectedDay]);
 
   const listForSelected = useMemo(() => {
     const key = selectedDay;
-    let base = rides.filter((r) => toISODate(r.dateTime || r.date) === key);
-
-    const q = normalizeForSearch(searchText.trim());
-    if (q) {
-      base = base.filter((r) => rideMatchesSearch(r, q));
-    }
-
-    const fromValue = inputDateValue(dateFromInput);
-    const toValue = inputDateValue(dateToInput);
-    if (fromValue != null) {
-      base = base.filter((r) => {
-        const value = rideDateValue(r);
-        return value != null && value >= fromValue;
-      });
-    }
-    if (toValue != null) {
-      base = base.filter((r) => {
-        const value = rideDateValue(r);
-        return value != null && value <= toValue;
-      });
-    }
-
-    return base;
-  }, [rides, selectedDay, searchText, dateFromInput, dateToInput]);
+    // Just filter ridesVisible by day
+    return ridesVisible.filter((r) => toLocalISODate(r.dateTime || r.date) === key);
+  }, [ridesVisible, selectedDay]);
 
   const resultsAll = useMemo(() => {
-    let base = [...rides];
-    const fromValue = inputDateValue(dateFromInput);
-    const toValue = inputDateValue(dateToInput);
-    if (fromValue != null || toValue != null) {
-      base = base.filter((r) => {
-        const value = rideDateValue(r);
-        if (value == null) return false;
-        if (fromValue != null && value < fromValue) return false;
-        if (toValue != null && value > toValue) return false;
-        return true;
-      });
-    }
-
-    const q = normalizeForSearch(searchText.trim());
-    if (q) {
-      base = base.filter((r) => rideMatchesSearch(r, q));
-    }
-
-    base.sort((a, b) => {
+    // Return visible rides, sorted
+    const list = [...ridesVisible];
+    list.sort((a, b) => {
       const da = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
       const db = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
       return da - db;
     });
-    return base;
-  }, [rides, searchText, dateFromInput, dateToInput]);
+    return list;
+  }, [ridesVisible]);
 
   const hasRangeFilters = useMemo(() => {
     const f = dateFromInput.trim();
@@ -494,7 +492,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
       const dataSource = allRides.length > 0 ? allRides : rides;
       const hasRidesForDay = dataSource.some(
-        (ride) => toISODate(ride.dateTime || ride.date) === d.dateString
+        (ride) => toLocalISODate(ride.dateTime || ride.date) === d.dateString
       );
 
       setCalendarCollapsed((prev) => {
@@ -617,18 +615,13 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
   const rideDateSequence = useMemo(() => {
     const dates = new Set<string>();
-    const addFrom = (list: Ride[]) => {
-      list.forEach((ride) => {
-        const key = toISODate(ride.dateTime || ride.date);
-        if (key) dates.add(key);
-      });
-    };
-
-    addFrom(rides);
-    addFrom(allRides);
-
+    // Use allRidesVisible to ensure navigation respects filters globally
+    allRidesVisible.forEach((ride) => {
+      const key = toLocalISODate(ride.dateTime || ride.date);
+      if (key) dates.add(key);
+    });
     return Array.from(dates).sort();
-  }, [rides, allRides]);
+  }, [allRidesVisible]);
 
   const quickNavigation = useMemo(() => {
     if (rideDateSequence.length === 0) {
@@ -667,9 +660,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     const toTarget = (dateString: string | undefined) =>
       dateString
         ? {
-            dateString,
-            label: format(new Date(`${dateString}T00:00:00Z`), "d MMM", { locale: it }),
-          }
+          dateString,
+          label: format(new Date(`${dateString}T00:00:00Z`), "d MMM", { locale: it }),
+        }
         : undefined;
 
     return {

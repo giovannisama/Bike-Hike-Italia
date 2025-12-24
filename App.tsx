@@ -82,6 +82,7 @@ import UserDetailScreen from "./src/screens/admin/UserDetailScreen";
 import TrekkingPlaceholderScreen from "./src/screens/TrekkingPlaceholderScreen";
 import InfoScreen from "./src/screens/InfoScreen";
 import BoardPostDetailScreen from "./src/screens/BoardPostDetailScreen";
+import CalendarDayScreen from "./src/screens/CalendarDayScreen";
 
 // Wrapper: protegge la sezione Amministrazione (solo admin/owner)
 function AdminGate() {
@@ -114,20 +115,21 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 const MoreStack = createNativeStackNavigator();
 // ---- ALTRO (More) Nested Stack and Menu ----
+const ACTION_GREEN = "#22c55e";
+
 function MoreHomeScreen() {
   const navigation: any = useNavigation();
   const { isOwner } = useCurrentProfile();
 
   const items = useMemo(
     () => {
-      const base: Array<{ key: string; title: string; subtitle: string; icon: any; onPress: () => void; highlight?: boolean }> = [
+      const base: Array<{ key: string; title: string; subtitle: string; icon: any; onPress: () => void }> = [
         {
           key: "info",
           title: "Informazioni",
           subtitle: "Dati e contatti dell’associazione",
           icon: "information-circle-outline",
           onPress: () => navigation.navigate("Info"),
-          highlight: true,
         },
         {
           key: "profile",
@@ -155,62 +157,77 @@ function MoreHomeScreen() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      <View style={{ paddingHorizontal: 18, paddingTop: 18, paddingBottom: 8 }}>
-        <Text style={{ fontSize: 22, fontWeight: "900", color: "#0F172A" }}>Altro</Text>
-        <Text style={{ marginTop: 4, color: "#64748B", fontWeight: "600" }}>Seleziona una sezione</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+      {/* Header aligned with other screens */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 }}>
+        <Text style={{ fontSize: 30, fontWeight: "800", color: "#1E293B", letterSpacing: -0.5 }}>Altro</Text>
+        <Text style={{ fontSize: 16, color: "#64748B", fontWeight: "500", marginTop: 4 }}>Seleziona una sezione</Text>
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={(it) => it.key}
-        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={item.onPress}
-            style={({ pressed }) => [
-              {
-                backgroundColor: "#fff",
-                borderRadius: 18,
-                padding: 16,
+      {/* Single Card Container */}
+      <View style={{
+        marginHorizontal: 16,
+        backgroundColor: "#fff",
+        borderRadius: 20, // Modern radius
+        ...UI.shadow.card, // Reuse shared shadow
+        overflow: "hidden", // For ripple/press containment
+      }}>
+        {items.map((item, index) => {
+          const isLast = index === items.length - 1;
+          return (
+            <Pressable
+              key={item.key}
+              onPress={item.onPress}
+              style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 14,
-                borderWidth: 1,
-                borderColor: item.highlight ? "#BFE7D0" : "#E2E8F0",
-                shadowColor: "#000",
-                shadowOpacity: 0.06,
-                shadowRadius: 10,
-                elevation: 2,
-              },
-              pressed && { opacity: 0.92 },
-            ]}
-          >
-            <View
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 14,
-                backgroundColor: item.highlight ? "#E6F4ED" : "#F1F5F9",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                backgroundColor: pressed ? "rgba(34, 197, 94, 0.04)" : "#fff",
+              })}
             >
-              <Ionicons name={item.icon} size={22} color={item.highlight ? "#0B3D2E" : "#334155"} />
-            </View>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: "rgba(34, 197, 94, 0.08)", // ACTION_GREEN faint
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 14,
+                }}
+              >
+                <Ionicons name={item.icon} size={22} color={ACTION_GREEN} />
+              </View>
 
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: "#0F172A" }}>{item.title}</Text>
-              <Text style={{ marginTop: 3, color: "#64748B", fontWeight: "600" }} numberOfLines={1}>
-                {item.subtitle}
-              </Text>
-            </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#0F172A" }}>
+                  {item.title}
+                </Text>
+                <Text style={{ marginTop: 2, fontSize: 14, color: "#64748B", fontWeight: "500" }} numberOfLines={1}>
+                  {item.subtitle}
+                </Text>
+              </View>
 
-            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-          </Pressable>
-        )}
-      />
+              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+
+              {/* Divider (hairline) */}
+              {!isLast && (
+                <View
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: 72, // Align with text start (42 icon + 14 margin + 16 padding)
+                    right: 0,
+                    height: 1,
+                    backgroundColor: "#F1F5F9",
+                  }}
+                />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </SafeAreaView>
   );
 }
@@ -968,6 +985,11 @@ export default function App() {
               options={{ title: "Calendario" }}
             />
             <Stack.Screen
+              name="CalendarDay"
+              component={CalendarDayScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
               name="TrekkingPlaceholder"
               component={TrekkingPlaceholderScreen}
               options={{ title: "Trekking" }}
@@ -975,13 +997,13 @@ export default function App() {
             <Stack.Screen
               name="CreateRide"
               component={CreateRideScreen}
-              options={{ title: "Crea Uscita" }}
+              options={{ title: "Crea Uscita", headerShown: false }}
             />
             {/* LEGACY alias per "CreateRide" (usato solo per compatibilità futura/eventuale). */}
             <Stack.Screen
               name="Create"
               component={CreateRideScreen}
-              options={{ title: "Crea Uscita" }}
+              options={{ title: "Crea Uscita", headerShown: false }}
             />
             <Stack.Screen
               name="RideDetails"

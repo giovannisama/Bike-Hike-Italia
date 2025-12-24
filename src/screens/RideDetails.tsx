@@ -1,5 +1,5 @@
 // src/screens/RideDetails.tsx
-import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActionSheetIOS,
 } from "react-native";
 import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -61,6 +62,8 @@ const SERVICE_LABELS: Record<RideServiceKey, string> = {
 };
 
 const emptySelection = (): RideServiceSelectionMap => ({ lunch: null, dinner: null, overnight: null });
+
+const ACTION_GREEN = "#22c55e";
 
 type Ride = {
   title: string;
@@ -122,6 +125,13 @@ export default function RideDetails() {
   const route = useRoute<RouteProp<RootStackParamList, "RideDetails">>();
   const rideId = route.params?.rideId;
 
+  // Hide native stack header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
+
   const [ride, setRide] = useState<Ride | null>(null);
   const [loadingRide, setLoadingRide] = useState(true);
 
@@ -135,6 +145,7 @@ export default function RideDetails() {
 
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [showAllParticipants, setShowAllParticipants] = useState(false); // NEW: Toggle per lista partecipanti
   const [noteText, setNoteText] = useState("");
   const [joinSaving, setJoinSaving] = useState(false);
 
@@ -190,7 +201,7 @@ export default function RideDetails() {
           nickname: d?.nickname ?? null,
         };
       }
-    } catch {}
+    } catch { }
 
     // 2) Fallback su users_public/{uid}
     try {
@@ -204,7 +215,7 @@ export default function RideDetails() {
           nickname: d?.nickname ?? null,
         };
       }
-    } catch {}
+    } catch { }
 
     // 3) Fallback finale: usa displayName di auth se presente
     return { displayName: auth.currentUser?.displayName ?? null };
@@ -630,6 +641,97 @@ export default function RideDetails() {
   }, [rideId]);
 
   // ─────────────────────────────────────────
+  // Derivazioni Stato (Moved up for scope access)
+  // ─────────────────────────────────────────
+  const isCancelled = ride?.status === "cancelled";
+  const isArchived = !!ride?.archived;
+  const isBookable = !isCancelled && !isArchived;
+
+  // ─────────────────────────────────────────
+  // Admin Menu Handler
+  // ─────────────────────────────────────────
+  const showAdminMenu = useCallback(() => {
+    if (!ride) return;
+
+    // Opzioni base
+    // const options = ["Annulla"]; // unused
+    // const destructiveButtonIndex = isArchived || isCancelled ? -1 : 2; // unused
+    // Let's build explicit lists based on state
+
+    // ACTION SHEET OPTIONS
+    // 0: Cancel (Dismiss)
+
+    if (Platform.OS === 'ios') {
+      const iosOptions = ["Chiudi"];
+      const iosActions: (() => void)[] = [() => { }];
+
+      if (isArchived) {
+        // Ripristina, Elimina
+        iosOptions.push("Ripristina da Archivio", "Elimina Definitivamente");
+        iosActions.push(unarchive, deleteRideForever);
+      } else if (isCancelled) {
+        // Riapri, Archivia, Elimina
+        iosOptions.push("Riapri Uscita", "Archivia", "Elimina Definitivamente");
+        iosActions.push(reopenRide, archiveNow, deleteRideForever);
+      } else {
+        // Modifica, Annulla, Archivia, Elimina (Requested)
+        iosOptions.push("Modifica Dettagli", "Annulla Uscita", "Archivia Uscita", "Elimina Definitivamente");
+        iosActions.push(editRide, cancelRide, archiveNow, deleteRideForever);
+      }
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: iosOptions,
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: iosOptions.indexOf("Elimina Definitivamente") > -1 ? iosOptions.indexOf("Elimina Definitivamente") : iosOptions.indexOf("Annulla Uscita"),
+          title: "Gestione Uscita",
+        },
+        (buttonIndex) => {
+          if (buttonIndex > 0) {
+            iosActions[buttonIndex]();
+          }
+        }
+      );
+    } else {
+      // Android: Simple Alert with buttons doesn't support many options well.
+      // Using Alert with 3 buttons max or multiple alerts is bad.
+      // Better to keep a simple "Edit" button visible maybe, or just use a basic Alert menu.
+      // For now, let's use a chain of alerts or a simple 3-btn Alert for key actions.
+      // "Modifica" is key. "Altro" -> menu.
+
+      // FALLBACK: Simplified Android Menu via Alert is clunky. 
+      // User asked for "Menu ...". 
+      // Let's render a simple native Alert with options if possible, but React Native Alert only supports 3 buttons.
+      // We will show the most relevant actions.
+
+      const buttons: any[] = [{ text: "Chiudi", style: "cancel" }];
+
+      if (isArchived) {
+        buttons.push({ text: "Ripristina", onPress: unarchive });
+        buttons.push({ text: "Elimina", onPress: deleteRideForever, style: "destructive" });
+      } else if (isCancelled) {
+        buttons.push({ text: "Riapri", onPress: reopenRide });
+        buttons.push({ text: "Elimina", onPress: deleteRideForever, style: "destructive" });
+        // Archivia missing in 3-btn limit?
+      } else {
+        buttons.push({ text: "Modifica", onPress: editRide });
+        buttons.push({
+          text: "Gestisci...", onPress: () => {
+            Alert.alert("Altre Azioni", "Scegli azione", [
+              { text: "Annulla Uscita", onPress: cancelRide, style: "destructive" },
+              { text: "Archivia", onPress: archiveNow },
+              { text: "Elimina", onPress: deleteRideForever, style: "destructive" },
+              { text: "Chiudi", style: "cancel" }
+            ]);
+          }
+        });
+      }
+
+      Alert.alert("Gestione Uscita", undefined, buttons);
+    }
+  }, [ride, isArchived, isCancelled, editRide, cancelRide, archiveNow, unarchive, deleteRideForever, reopenRide]);
+
+  // ─────────────────────────────────────────
   // Prenotazione
   // ─────────────────────────────────────────
   const openNoteModal = useCallback(() => {
@@ -892,22 +994,25 @@ export default function RideDetails() {
     ]);
   }, [rideId, adjustParticipantsCount, ride?.archived]);
 
-  const isCancelled = ride?.status === "cancelled";
-  const isArchived = !!ride?.archived;
-  const isBookable =
-    !!ride &&
-    !isCancelled &&
-    !isArchived &&
-    !(
-      typeof ride.maxParticipants === "number" &&
-      combinedParticipants.length >= (ride.maxParticipants ?? 0)
-    );
+
 
   const statusBadge = isArchived
-    ? <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
+    ? (
+      <View style={[styles.chipBase, { backgroundColor: "#E5E7EB" }]}>
+        <Text style={[styles.chipText, { color: "#374151" }]}>📦 Archiviata</Text>
+      </View>
+    )
     : isCancelled
-    ? <StatusBadge text="Annullata" icon="✖" bg="#FEE2E2" fg="#991B1B" />
-    : <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />;
+      ? (
+        <View style={[styles.chipBase, { backgroundColor: "#FEE2E2" }]}>
+          <Text style={[styles.chipText, { color: "#991B1B" }]}>✖ Annullata</Text>
+        </View>
+      )
+      : (
+        <View style={[styles.chipBase, { backgroundColor: "#111" }]}>
+          <Text style={[styles.chipText, { color: "#fff" }]}>✓ Attiva</Text>
+        </View>
+      );
 
   const participantsLabel = ride?.maxParticipants != null
     ? `${combinedParticipants.length}/${ride.maxParticipants}`
@@ -980,95 +1085,266 @@ export default function RideDetails() {
     );
   }
 
+
+
   return (
     <>
-      <Screen title={ride.title || "Uscita"} subtitle={whenText} scroll>
-        {/* HEADER + TOOLBAR ADMIN */}
-        <View style={{ gap: 8, paddingHorizontal: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          {statusBadge}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 999,
-              backgroundColor: "#0F172A",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>👥 {participantsLabel}</Text>
+      <Screen
+        // Title/Subtitle props ignored by useNativeHeader={true}, handled manually below
+        title={undefined}
+        subtitle={undefined}
+        scroll={true}
+        useNativeHeader={true}
+        backgroundColor="#FDFCF8"
+      >
+
+        {/* STITCH HEADER + CHIPS + ACTIONS */}
+        {/* STITCH HEADER BLOCK (Top Bar) */}
+        <View style={styles.headerBlock}>
+          <View style={styles.headerRow}>
+            {/* Back Btn - Icon Only (Consistent with UsciteList) */}
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={{ marginRight: 8, padding: 4 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1E293B" />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }} />
+
+            {/* Admin Actions */}
+            {isAdmin && (
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                {/* Show Edit Pencil only if active */}
+                {!isArchived && !isCancelled && (
+                  <TouchableOpacity
+                    onPress={editRide}
+                    style={{ padding: 4 }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="pencil-sharp" size={22} color="#1E293B" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={showAdminMenu}
+                  style={{ padding: 4 }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="ellipsis-horizontal-circle" size={30} color="#1E293B" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
 
-        {isAdmin && (
-          <View style={adminStyles.toolbar}>
-            {isArchived ? (
+        {/* STITCH HEADER INFO SECTION (Below Top Bar) */}
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 4 }}>
+          <Text style={styles.headerTitle}>{ride.title || "Uscita"}</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
+            <Ionicons name="calendar-outline" size={18} color="#64748B" style={{ marginRight: 6 }} />
+            <Text style={styles.headerSubtitle}>{whenText}</Text>
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            {statusBadge}
+            <View style={[styles.chipBase, { backgroundColor: "#0F172A" }]}>
+              <Text style={[styles.chipText, { color: "#FFF" }]}>👥 {participantsLabel}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Removed Legacy Toolbar Block */}
+
+
+
+
+        {/* CARD HIGHLIGHT "LA TUA PRENOTAZIONE" */}
+        <View style={[styles.card, styles.highlightCard, { marginHorizontal: 16, marginTop: 8 }]}>
+          {/* Header della card prenotazione */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <View style={[styles.checkCircle, myParticipant ? { backgroundColor: ACTION_GREEN } : { backgroundColor: "#cbd5e1" }]}>
+              <Ionicons name="checkmark" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.highlightTitle}>
+                {myParticipant ? "La tua prenotazione" : "Non sei prenotato"}
+              </Text>
+              {myParticipant && (
+                <Text style={{ color: "#1e293b", marginTop: 2 }}>
+                  Sei prenotato come: <Text style={{ fontWeight: '700' }}>{formatCognomeNome(myParticipant.uid, myParticipant.name)}</Text>
+                </Text>
+              )}
+              <Text style={{ color: "#475569", marginTop: 2, fontStyle: myParticipant?.note ? 'normal' : 'italic' }}>
+                Nota: {myParticipant?.note || "Nessuna nota"}
+              </Text>
+
+              {/* Riepilogo Servizi (Sub-box) */}
+              {myParticipant && serviceQuestions.length > 0 && (
+                <View style={styles.myServicesBox}>
+                  {serviceQuestions.map((key) => {
+                    const answer = myParticipant.services?.[key];
+                    return (
+                      <Text key={key} style={styles.myServicesText}>
+                        • {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : answer === "no" ? "No" : "—"}
+                      </Text>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Warnings: Archived/Cancelled/Full */}
+          {isArchived && <Text style={{ color: "#6b7280", marginBottom: 8 }}>Uscita archiviata: sola visualizzazione.</Text>}
+          {isCancelled && <Text style={{ color: "#DC2626", fontWeight: "600", marginBottom: 8 }}>Uscita annullata.</Text>}
+          {!isBookable && !isArchived && !isCancelled && typeof ride.maxParticipants === "number" && (
+            <Text style={{ color: "#DC2626", marginBottom: 8 }}>Posti esauriti.</Text>
+          )}
+
+          {/* Actions */}
+          <View style={{ gap: 8 }}>
+            {myParticipant ? (
               <>
-                <PrimaryButton label="Ripristina" onPress={unarchive} style={{ backgroundColor: "#374151" }} />
-                <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
-              </>
-            ) : isCancelled ? (
-              <>
-                <PrimaryButton label="Riapri" onPress={reopenRide} style={{ backgroundColor: "#059669" }} />
-                <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
-                <PrimaryButton label="Elimina" onPress={deleteRideForever} style={{ backgroundColor: "#7C2D12" }} />
+                <PrimaryButton
+                  label="Modifica nota"
+                  onPress={openNoteModal}
+                  disabled={!isBookable}
+                />
+                <TouchableOpacity
+                  onPress={leave}
+                  disabled={isArchived || isCancelled}
+                  style={{
+                    backgroundColor: "#F1F5F9",
+                    borderRadius: 12,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                    marginTop: 4
+                  }}
+                >
+                  <Text style={{ color: "#475569", fontWeight: '700' }}>Non Partecipo</Text>
+                </TouchableOpacity>
               </>
             ) : (
-              <>
-                <PrimaryButton label="Modifica" onPress={editRide} />
-                <PrimaryButton label="Annulla" onPress={cancelRide} style={{ backgroundColor: "#DC2626" }} />
-                <PrimaryButton label="Archivia" onPress={archiveNow} style={{ backgroundColor: "#111827" }} />
-              </>
+              <PrimaryButton
+                label="Partecipa all'uscita"
+                onPress={openNoteModal}
+                disabled={!isBookable}
+                style={{ backgroundColor: ACTION_GREEN }} // Green join button
+              />
             )}
           </View>
-        )}
-      </View>
+        </View>
 
-        {/* SCHEDA DETTAGLIO */}
+        {/* CARD DETTAGLI (Stitch Uniformed Layout) */}
         <View style={[styles.card, { marginHorizontal: 16 }]}>
-        <Row label="Quando" value={whenText} />
-        <Row label="Ritrovo" value={ride.meetingPoint || "—"} />
-
-        {ride.link ? (
-          <View style={styles.linkRow}>
-            <Text style={styles.linkLabel}>Link</Text>
-            <TouchableOpacity
-              onPress={openMap}
-              style={[styles.mapLinkBtn, { alignSelf: "auto" }]}
-              accessibilityRole="button"
-              accessibilityLabel="Apri mappa"
-            >
-              <Text style={styles.mapLinkText} numberOfLines={1}>Apri mappa</Text>
-            </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 8 }}>
+            <Ionicons name="information-circle" size={24} color={ACTION_GREEN} />
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Dettagli Uscita</Text>
           </View>
-        ) : null}
 
-        <Row label="Guida" value={guideFullText} />
-        <Row label="Bici" value={bikesText} />
-        <Row label="Difficoltà" value={ride.difficulty || "—"} />
-        <Row label="Max partecipanti" value={maxText} />
-        <Row
-          label="Descrizione"
-          value={ride.description?.trim() ? ride.description : "—"}
-          multiline
-          renderValue={() => {
-            const descriptionText = ride.description?.trim();
-            if (!descriptionText) return <Text style={{ color: "#666" }}>—</Text>;
+          {/* Ritrovo */}
+          <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="location-outline" size={14} color="#94a3b8" />
+                <Text style={styles.gridLabel}>RITROVO</Text>
+              </View>
+              {ride.link && (
+                <TouchableOpacity onPress={openMap} style={{ flexDirection: 'row', alignItems: 'center' }} hitSlop={10}>
+                  <Text style={{ color: ACTION_GREEN, fontWeight: '600', fontSize: 13, marginRight: 4, textDecorationLine: 'underline' }}>Apri mappa</Text>
+                  <Ionicons name="open-outline" size={14} color={ACTION_GREEN} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.gridValue}>{ride.meetingPoint || "—"}</Text>
+          </View>
 
-            const approxLines = descriptionText.split(/\r?\n/).length;
-            const shouldShowToggle =
-              descriptionText.length > 400 || approxLines > 5;
-            const collapsedStyle =
-              !showFullDescription && shouldShowToggle
-                ? { maxHeight: 110, overflow: "hidden" as const }
-                : null;
+          <View style={styles.divider} />
 
-            return (
-              <View>
-                {Platform.OS === "ios" ? (
-                  <View style={collapsedStyle}>
+          {/* Row: Guida | Bici */}
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Ionicons name="person-outline" size={14} color="#94a3b8" />
+                <Text style={styles.gridLabel}>GUIDA</Text>
+              </View>
+              <Text style={styles.gridValue}>{guideFullText}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Ionicons name="bicycle-outline" size={14} color="#94a3b8" />
+                <Text style={styles.gridLabel}>BICI</Text>
+              </View>
+              <Text style={styles.gridValue}>{bikesText}</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Row: Difficoltà | Max */}
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Ionicons name="bar-chart-outline" size={14} color="#94a3b8" />
+                <Text style={styles.gridLabel}>DIFFICOLTÀ</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: (() => {
+                    const d = (ride.difficulty || "").toLowerCase();
+                    if (d.includes("facile")) return ACTION_GREEN;
+                    if (d.includes("medio") || d.includes("moderato")) return "#f97316";
+                    if (d.includes("difficile") || d.includes("impegnativo")) return "#ef4444";
+                    if (d.includes("estremo")) return "#000000";
+                    return "#94a3b8";
+                  })()
+                }} />
+                <Text style={styles.gridValue}>{ride.difficulty || "—"}</Text>
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Ionicons name="people-outline" size={14} color="#94a3b8" />
+                <Text style={styles.gridLabel}>MAX PART.</Text>
+              </View>
+              <Text style={styles.gridValue}>{maxText}</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Row: Quando */}
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Ionicons name="calendar-clear-outline" size={14} color="#94a3b8" />
+              <Text style={styles.gridLabel}>QUANDO</Text>
+            </View>
+            <Text style={styles.gridValue}>{whenText}</Text>
+          </View>
+        </View>
+
+        {/* CARD DESCRIZIONE (Separata) */}
+        <View style={[styles.card, { marginHorizontal: 16, padding: 16 }]}>
+          <Text style={styles.sectionTitle}>Descrizione</Text>
+          <Row
+            label=""
+            value={ride.description?.trim() ? ride.description : "—"}
+            multiline
+            renderValue={() => {
+              const descriptionText = ride.description?.trim();
+              if (!descriptionText) return <Text style={{ color: "#666" }}>—</Text>;
+
+              const approxLines = descriptionText.split(/\r?\n/).length;
+              /* Removed Toggle Logic per request "Nessuna troncatura" */
+
+              return (
+                <View>
+                  {Platform.OS === "ios" ? (
                     <TextInput
                       value={descriptionText}
                       editable={false}
@@ -1076,190 +1352,190 @@ export default function RideDetails() {
                       scrollEnabled={false}
                       contextMenuHidden={false}
                       dataDetectorTypes={["link"]}
-                      style={{ color: "#222", padding: 0 }}
+                      style={{ color: "#222", padding: 0, fontSize: 15, lineHeight: 24 }}
                     />
-                  </View>
-                ) : (
-                  <Text
-                    style={{ color: "#222" }}
-                    selectable
-                    numberOfLines={showFullDescription || !shouldShowToggle ? undefined : 5}
-                  >
-                    {renderLinkedText(descriptionText)}
-                  </Text>
-                )}
-                {shouldShowToggle && (
-                  <TouchableOpacity
-                    onPress={() => setShowFullDescription((prev) => !prev)}
-                    accessibilityRole="button"
-                    style={{ marginTop: 6 }}
-                  >
-                    <Text style={{ color: UI.colors.primary, fontWeight: "600" }}>
-                      {showFullDescription ? "Mostra meno..." : "Mostra di più..."}
+                  ) : (
+                    <Text
+                      style={{ color: "#222", fontSize: 15, lineHeight: 24 }}
+                      selectable
+                    >
+                      {renderLinkedText(descriptionText)}
                     </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          }}
-        />
-      </View>
+                  )}
 
-        {/* Prenotazione */}
-        {/* TODO: la card di prenotazione + riepilogo servizi potrebbe essere estratta in un sottocomponente. */}
-        <View style={[styles.card, { marginHorizontal: 16, gap: 8 }]}>         
-        <Text style={styles.sectionTitle}>Prenotazione</Text>
-
-        <Text style={{ color: "#1F2937" }}>
-          Partecipanti: <Text style={{ fontWeight: "700" }}>{participantsLabel}</Text>
-          {ride.maxParticipants == null ? " (nessun limite)" : ""}
-        </Text>
-
-        {isArchived && <Text style={{ color: "#6b7280" }}>Uscita archiviata: sola visualizzazione.</Text>}
-        {isCancelled && <Text style={{ color: "#DC2626", fontWeight: "600" }}>Uscita annullata: le prenotazioni sono bloccate.</Text>}
-        {!isBookable && !isArchived && !isCancelled && typeof ride.maxParticipants === "number" && (
-          <Text style={{ color: "#DC2626" }}>Posti esauriti.</Text>
-        )}
-
-        {serviceQuestions.length > 0 && (
-          <View style={styles.serviceSummaryBox}>
-            <Text style={styles.serviceBlockTitle}>Riepilogo servizi</Text>
-            {serviceQuestions.map((key) => (
-              <Text key={key} style={styles.serviceSummaryText}>
-                {SERVICE_LABELS[key]}: {serviceSummary[key].yes} sì / {serviceSummary[key].no} no
-              </Text>
-            ))}
-          </View>
-        )}
-
-        {myParticipant ? (
-          <>
-            <Text style={{ color: "#0a0", fontWeight: "600" }}>
-              Sei prenotato come: {formatCognomeNome(myParticipant.uid, myParticipant.name)}
-            </Text>
-            {myParticipant.note ? (
-              <Text style={{ color: "#333" }}>Nota: {myParticipant.note}</Text>
-            ) : (
-              <Text style={{ color: "#666" }}>Nessuna nota</Text>
-            )}
-
-            {serviceQuestions.length > 0 && (
-              <View style={styles.myServicesBox}>
-                <Text style={styles.serviceBlockTitle}>Le tue scelte</Text>
-                {serviceQuestions.map((key) => {
-                  const answer = myParticipant.services?.[key];
-                  return (
-                    <Text key={key} style={styles.myServicesText}>
-                      {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : answer === "no" ? "No" : "—"}
-                    </Text>
-                  );
-                })}
-              </View>
-            )}
-
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-              <PrimaryButton
-                label="Modifica nota"
-                onPress={openNoteModal}
-                disabled={!isBookable}
-              />
-              <PrimaryButton
-                label="Non Partecipo"
-                onPress={leave}
-                style={{ backgroundColor: isArchived || isCancelled ? "#94a3b8" : "#b00020" }}
-                disabled={isArchived || isCancelled}
-              />
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={{ color: "#666" }}>Non sei ancora prenotato per questa uscita.</Text>
-            <PrimaryButton label="Partecipa" onPress={openNoteModal} disabled={!isBookable} />
-          </>
-        )}
-      </View>
+                </View>
+              );
+            }}
+          />
+        </View>
 
         {/* Elenco partecipanti */}
         {/* TODO: blocco elenco partecipanti (lista + azioni admin) candidabile a sottocomponente riusabile. */}
-        <View style={[styles.card, { marginHorizontal: 16 }]}>
-        <Text style={styles.sectionTitle}>Elenco partecipanti</Text>
-        {isAdmin && (
-          <View style={{ marginBottom: 12 }}>
-            <PrimaryButton
-              label="Aggiungi manualmente"
-              onPress={openManualModal}
-              disabled={isArchived || isCancelled}
-            />
-          </View>
-        )}
-        {loadingParts ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <ActivityIndicator />
-            <Text style={styles.participantPlaceholder}>Carico partecipanti…</Text>
-          </View>
-        ) : combinedParticipants.length === 0 ? (
-          <Text style={styles.participantPlaceholder}>Ancora nessun partecipante.</Text>
-        ) : (
-          <FlatList
-            data={combinedParticipants}
-            keyExtractor={(item) => item.id}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-            renderItem={({ item, index }) => (
-              <View style={styles.participantRow}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={styles.participantName}>
-                    {index + 1}. {formatCognomeNome(item.uid, item.name)}
+        {/* CARD PARTECIPANTI (Stitch Preview + Expanded) */}
+        <View style={[styles.card, { marginHorizontal: 16, marginBottom: 32 }]}>
+          <View style={{ marginBottom: 16 }}>
+            {/* ROW 1: Title + Toggle */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Partecipanti ({combinedParticipants.length})
+              </Text>
+
+              {/* Show All Toggle */}
+              {combinedParticipants.length > 5 && (
+                <TouchableOpacity onPress={() => setShowAllParticipants(!showAllParticipants)} hitSlop={10}>
+                  <Text style={{ color: ACTION_GREEN, fontWeight: '700', fontSize: 13 }}>
+                    {showAllParticipants ? "Nascondi" : "Mostra tutti"}
                   </Text>
-                  {item.manual && (
-                    <Text style={styles.participantManualTag}>Inserito manualmente</Text>
-                  )}
-                  {item.note ? <Text style={styles.participantNote}>Nota: {item.note}</Text> : null}
-                  {serviceQuestions.length > 0 && (
-                    (() => {
-                      const answered = serviceQuestions.filter((key) => {
-                        const answer = item.services?.[key];
-                        return answer === "yes" || answer === "no";
-                      });
-                      if (answered.length === 0) return null;
-                      return (
-                        <View style={styles.serviceChipRow}>
-                          {answered.map((key) => {
-                            const answer = item.services?.[key];
-                            if (answer !== "yes" && answer !== "no") return null;
-                            return (
-                              <View
-                                key={key}
-                                style={[
-                                  styles.serviceChip,
-                                  answer === "yes" ? styles.serviceChipYes : styles.serviceChipNo,
-                                ]}
-                              >
-                                <Text style={styles.serviceChipText}>
-                                  {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : "No"}
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()
-                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* ROW 2: Admin Add CTA (Below title) */}
+            {isAdmin && (
+              <TouchableOpacity
+                onPress={openManualModal}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 8,
+                  alignSelf: 'flex-start'
+                }}
+                hitSlop={10}
+              >
+                <View style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: ACTION_GREEN,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Ionicons name="add" size={16} color="#ffffff" />
                 </View>
-                {isAdmin && !isArchived && (
-                  <TouchableOpacity
-                    onPress={() => handleAdminRemove(item)}
-                    style={styles.participantAdminBtn}
-                    accessibilityLabel="Rimuovi partecipante"
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#fff" />
-                  </TouchableOpacity>
-                )}
-              </View>
+                <Text style={{ color: ACTION_GREEN, fontWeight: '600', fontSize: 14 }}>
+                  Aggiungi
+                </Text>
+              </TouchableOpacity>
             )}
-            scrollEnabled={false}
-          />
-        )}
-      </View>
+          </View>
+
+          {loadingParts ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <ActivityIndicator color={UI.colors.primary} />
+              <Text style={styles.participantPlaceholder}>Carico partecipanti…</Text>
+            </View>
+          ) : combinedParticipants.length === 0 ? (
+            <Text style={styles.participantPlaceholder}>Ancora nessun partecipante.</Text>
+          ) : (
+            <>
+              <FlatList
+                data={showAllParticipants ? combinedParticipants : combinedParticipants.slice(0, 5)}
+                keyExtractor={(item) => item.id}
+                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+                renderItem={({ item, index }) => (
+                  <View style={styles.participantRow}>
+                    {/* Avatar Placeholder */}
+                    <View style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: 2
+                    }}>
+                      <Ionicons name="person" size={16} color="#64748b" />
+                    </View>
+
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.participantName}>
+                        {formatCognomeNome(item.uid, item.name)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        {item.manual && (
+                          <Text style={styles.participantManualTag}>MANUALE</Text>
+                        )}
+                        {/* Guide Badge (se combacia con guidaName) */}
+                        {(ride?.guidaName && item.name.includes(ride.guidaName)) || (ride?.guidaNames?.some(g => item.name.includes(g))) ? (
+                          <View style={{ backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 10, color: ACTION_GREEN, fontWeight: '700' }}>GUIDA</Text>
+                          </View>
+                        ) : null}
+
+                        {item.note && (
+                          <Text style={styles.participantNote}>
+                            {item.note}
+                          </Text>
+                        )}
+                      </View>
+
+
+                      {serviceQuestions.length > 0 && (
+                        (() => {
+                          const answered = serviceQuestions.filter((key) => {
+                            const answer = item.services?.[key];
+                            return answer === "yes" || answer === "no";
+                          });
+                          if (answered.length === 0) return null;
+                          return (
+                            <View style={styles.serviceChipRow}>
+                              {answered.map((key) => {
+                                const answer = item.services?.[key];
+                                if (answer !== "yes" && answer !== "no") return null;
+                                return (
+                                  <View
+                                    key={key}
+                                    style={[
+                                      styles.serviceChip,
+                                      answer === "yes" ? styles.serviceChipYes : styles.serviceChipNo,
+                                    ]}
+                                  >
+                                    <Text style={styles.serviceChipText}>
+                                      {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : "No"}
+                                    </Text>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          );
+                        })()
+                      )}
+                    </View>
+
+                    {/* Trash Action */}
+                    {isAdmin && !isArchived && (
+                      <TouchableOpacity
+                        onPress={() => handleAdminRemove(item)}
+                        style={styles.participantAdminBtn}
+                        accessibilityLabel="Rimuovi partecipante"
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="trash" size={16} color={UI.colors.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                scrollEnabled={false}
+              />
+
+              {/* Footer in collapsed state */}
+              {!showAllParticipants && combinedParticipants.length > 5 && (
+                <TouchableOpacity
+                  onPress={() => setShowAllParticipants(true)}
+                  style={{ marginTop: 12, paddingVertical: 8, alignItems: 'center' }}
+                  hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
+                >
+                  <Text style={{ color: '#22c55e', fontWeight: '700', fontSize: 13 }}>
+                    + altri {combinedParticipants.length - 5} partecipanti
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
 
         <View style={{ height: 24 }} />
       </Screen>
@@ -1311,9 +1587,8 @@ export default function RideDetails() {
                                 current === choice && styles.serviceOptionBtnActive,
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel={`${getServiceLabel(key)}: ${
-                                choice === "yes" ? "Sì" : "No"
-                              }`}
+                              accessibilityLabel={`${getServiceLabel(key)}: ${choice === "yes" ? "Sì" : "No"
+                                }`}
                             >
                               <Text
                                 style={[
@@ -1422,9 +1697,8 @@ export default function RideDetails() {
                                 current === choice && styles.serviceOptionBtnActive,
                               ]}
                               accessibilityRole="button"
-                              accessibilityLabel={`${getServiceLabel(key)}: ${
-                                choice === "yes" ? "Sì" : "No"
-                              }`}
+                              accessibilityLabel={`${getServiceLabel(key)}: ${choice === "yes" ? "Sì" : "No"
+                                }`}
                             >
                               <Text
                                 style={[
@@ -1499,47 +1773,168 @@ function Row({
 }
 
 const styles = StyleSheet.create({
+  // HEADER CUSTOM
+  headerBlock: {
+    marginBottom: 0, // removed bottom margin to glue with content if needed, but 16 is fine
+    marginTop: Platform.OS === 'ios' ? 24 : 8,
+    gap: 16,
+    paddingHorizontal: 16, // Added padding since removed from Screen? Screen has padding usually.
+    // Screen component has padding: UI.spacing.lg (20/16). 
+    // If wrapping View has marginHorizontal, double check.
+    // Let's assume Screen wrapper padding exists. 
+    // Actually, Screen implementation: padding: UI.spacing.lg.
+    // So internal elements don't need marginHorizontal 16 if they want to be aligned.
+    // BUT the cards have marginHorizontal 16 in original code.
+    // Let's keep consistency.
+  },
+  chipBase: {
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  participantChip: {
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    backgroundColor: "#0F172A",
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  highlightCard: {
+    borderColor: ACTION_GREEN,
+    backgroundColor: "#f0fdf4", // Light green tint
+    borderWidth: 1,
+  },
+  showAllBtn: {
+    paddingVertical: 12,
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    marginTop: 8,
+  },
+  showAllBtnText: {
+    color: UI.colors.primary,
+    fontWeight: "700",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#f1f5f9",
+    marginVertical: 12,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start", // Ensure top alignment
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.5,
+    lineHeight: 28,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 2,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 20, fontWeight: "800", flexShrink: 1, paddingRight: 12 },
   card: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 24, // Rounder Stitch cards
+    padding: 20,
     backgroundColor: "#fff",
-    marginTop: 12,
+    marginTop: 16,
+    // Stitch soft shadow
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8, color: UI.colors.text },
-  participantRow: {
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 8,
-    padding: 10,
-    backgroundColor: "#fafafa",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+
+  // NEW STITCH STYLES
+  highlightTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  checkCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  gridLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 0, // removed bottom margin to allow container control
+  },
+  gridValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1e293b",
+    lineHeight: 20,
   },
   participantManualTag: {
     color: UI.colors.accentWarm,
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // END NEW STYLES
+
+  sectionTitle: { fontSize: 18, fontWeight: "800", marginBottom: 16, color: "#0f172a" },
+  participantRow: {
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
   },
   participantName: {
-    fontWeight: "600",
-    color: UI.colors.text,
+    fontWeight: "700",
+    color: "#334155",
+    fontSize: 15,
   },
   participantNote: {
-    color: UI.colors.text,
+    color: "#64748b",
+    fontSize: 13.5,
+    fontStyle: "italic",
+    lineHeight: 20,
+    marginTop: 4,
+    width: '100%',
   },
   participantPlaceholder: {
-    color: UI.colors.text,
+    color: "#94a3b8",
+    fontStyle: "italic",
   },
   participantAdminBtn: {
-    backgroundColor: UI.colors.danger,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: 'rgba(220, 38, 38, 0.1)', // Light danger red
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.2)',
+    marginTop: 2,
   },
   serviceSummaryBox: {
     marginTop: 4,
@@ -1556,6 +1951,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0f172a",
   },
+  // ... other styles preserved
   serviceModalBlock: {
     gap: 10,
     borderWidth: 1,
@@ -1696,19 +2092,19 @@ const styles = StyleSheet.create({
   },
   modalActionPrimaryText: { color: "#fff", fontWeight: "800" },
   mapLinkBtn: {
-    backgroundColor: "#111",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  mapLinkText: { color: "#fff", fontWeight: "700" },
-  linkRow: {
+    backgroundColor: "#0F172A",
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 4,
   },
-  linkLabel: { fontWeight: "700" },
+  mapLinkText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  linkRow: {
+    marginBottom: 0,
+  },
+  linkLabel: { display: 'none' }, // hidden in Stitch
 });
 
 const adminStyles = StyleSheet.create({

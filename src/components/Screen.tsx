@@ -56,6 +56,7 @@ type ScreenProps = {
   titleMeta?: string;
   subtitle?: string;
   headerRight?: React.ReactNode;
+  headerLeft?: React.ReactNode;
   children: React.ReactNode;
   scroll?: boolean;
   useNativeHeader?: boolean;
@@ -69,6 +70,7 @@ export function Screen({
   titleMeta,
   subtitle,
   headerRight,
+  headerLeft,
   children,
   scroll = true,
   useNativeHeader = false,
@@ -108,6 +110,7 @@ export function Screen({
                 alignItems: headerContent ? "flex-start" : "center",
               }}
             >
+              {!!headerLeft && <View style={{ marginRight: UI.spacing.sm }}>{headerLeft}</View>}
               <View style={{ flex: 1, paddingRight: UI.spacing.sm }}>
                 {headerContent ? (
                   headerContent

@@ -11,8 +11,9 @@ export type RootStackParamList = {
   UserDetail: { uid: string; meRole?: string | null };
   UsciteList: undefined;
   Calendar: undefined;
+  CalendarDay: { day: string; rides: any[] };
   Board: undefined;
-  CreateRide: undefined;
+  CreateRide: { rideId?: string };
   // LEGACY alias: route "Create" mantenuta per compatibilità con versioni precedenti (al momento non navigata direttamente).
   Create: undefined; // alias compatibilità
   RideDetails: { rideId: string; title?: string };

@@ -95,6 +95,8 @@ const normalize = (value: string) =>
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
 
+const ACTION_GREEN = "#22c55e";
+
 export default function BoardScreen({ navigation, route }: any) {
   const { isAdmin, isOwner, loading: profileLoading } = useCurrentProfile();
   const canEdit = isAdmin || isOwner;
@@ -668,7 +670,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerAddBtn: {
-    backgroundColor: "#166534", // Green-800
+    backgroundColor: ACTION_GREEN, // Green-800 -> ACTION_GREEN
     width: 44,
     height: 44,
     borderRadius: 22, // Circle
@@ -883,14 +885,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   dateTopLine: {
-    color: "#166534", // Green-800
+    color: ACTION_GREEN, // Green-800 -> ACTION_GREEN
     fontWeight: "800",
     fontSize: 15,
     letterSpacing: 0.2,
     textAlign: "center"
   },
   dateYear: {
-    color: "#15803D", // Green-700
+    color: ACTION_GREEN, // Green-700 -> ACTION_GREEN
     fontWeight: "700",
     fontSize: 13,
     textAlign: "center",

@@ -11,6 +11,36 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
+// -----------------------------
+// Helpers: participants count
+// -----------------------------
+async function recomputeParticipantsCount(rideId: string) {
+  const db = admin.firestore();
+  const rideRef = db.doc(`rides/${rideId}`);
+  const rideSnap = await rideRef.get();
+
+  if (!rideSnap.exists) {
+    functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+    return;
+  }
+
+  const rideData = rideSnap.data() || {};
+  const manualParticipants = Array.isArray(rideData.manualParticipants)
+    ? rideData.manualParticipants
+    : [];
+  const manualCount = manualParticipants.length;
+
+  const participantsSnap = await rideRef.collection("participants").get();
+  const selfCount = participantsSnap.size;
+
+  const total = selfCount + manualCount;
+  await rideRef.update({ participantsCount: total });
+
+  functions.logger.info(
+    `[participantsCount] ride=${rideId} self=${selfCount} manual=${manualCount} total=${total}`
+  );
+}
+
 // --------------------
 // 1) Health check HTTP
 // --------------------
@@ -145,6 +175,31 @@ export const onRideUpdated = functions.firestore
         `[onRideUpdated] ${rideId} cancel chunk ${index} status=${result.status} ok=${result.ok}`
       );
     });
+  });
+
+// -----------------------------
+// 3b) Trigger su partecipanti (conteggio)
+// -----------------------------
+export const onParticipantCreated = functions.firestore
+  .document("rides/{rideId}/participants/{uid}")
+  .onCreate(async (_snap, context) => {
+    const rideId = context.params.rideId as string;
+    try {
+      await recomputeParticipantsCount(rideId);
+    } catch (err) {
+      functions.logger.error(`[participantsCount] create failed ride=${rideId}`, err);
+    }
+  });
+
+export const onParticipantDeleted = functions.firestore
+  .document("rides/{rideId}/participants/{uid}")
+  .onDelete(async (_snap, context) => {
+    const rideId = context.params.rideId as string;
+    try {
+      await recomputeParticipantsCount(rideId);
+    } catch (err) {
+      functions.logger.error(`[participantsCount] delete failed ride=${rideId}`, err);
+    }
   });
 
 // -----------------------------

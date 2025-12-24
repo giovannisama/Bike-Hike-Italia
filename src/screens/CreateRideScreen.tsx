@@ -14,7 +14,9 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Switch,
+  KeyboardAvoidingView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
 import {
@@ -41,6 +43,11 @@ import { it } from "date-fns/locale";
 import { splitGuideInput } from "../utils/guideHelpers";
 import type { RideDoc, UserDoc } from "../types/firestore";
 import type { RootStackParamList } from "../navigation/types";
+import { Ionicons } from "@expo/vector-icons";
+
+// --- CONSTANTS ---
+const ACTION_GREEN = "#22c55e"; // Main action color
+
 
 type FieldErrors = {
   title?: string;
@@ -74,6 +81,12 @@ const EXTRA_SERVICE_DEFINITIONS: Array<{ key: ExtraServiceKey; label: string; he
   { key: "dinner", label: "Cena", helper: "Richiedi se il partecipante aderisce alla cena." },
   { key: "overnight", label: "Pernotto", helper: "Richiedi se il partecipante necessita del pernottamento." },
 ];
+
+const EXTRA_SERVICE_ICONS: Record<ExtraServiceKey, keyof typeof Ionicons.glyphMap> = {
+  lunch: "restaurant-outline",
+  dinner: "restaurant-outline",
+  overnight: "bed-outline",
+};
 
 const createDefaultExtraServices = (): Record<ExtraServiceKey, ExtraServiceState> => ({
   lunch: { enabled: false, label: "" },
@@ -283,7 +296,7 @@ export default function CreateRideScreen() {
         onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
           if (event.type !== "set" || !selectedDate) return;
           const next = new Date(selectedDate);
-          if (mode === "time") {
+          if ((mode as string) === "time") {
             next.setSeconds(0, 0);
           }
           applyPickerValue(mode, next);
@@ -346,8 +359,8 @@ export default function CreateRideScreen() {
           Array.isArray(d?.guidaNames) && d.guidaNames.length
             ? d.guidaNames
             : d?.guidaName
-            ? [d.guidaName]
-            : [];
+              ? [d.guidaName]
+              : [];
         setGuidaText(
           storedGuides
             .map((name: string) => (name ?? "").toString().trim())
@@ -502,8 +515,8 @@ export default function CreateRideScreen() {
       maxParticipants.trim() === ""
         ? null
         : Number.isNaN(Number(maxParticipants))
-        ? null
-        : Number(maxParticipants);
+          ? null
+          : Number(maxParticipants);
 
     const extraServicesPayload: Record<string, any> = {};
     EXTRA_SERVICE_KEYS.forEach((key) => {
@@ -553,7 +566,7 @@ export default function CreateRideScreen() {
       guidaNames: guidaNames ?? null,
     };
 
-  const payload = sanitizeCreatePayload(basePayload);
+    const payload = sanitizeCreatePayload(basePayload);
     if (Object.keys(extraServicesPayload).length > 0) {
       payload.extraServices = extraServicesPayload;
     } else if (isEdit) {
@@ -628,374 +641,451 @@ export default function CreateRideScreen() {
   const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
   // TODO: sezione UI principale molto ampia; valutare estrazione in sottocomponenti (es. form principale, feedback, warning).
+  const getDifficultyColor = (diff: string) => {
+    switch (diff) {
+      case "Facile": return "#22c55e";
+      case "Medio/Moderato": return "#f97316";
+      case "Difficile/Impegnativo": return "#ef4444";
+      case "Estremo": return "#000000";
+      default: return "#94a3b8";
+    }
+  };
+
   return (
-    <>
-      <Screen
-        title={titleScreen}
-        subtitle={isAdmin ? "Solo Admin o Owner possono salvare" : "Compila i dettagli dell'uscita"}
-        scroll={true}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* TODO: sezione principale del form candidabile a sottocomponente riutilizzabile. */}
-        <View style={{ gap: UI.spacing.md }}>
-          {feedback && (
-            <View
-              style={[
-                styles.feedbackBox,
-                feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError,
-              ]}
-            >
-              <Text
-                style={{
-                  color: feedback.type === "success" ? "#14532d" : "#7f1d1d",
-                  fontWeight: "700",
-                }}
+    <Screen
+      title={titleScreen}
+      useNativeHeader={true}
+      scroll={false}
+      backgroundColor="#FDFCF8"
+    >
+      <View style={styles.root}>
+        {/* CUSTOM HEADER */}
+        <View style={styles.headerContainer}>
+          <SafeAreaView edges={["top"]}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={styles.backButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                {feedback.message}
-              </Text>
+                <Ionicons name="arrow-back" size={24} color="#1E293B" />
+              </TouchableOpacity>
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <Text style={styles.headerTitle}>
+                  {titleScreen}
+                </Text>
+                {!isAdmin && (
+                  <Text style={styles.headerSubtitle}>Solo Admin o Owner possono salvare</Text>
+                )}
+              </View>
             </View>
-          )}
-          {!!adminWarning && (
-            <View style={styles.alertBox}>
-              <Text style={styles.alertText}>{adminWarning}</Text>
-            </View>
-          )}
+          </SafeAreaView>
+        </View>
 
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Titolo *</Text>
-            <TextInput
-              value={title}
-              onChangeText={(value) => {
-                setTitle(value);
-                if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-              }}
-              placeholder="Uscita Gravel ai Colli Euganei"
-              style={[styles.input, errors.title && styles.inputError]}
-              autoCorrect
-              autoCapitalize="sentences"
-              returnKeyType="next"
-              blurOnSubmit={false}
-            />
-            {errors.title && <Text style={styles.errorText}>{errors.title}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Guida (testo libero)</Text>
-            <TextInput
-              value={guidaText}
-              onChangeText={setGuidaText}
-              placeholder="Es. Mario Rossi; Anna Verdi"
-              style={styles.input}
-            />
-            <Text style={styles.helperText}>
-              Separa i nomi con il punto e virgola (;). Il primo sarà mostrato come “guida principale”.
-            </Text>
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Tipo di bici</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsScrollContent}
-            >
-              {BIKE_TYPES.map((b) => {
-                const active = bikes.includes(b);
-                return (
-                  <Pressable
-                    key={b}
-                    onPress={() => toggleBike(b)}
-                    style={[styles.chip, active && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Difficoltà</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsScrollContent}
-            >
-              {DIFFICULTY_OPTIONS.map((opt) => {
-                const active = difficulty === opt;
-                return (
-                  <Pressable
-                    key={opt}
-                    onPress={() => setDifficulty(active ? "" : opt)}
-                    style={[styles.chip, active && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Data *</Text>
-            <Pressable
-              onPress={() => openNativePicker("date")}
-              style={[styles.input, styles.fakeInput, errors.date && styles.inputError]}
-              accessibilityRole="button"
-              accessibilityLabel="Seleziona la data dell'uscita"
-            >
-              <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-                {date ? displayDateValue : "Seleziona data"}
-              </Text>
-            </Pressable>
-            {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Ora *</Text>
-            <Pressable
-              onPress={() => openNativePicker("time")}
-              style={[styles.input, styles.fakeInput, errors.time && styles.inputError]}
-              accessibilityRole="button"
-              accessibilityLabel="Seleziona l'orario di partenza"
-            >
-              <Text style={time ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
-                {time || "Seleziona orario"}
-              </Text>
-            </Pressable>
-            {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Luogo di ritrovo *</Text>
-            <TextInput
-              value={meetingPoint}
-              onChangeText={(value) => {
-                setMeetingPoint(value);
-                if (errors.meetingPoint) setErrors((prev) => ({ ...prev, meetingPoint: undefined }));
-              }}
-              placeholder="Piazzale Roma"
-              style={[styles.input, errors.meetingPoint && styles.inputError]}
-            />
-            {errors.meetingPoint && <Text style={styles.errorText}>{errors.meetingPoint}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Link posizione (opzionale)</Text>
-            <TextInput
-              value={link}
-              onChangeText={(value) => {
-                setLink(value);
-                if (errors.link) setErrors((prev) => ({ ...prev, link: undefined }));
-              }}
-              placeholder="Incolla link Google Maps / Apple Maps / geo:"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              style={[styles.input, errors.link && styles.inputError]}
-            />
-            {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Descrizione</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Percorso gravel panoramico…"
-              style={[styles.input, styles.textArea]}
-              multiline
-            />
-          </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Numero massimo partecipanti (opzionale)</Text>
-            <TextInput
-              value={maxParticipants}
-              onChangeText={(value) => {
-                setMaxParticipants(value);
-                if (errors.maxParticipants) setErrors((prev) => ({ ...prev, maxParticipants: undefined }));
-              }}
-              placeholder="es. 12 (lascia vuoto per nessun limite)"
-              keyboardType="number-pad"
-              inputMode="numeric"
-              style={[styles.input, errors.maxParticipants && styles.inputError]}
-            />
-            {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
-          </View>
-
-          {/* TODO: pannello extraServices potrebbe diventare componente dedicato riusabile. */}
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Servizi extra</Text>
-            <Text style={styles.helperText}>
-              Attiva le richieste aggiuntive: i partecipanti dovranno rispondere Sì/No durante la prenotazione.
-            </Text>
-            {servicesLocked && (
-              <Text style={styles.warningText}>
-                Non è possibile attivare nuovi servizi perché l'uscita ha già prenotati.
-              </Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {feedback && (
+              <View
+                style={[
+                  styles.feedbackBox,
+                  feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError,
+                ]}
+              >
+                <Text
+                  style={{
+                    color: feedback.type === "success" ? "#14532d" : "#7f1d1d",
+                    fontWeight: "700",
+                  }}
+                >
+                  {feedback.message}
+                </Text>
+              </View>
             )}
-            <View style={{ gap: UI.spacing.sm, marginTop: UI.spacing.xs }}>
-              {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }) => {
-                const state = extraServices[key];
-                const isToggleLocked = servicesLocked && !initialEnabledServices[key];
-                return (
-                  <View
-                    key={key}
+
+            {isEdit && isAdmin && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Stato Uscita</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <Pressable
+                    onPress={toggleCancelled}
                     style={[
-                      styles.serviceToggleBlock,
-                      isToggleLocked && styles.serviceToggleDisabled,
+                      styles.adminBtn,
+                      status === "cancelled" && { backgroundColor: UI.colors.danger },
                     ]}
                   >
-                    <View style={styles.serviceToggleRow}>
-                      <Pressable
-                        style={{ flex: 1, paddingRight: UI.spacing.sm }}
-                        onPress={() => toggleExtraService(key, !state.enabled)}
-                        disabled={isToggleLocked}
-                        accessibilityRole="switch"
-                        accessibilityState={{
-                          disabled: isToggleLocked,
-                          checked: state.enabled,
-                        }}
-                      >
-                        <Text style={styles.serviceToggleLabel}>{label}</Text>
-                        <Text style={styles.serviceToggleHelper}>{helper}</Text>
-                      </Pressable>
-                      <View style={styles.serviceSwitchWrapper}>
-                        <Switch
-                          value={state.enabled}
-                          onValueChange={(value) => toggleExtraService(key, value)}
-                          disabled={isToggleLocked}
-                          trackColor={{ false: "#cbd5f5", true: UI.colors.primary }}
-                          thumbColor={
-                            Platform.OS === "android" ? (state.enabled ? "#fff" : "#f8fafc") : undefined
-                          }
-                        />
-                      </View>
-                    </View>
-                    {state.enabled && (
-                      <TextInput
-                        value={state.label}
-                        onChangeText={(value) => updateExtraServiceLabel(key, value)}
-                        style={styles.serviceLabelInput}
-                        placeholder={`Dettagli ${label.toLowerCase()} (facoltativo)`}
-                      />
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          </View>
+                    <Text style={styles.adminBtnText}>
+                      {status === "cancelled" ? "Riapri Uscita" : "Annulla Uscita"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={toggleArchived}
+                    style={[
+                      styles.adminBtn,
+                      archived && { backgroundColor: UI.colors.muted },
+                    ]}
+                  >
+                    <Text style={styles.adminBtnText}>
+                      {archived ? "Ripristina da Archivio" : "Archivia Uscita"}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.helperText}>
+                  Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
+                  {archived ? " • ARCHIVIATA" : ""}
+                </Text>
+              </View>
+            )}
 
-          {isEdit && isAdmin && (
-            <View style={[styles.formBlock, { gap: UI.spacing.sm }]}>
-              <Text style={styles.label}>Azioni amministrative</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm }}>
-                <Pressable
-                  onPress={toggleCancelled}
-                  style={[
-                    styles.adminBtn,
-                    status === "cancelled" && { backgroundColor: UI.colors.danger },
-                  ]}
-                >
-                  <Text style={styles.adminBtnText}>
-                    {status === "cancelled" ? "Riapri" : "Annulla"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={toggleArchived}
-                  style={[
-                    styles.adminBtn,
-                    archived && { backgroundColor: UI.colors.muted },
-                  ]}
-                >
-                  <Text style={styles.adminBtnText}>
-                    {archived ? "Ripristina" : "Archivia"}
-                  </Text>
-                </Pressable>
+            {/* CARD 1: INFO GENERALI */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="information-circle-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Informazioni</Text>
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Titolo *</Text>
+                <TextInput
+                  value={title}
+                  onChangeText={(value) => {
+                    setTitle(value);
+                    if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+                  }}
+                  placeholder="Es. Uscita Gravel Colli Euganei"
+                  placeholderTextColor="#94a3b8"
+                  style={[styles.input, errors.title && styles.inputError]}
+                />
+                {errors.title && <Text style={styles.errorText}>{errors.title}</Text>}
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Guida</Text>
+                <TextInput
+                  value={guidaText}
+                  onChangeText={setGuidaText}
+                  placeholder="Es. Mario Rossi; Anna Verdi"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.input}
+                />
+                <Text style={styles.helperText}>
+                  Separa i nomi con punto e virgola (;).
+                </Text>
+              </View>
+            </View>
+
+            {/* CARD 2: TIPO & DIFFICOLTÀ */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="bicycle-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Tipologia</Text>
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Tipo Bici (Multi-selezione)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
+                  {BIKE_TYPES.map((b) => {
+                    const active = bikes.includes(b);
+                    return (
+                      <Pressable
+                        key={b}
+                        onPress={() => toggleBike(b)}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        {active && <Ionicons name="checkmark" size={16} color={ACTION_GREEN} />}
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+                {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Difficoltà</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
+                  {DIFFICULTY_OPTIONS.map((opt) => {
+                    const active = difficulty === opt;
+                    const dotColor = getDifficultyColor(opt);
+                    return (
+                      <Pressable
+                        key={opt}
+                        onPress={() => setDifficulty(active ? "" : opt)}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        <View style={[styles.dot, { backgroundColor: dotColor }]} />
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+
+            {/* CARD 3: DATA & DOVE */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="calendar-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Quando e Dove</Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={styles.label}>Data *</Text>
+                  <Pressable
+                    onPress={() => openNativePicker("date")}
+                    style={[styles.input, styles.fakeInput, errors.date && styles.inputError]}
+                  >
+                    <Text style={date ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+                      {date ? displayDateValue : "Seleziona"}
+                    </Text>
+                  </Pressable>
+                  {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
+                </View>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={styles.label}>Ora *</Text>
+                  <Pressable
+                    onPress={() => openNativePicker("time")}
+                    style={[styles.input, styles.fakeInput, errors.time && styles.inputError]}
+                  >
+                    <Text style={time ? styles.fakeInputValue : styles.fakeInputPlaceholder}>
+                      {time || "Seleziona"}
+                    </Text>
+                  </Pressable>
+                  {errors.time && <Text style={styles.errorText}>{errors.time}</Text>}
+                </View>
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Luogo di ritrovo *</Text>
+                <TextInput
+                  value={meetingPoint}
+                  onChangeText={(value) => {
+                    setMeetingPoint(value);
+                    if (errors.meetingPoint) setErrors((prev) => ({ ...prev, meetingPoint: undefined }));
+                  }}
+                  placeholder="Es. Piazzale Roma"
+                  placeholderTextColor="#94a3b8"
+                  style={[styles.input, errors.meetingPoint && styles.inputError]}
+                />
+                {errors.meetingPoint && <Text style={styles.errorText}>{errors.meetingPoint}</Text>}
+              </View>
+
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Link posizione (Google Maps)</Text>
+                <TextInput
+                  value={link}
+                  onChangeText={(value) => {
+                    setLink(value);
+                    if (errors.link) setErrors((prev) => ({ ...prev, link: undefined }));
+                  }}
+                  placeholder="https://maps.app.goo.gl/..."
+                  placeholderTextColor="#94a3b8"
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  style={[styles.input, errors.link && styles.inputError]}
+                />
+                {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
+              </View>
+            </View>
+
+            {/* CARD 4: DESCRIZIONE */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="document-text-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Descrizione</Text>
+              </View>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Descrivi il percorso, il dislivello, e altre info utili..."
+                placeholderTextColor="#94a3b8"
+                style={[styles.input, styles.textArea]}
+                multiline
+              />
+            </View>
+
+            {/* CARD 5: PARTECIPAZIONE */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="people-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Partecipazione</Text>
+              </View>
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Max Partecipanti (opzionale)</Text>
+                <TextInput
+                  value={maxParticipants}
+                  onChangeText={(value) => {
+                    setMaxParticipants(value);
+                    if (errors.maxParticipants) setErrors((prev) => ({ ...prev, maxParticipants: undefined }));
+                  }}
+                  placeholder="Es. 15 (lascia vuoto per illimitati)"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="number-pad"
+                  style={[styles.input, errors.maxParticipants && styles.inputError]}
+                />
+                {errors.maxParticipants && <Text style={styles.errorText}>{errors.maxParticipants}</Text>}
+              </View>
+            </View>
+
+            {/* CARD 6: SERVIZI EXTRA */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="fast-food-outline" size={22} color={ACTION_GREEN} />
+                <Text style={styles.cardTitle}>Servizi Extra</Text>
               </View>
               <Text style={styles.helperText}>
-                Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
-                {archived ? " • ARCHIVIATA" : ""}
+                Attiva se richiesti (es. prenotazione ristorante). I partecipanti potranno indicare Sì/No.
               </Text>
-            </View>
-          )}
-
-          <View style={{ marginTop: UI.spacing.lg }}>
-            <TouchableOpacity
-              onPress={onSave}
-              disabled={saving || !isAdmin || loadingPrefill}
-              style={[
-                styles.saveBtn,
-                (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
-              ]}
-            >
-              {saving ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno…" : "Salvataggio…"}</Text>
+              {servicesLocked && (
+                <View style={styles.alertBox}>
+                  <Text style={styles.alertText}>Servizi bloccati: ci sono già prenotazioni.</Text>
                 </View>
-              ) : (
-                <Text style={styles.saveBtnText}>
-                  {isEdit ? "💾 Salva modifiche" : "💾 Crea uscita"}
-                </Text>
               )}
-            </TouchableOpacity>
-          </View>
 
+              <View style={styles.serviceList}>
+                {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }, index) => {
+                  const state = extraServices[key];
+                  const isToggleLocked = servicesLocked && !initialEnabledServices[key];
+                  const showDivider = index < EXTRA_SERVICE_DEFINITIONS.length - 1;
+                  return (
+                    <View
+                      key={key}
+                      style={[
+                        styles.serviceItem,
+                        showDivider && styles.serviceItemDivider,
+                        isToggleLocked && styles.serviceToggleDisabled,
+                      ]}
+                    >
+                      <Pressable
+                        onPress={() => toggleExtraService(key, !state.enabled)}
+                        disabled={isToggleLocked}
+                        style={({ pressed }) => [
+                          styles.serviceToggleRow,
+                          pressed && { backgroundColor: "rgba(0,0,0,0.02)" } // Subtle feedback
+                        ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <View style={styles.serviceRowLeft}>
+                          <View style={styles.serviceIconWrap}>
+                            <Ionicons name={EXTRA_SERVICE_ICONS[key]} size={18} color={ACTION_GREEN} />
+                          </View>
+                          <View style={styles.serviceToggleText}>
+                            <Text style={styles.serviceToggleLabel}>{label}</Text>
+                            <Text style={styles.serviceToggleHelper}>{helper}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.serviceSwitchWrapper}>
+                          <Switch
+                            value={state.enabled}
+                            onValueChange={(value) => toggleExtraService(key, value)}
+                            disabled={isToggleLocked}
+                            trackColor={{ false: "#cbd5f5", true: ACTION_GREEN }}
+                            ios_backgroundColor="#cbd5f5"
+                            thumbColor={Platform.OS === "android" ? "#fff" : undefined}
+                          />
+                        </View>
+                      </Pressable>
+                      {state.enabled && (
+                        <View style={styles.serviceLabelRow}>
+                          <TextInput
+                            value={state.label}
+                            onChangeText={(value) => updateExtraServiceLabel(key, value)}
+                            style={styles.serviceLabelInput}
+                            placeholder={`Dettagli ${label.toLowerCase()} (facoltativo)`}
+                            placeholderTextColor="#94a3b8"
+                          />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Added extra padding for scroll content to clear sticky footer */}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        {/* STICKY CTA */}
+        <View style={styles.footerContainer}>
+          <TouchableOpacity
+            onPress={onSave}
+            disabled={saving || !isAdmin || loadingPrefill}
+            style={[
+              styles.saveBtn,
+              (saving || !isAdmin || loadingPrefill) && styles.saveBtnDisabled,
+            ]}
+            activeOpacity={0.8}
+          >
+            {saving ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno..." : "Salvataggio..."}</Text>
+              </View>
+            ) : (
+              <Text style={styles.saveBtnText}>
+                {isEdit ? "Salva Modifiche" : "Crea Uscita"}
+              </Text>
+            )}
+          </TouchableOpacity>
           <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
-
-          <VSpace size="xl" />
         </View>
-      </Screen>
+      </View>
 
+      {/* iOS Modal DatePicker */}
       {Platform.OS === "ios" && (
         <Modal
           transparent
-          animationType="slide"
+          animationType="fade"
           visible={iosPickerMode !== null}
           onRequestClose={closeIosPicker}
         >
           <View style={styles.pickerWrapper}>
-            {/* backdrop cliccabile */}
             <TouchableWithoutFeedback onPress={closeIosPicker}>
               <View style={styles.pickerOverlay} />
             </TouchableWithoutFeedback>
 
-            {/* sheet in basso con header + DateTimePicker */}
             <View style={styles.pickerContainer}>
               <View style={styles.pickerHeader}>
                 <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
                   <Text style={styles.pickerHeaderText}>Annulla</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
-                  <Text style={[styles.pickerHeaderText, styles.pickerHeaderTextPrimary]}>
+                  <Text style={styles.pickerHeaderTextPrimary}>
                     Fatto
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              {iosPickerMode === "date" ? (
+              {iosPickerMode === "date" && (
                 <View style={styles.pickerPreviewRow}>
                   <Text style={styles.pickerPreviewLabel}>
                     {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
                   </Text>
                 </View>
-              ) : null}
+              )}
 
               {iosPickerMode && (
                 <DateTimePicker
                   value={iosPickerValue}
                   mode={iosPickerMode}
-                  display={isIos ? "spinner" : "default"}
-                  preferredDatePickerStyle={isIos ? "spinner" : undefined}
+                  display="spinner"
                   onChange={(_, selected) => {
                     if (selected) setIosPickerValue(selected);
                   }}
                   minuteInterval={iosPickerMode === "time" ? 5 : undefined}
                   locale="it-IT"
                   style={styles.iosPicker}
+                  textColor="#000000"
                 />
               )}
             </View>
@@ -1003,7 +1093,7 @@ export default function CreateRideScreen() {
         </Modal>
       )}
 
-      {/* FIX: Android time picker 5-minute steps */}
+      {/* Android TimePicker Helper */}
       <AndroidTimePicker
         visible={androidTimePickerVisible}
         initialDate={androidTimePickerInitialDate}
@@ -1013,233 +1103,345 @@ export default function CreateRideScreen() {
           setAndroidTimePickerVisible(false);
         }}
       />
-    </>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  formBlock: { gap: UI.spacing.xs },
-  label: {
+  // ROOT
+  root: {
+    flex: 1,
+    backgroundColor: "#FDFCF8", // Background light off-white
+  },
+
+  // HEADER
+  headerContainer: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "android" ? 16 : 8,
+    paddingBottom: 16,
+    backgroundColor: "#FDFCF8",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  backButton: {
+    marginRight: 8,
+    padding: 4,
+    marginTop: 2, // Optical alignment with text line-height
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.5,
+    lineHeight: 28,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 2,
+  },
+
+  // CARD LAYOUT
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 100, // space for sticky footer
+    gap: 20, // Vertical spacing between cards
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    // Soft shadow
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    gap: 16,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  cardTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    color: UI.colors.text,
+    color: "#1E293B",
+  },
+
+  // FORM ELEMENTS
+  formBlock: { gap: 6 },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#334155",
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: UI.radius.md,
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: 12,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     backgroundColor: "#fff",
     fontSize: 16,
-    color: UI.colors.text,
+    color: "#0F172A",
+  },
+  inputError: {
+    borderColor: "#EF4444",
+  },
+  inputFocus: {
+    borderColor: ACTION_GREEN, // We manually apply this if we can track focus, or just rely on default
+  },
+  textArea: {
+    minHeight: 120,
+    textAlignVertical: "top",
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  helperText: {
+    fontSize: 13,
+    color: "#64748B",
+    lineHeight: 18,
   },
   fakeInput: {
     justifyContent: "center",
   },
   fakeInputValue: {
     fontSize: 16,
-    color: UI.colors.text,
+    color: "#0F172A",
   },
   fakeInputPlaceholder: {
     fontSize: 16,
-    color: "#9ca3af",
+    color: "#9CA3AF",
   },
-  inputError: {
-    borderColor: "#f87171",
-  },
-  errorText: {
-    color: "#b91c1c",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  textArea: {
-    minHeight: 120,
-    textAlignVertical: "top",
-  },
-  helperText: {
-    fontSize: 12,
-    color: UI.colors.muted,
-  },
-  warningText: {
-    fontSize: 12,
-    color: "#b91c1c",
-    marginTop: 4,
-  },
+
+  // CHIPS
   chipsScrollContent: {
     flexDirection: "row",
-    gap: UI.spacing.sm,
-    paddingVertical: 4,
+    gap: 10,
+    paddingVertical: 2,
   },
-  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.sm },
   chip: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: UI.radius.round,
-    paddingHorizontal: UI.spacing.md - 2,
-    paddingVertical: UI.spacing.xs - 2,
+    borderColor: "#E2E8F0",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: "#fff",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   chipActive: {
-    backgroundColor: UI.colors.primary,
-    borderColor: UI.colors.primary,
+    backgroundColor: "rgba(34, 197, 94, 0.08)", // ACTION_GREEN with opacity
+    borderColor: ACTION_GREEN,
   },
-  chipText: { color: UI.colors.text, fontWeight: "600" },
-  chipTextActive: { color: "#fff" },
+  chipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  chipTextActive: {
+    color: ACTION_GREEN,
+  },
 
-  serviceToggleBlock: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: UI.radius.md,
-    padding: UI.spacing.sm,
-    backgroundColor: "#f8fafc",
-    gap: UI.spacing.xs,
+  // DIFFICULTY DOTS
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  // EXTRAS
+  serviceList: {
+    marginTop: 8,
+  },
+  serviceItem: {
+    paddingVertical: 12,
+  },
+  serviceItemDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
   serviceToggleDisabled: {
-    opacity: 0.55,
+    opacity: 0.6,
   },
   serviceToggleRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: UI.spacing.sm,
   },
-  serviceSwitchWrapper: {
-    flexShrink: 0,
-    paddingLeft: UI.spacing.sm,
-    paddingRight: UI.spacing.xs,
-    paddingTop: 2,
-    alignItems: "flex-end",
-    justifyContent: "flex-start",
-    alignSelf: "flex-start",
-    ...Platform.select({
-      ios: { minWidth: 68 },
-      default: { minWidth: 60 },
-    }),
+  serviceRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  serviceIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  serviceToggleText: {
+    flex: 1,
+    minWidth: 0,
   },
   serviceToggleLabel: {
+    fontSize: 15,
     fontWeight: "700",
-    color: UI.colors.text,
+    color: "#1E293B",
   },
   serviceToggleHelper: {
-    fontSize: 12,
-    color: UI.colors.muted,
+    fontSize: 13,
+    color: "#64748B",
     marginTop: 2,
+    paddingRight: 8,
+  },
+  serviceSwitchWrapper: {
+    alignSelf: "center",
+    marginLeft: 12,
+    minWidth: 68,
+    alignItems: "flex-end",
+  },
+  serviceLabelRow: {
+    marginTop: 10,
+    marginLeft: 46,
   },
   serviceLabelInput: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: UI.radius.md,
-    paddingHorizontal: UI.spacing.sm,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: "#fff",
-    fontSize: 15,
-    color: UI.colors.text,
+    fontSize: 14,
+    color: "#0F172A",
   },
 
-  // === iOS picker modal ===
-  pickerWrapper: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
+  // FEEDBACK / ALERTS
+  feedbackBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
   },
-  // backdrop prende lo spazio sopra il foglio, non è absolute
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  feedbackSuccess: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
   },
-  // sheet in basso con il DateTimePicker
+  feedbackError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  alertBox: {
+    backgroundColor: "#FFF7ED",
+    borderColor: "#FED7AA",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  alertText: {
+    color: "#9A3412",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+
+  adminBtn: {
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  adminBtnText: {
+    color: "#334155",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
+  // STICKY FOOTER
+  footerContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(253, 252, 248, 0.9)", // matches root bg with Blur effect if possible, but solid is safer
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "ios" ? 32 : 16,
+  },
+  saveBtn: {
+    backgroundColor: ACTION_GREEN,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: ACTION_GREEN,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+    shadowOpacity: 0.1,
+  },
+  saveBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 17,
+  },
+  mandatoryNote: {
+    fontSize: 12,
+    color: "#94A3B8",
+    textAlign: "center",
+    marginTop: 12,
+  },
+
+  // PICKERS
+  pickerWrapper: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)" },
   pickerContainer: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: UI.radius.lg,
-    borderTopRightRadius: UI.radius.lg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     minHeight: 320,
-    paddingHorizontal: UI.spacing.md,
-    paddingTop: UI.spacing.sm,
-    paddingBottom: UI.spacing.md,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
   pickerHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: UI.spacing.md,
-    paddingVertical: UI.spacing.sm,
+    marginBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#F1F5F9",
+    paddingBottom: 12,
   },
-  pickerHeaderBtn: {
-    paddingVertical: UI.spacing.xs,
-  },
-  pickerHeaderText: {
-    fontSize: 16,
-    color: UI.colors.text,
-  },
-  pickerHeaderTextPrimary: {
-    color: UI.colors.primary,
-    fontWeight: "700",
-  },
-  pickerPreviewRow: {
-    paddingHorizontal: UI.spacing.lg,
-    paddingVertical: UI.spacing.xs,
-    alignItems: "center",
-  },
-  pickerPreviewLabel: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: UI.colors.text,
-  },
-  iosPicker: {
-    width: "100%",
-    minHeight: 260,
-  },
-
-  adminBtn: {
-    backgroundColor: UI.colors.primary,
-    paddingHorizontal: UI.spacing.md,
-    paddingVertical: UI.spacing.xs,
-    borderRadius: UI.radius.md,
-  },
-  adminBtnText: { color: "#fff", fontWeight: "700" },
-  alertBox: {
-    backgroundColor: UI.colors.warningBg,
-    borderColor: UI.colors.warningBorder,
-    borderWidth: 1,
-    borderRadius: UI.radius.md,
-    padding: UI.spacing.sm,
-  },
-  alertText: {
-    color: "#7C2D12",
-    fontWeight: "600",
-  },
-  feedbackBox: {
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
-    borderRadius: UI.radius.md,
-    borderWidth: 1,
-  },
-  feedbackSuccess: {
-    backgroundColor: "#dcfce7",
-    borderColor: "#bbf7d0",
-  },
-  feedbackError: {
-    backgroundColor: "#fee2e2",
-    borderColor: "#fecaca",
-  },
-  saveBtn: {
-    backgroundColor: UI.colors.accent,
-    borderRadius: UI.radius.lg,
-    paddingVertical: UI.spacing.sm,
-    alignItems: "center",
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
-  },
-  saveBtnText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 16,
-  },
-  mandatoryNote: {
-    fontSize: 12,
-    color: UI.colors.muted,
-    textAlign: "right",
-  },
+  pickerHeaderBtn: { padding: 8 },
+  pickerHeaderText: { fontSize: 16, color: "#475569" },
+  pickerHeaderTextPrimary: { color: ACTION_GREEN, fontWeight: "700" },
+  pickerPreviewRow: { alignItems: "center", paddingBottom: 16 },
+  pickerPreviewLabel: { fontSize: 20, fontWeight: "700", color: "#1E293B" },
+  iosPicker: { width: "100%", height: 200 },
 });

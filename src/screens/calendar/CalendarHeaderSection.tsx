@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
 import { pad2 } from "./helpers";
@@ -73,9 +73,45 @@ export function CalendarHeaderSection({
   gridWidth = 0,
   gridHeight = 0,
 }: CalendarHeaderSectionProps) {
+  const SHOW_LAYOUT_DEBUG = false; // audit concluso: debug disattivato
+  const [layoutDebug, setLayoutDebug] = useState({
+    outerWrapperW: 0,
+    innerWrapperW: 0,
+    calendarW: 0,
+  });
+
   // 1. Grid Width Calculation
-  const contentWidth = useMemo(() => (gridWidth > 0 ? Math.max(0, gridWidth - 32) : 0), [gridWidth]);
-  const cellW = useMemo(() => (contentWidth > 0 ? Math.floor(contentWidth / 7) : 48), [contentWidth]);
+  // Single source of truth: the measured width inside the 16px side margins (outerWrapperW).
+  // We derive a grid width that is ALWAYS a multiple of 7 and therefore cannot overflow.
+
+  // Effective available width inside the red wrapper (already excludes the 16px margins).
+  const effectiveW = layoutDebug.outerWrapperW;
+
+  // Until measured, keep a conservative fallback.
+  const fallbackCellW = 48;
+
+  // Compute a grid width that is a multiple of 7 and never exceeds effectiveW.
+  const gridW = useMemo(() => {
+    if (effectiveW > 0) {
+      const w = Math.floor(effectiveW / 7) * 7;
+      return Math.max(0, w);
+    }
+    return fallbackCellW * 7;
+  }, [effectiveW]);
+
+  const cellW = useMemo(() => {
+    if (gridW > 0) return Math.floor(gridW / 7);
+    return fallbackCellW;
+  }, [gridW]);
+
+  // Remainder split: guarantees equal left/right visual space.
+  const { padLeft, padRight } = useMemo(() => {
+    if (effectiveW <= 0 || gridW <= 0) return { padLeft: 0, padRight: 0 };
+    const remainder = Math.max(0, effectiveW - gridW);
+    const left = Math.floor(remainder / 2);
+    const right = remainder - left;
+    return { padLeft: left, padRight: right };
+  }, [effectiveW, gridW]);
 
   const hairline = StyleSheet.hairlineWidth;
   const gridBorderWidth = hairline < 1 ? 1 : hairline;
@@ -129,30 +165,88 @@ export function CalendarHeaderSection({
     return Math.min(gridHeight, total);
   }, [cellH, gridHeight, weeksCount]);
 
+  const gridOverlayHeight = useMemo(() => TOTAL_HEADER_HEIGHT + weeksCount * cellH, [cellH, weeksCount]);
+
+  useEffect(() => {
+    if (!SHOW_LAYOUT_DEBUG) return;
+    // eslint-disable-next-line no-console
+    console.log("[CalendarLayout]", {
+      gridWidth,
+      cellW,
+      gridW,
+      outerWrapperW: layoutDebug.outerWrapperW,
+      innerWrapperW: layoutDebug.innerWrapperW,
+      calendarW: layoutDebug.calendarW,
+    });
+  }, [
+    gridWidth,
+    cellW,
+    gridW,
+    layoutDebug.outerWrapperW,
+    layoutDebug.innerWrapperW,
+    layoutDebug.calendarW,
+  ]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: "#FFFFFF", paddingHorizontal: 16 }}>
-      {/* Container with rounded corners for the whole calendar block */}
+    <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
       <View
         style={{
-          width: cellW > 0 ? cellW * 7 : "100%",
-          alignSelf: "center",
-          borderRadius: 16,
-          overflow: "hidden",
-          backgroundColor: "#FFFFFF",
+          marginHorizontal: 16,
+          alignSelf: "stretch",
+          alignItems: "center",
+          ...(SHOW_LAYOUT_DEBUG ? { borderWidth: 1, borderColor: "red" } : null),
+        }}
+        onLayout={(event) => {
+          const { width } = event.nativeEvent.layout;
+          setLayoutDebug((prev) => (prev.outerWrapperW === width ? prev : { ...prev, outerWrapperW: width }));
         }}
       >
-        <Calendar
-          key={`cal-${visibleMonth}`}
-          current={visibleMonth}
-          style={{ width: cellW > 0 ? cellW * 7 : "100%", height: calendarHeight, backgroundColor: "transparent" }}
-          hideExtraDays={false}
-          showSixWeeks={false}
-          enableSwipeMonths
-          markedDates={markedDates}
-          onDayPress={onDayPress}
-          onMonthChange={onMonthChange}
-          firstDay={1}
-          theme={{
+        {/* Container with rounded corners for the whole calendar block */}
+        <View
+          style={{
+            width: gridW || "100%",
+            maxWidth: "100%",
+            alignSelf: "center",
+            borderRadius: 16,
+            overflow: "hidden",
+            backgroundColor: "#FFFFFF",
+            ...(SHOW_LAYOUT_DEBUG ? { borderWidth: 1, borderColor: "blue" } : null),
+          }}
+          onLayout={(event) => {
+            const { width } = event.nativeEvent.layout;
+            setLayoutDebug((prev) => (prev.innerWrapperW === width ? prev : { ...prev, innerWrapperW: width }));
+          }}
+        >
+          <View
+            style={{
+              width: gridW || "100%",
+              maxWidth: "100%",
+              height: calendarHeight,
+              position: "relative",
+              ...(SHOW_LAYOUT_DEBUG ? { borderWidth: 1, borderColor: "green" } : null),
+            }}
+            onLayout={(event) => {
+              const { width } = event.nativeEvent.layout;
+              setLayoutDebug((prev) => (prev.calendarW === width ? prev : { ...prev, calendarW: width }));
+            }}
+          >
+            <Calendar
+              key={`cal-${visibleMonth}`}
+              current={visibleMonth}
+              style={{
+                width: gridW,
+                height: "100%",
+                backgroundColor: "transparent",
+                alignSelf: "center",
+              }}
+              hideExtraDays={false}
+              showSixWeeks={false}
+              enableSwipeMonths
+              markedDates={markedDates}
+              onDayPress={onDayPress}
+              onMonthChange={onMonthChange}
+              firstDay={1}
+              theme={{
             backgroundColor: "#FFFFFF",
             calendarBackground: "transparent",
             textDayHeaderFontSize: 12,
@@ -240,17 +334,14 @@ export function CalendarHeaderSection({
             },
             textMonthFontWeight: "700",
             textDayHeaderFontWeight: "600",
-          }}
-          dayComponent={({ date, state, marking }) => {
+              }}
+              dayComponent={({ date, state, marking }) => {
             if (!date) {
               return (
                 <View
                   style={{
                     width: cellW,
                     height: cellH,
-                    borderRightWidth: gridBorderWidth,
-                    borderBottomWidth: gridBorderWidth,
-                    borderColor: gridBorderColor,
                     backgroundColor: "#fff",
                   }}
                 />
@@ -263,15 +354,6 @@ export function CalendarHeaderSection({
             const key = `${calendarDate.year}-${pad2(calendarDate.month)}-${pad2(calendarDate.day)}`;
             const isSelected = key === selectedDay;
             const isDisabled = state === "disabled";
-            const dateUTC = Date.UTC(calendarDate.year, calendarDate.month - 1, calendarDate.day);
-
-            // Calculate Position in Grid for borders
-            const diffDays = Math.round((dateUTC - gridStartUTC) / 86400000);
-            const rowIndex = diffDays >= 0 ? Math.floor(diffDays / 7) : 0;
-            const colIndex = diffDays >= 0 ? diffDays % 7 : 0;
-
-            const isFirstRow = rowIndex === 0;
-            const isFirstCol = colIndex === 0;
 
             const handlePress = () => {
               const payload: DateData = {
@@ -285,7 +367,6 @@ export function CalendarHeaderSection({
             };
 
             const textColor = isSelected ? "#FFFFFF" : isDisabled ? "#9CA3AF" : "#111827";
-            const borderColor = gridBorderColor;
 
             return (
               <TouchableOpacity
@@ -296,6 +377,7 @@ export function CalendarHeaderSection({
                   justifyContent: "center",
                   padding: 0,
                   margin: 0,
+                  backgroundColor: "#FFFFFF",
                 }}
                 onPress={!isDisabled ? handlePress : undefined}
                 disabled={isDisabled}
@@ -305,12 +387,6 @@ export function CalendarHeaderSection({
                   style={{
                     width: cellW,
                     height: cellH,
-                    borderRightWidth: colIndex === 6 ? 0 : gridBorderWidth,
-                    borderBottomWidth: gridBorderWidth,
-                    // Collapsed borders: Top only on 1st row, Left only on 1st col
-                    ...(isFirstRow ? { borderTopWidth: gridBorderWidth } : null),
-                    ...(isFirstCol ? { borderLeftWidth: gridBorderWidth } : null),
-                    borderColor,
                     backgroundColor: "#FFFFFF",
                     paddingTop: 6,
                     paddingLeft: 8,
@@ -347,8 +423,56 @@ export function CalendarHeaderSection({
                 </View>
               </TouchableOpacity>
             );
-          }}
-        />
+              }}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: gridW,
+                height: gridOverlayHeight,
+              }}
+            >
+              {Array.from({ length: 8 }).map((_, i) => {
+                const left = i === 7 ? gridW - gridBorderWidth : i * cellW;
+                return (
+                  <View
+                    key={`v-${i}`}
+                    style={{
+                      position: "absolute",
+                      left,
+                      top: TOTAL_HEADER_HEIGHT,
+                      height: weeksCount * cellH,
+                      width: gridBorderWidth,
+                      backgroundColor: gridBorderColor,
+                    }}
+                  />
+                );
+              })}
+              {Array.from({ length: weeksCount + 1 }).map((_, j) => {
+                const top =
+                  j === weeksCount
+                    ? TOTAL_HEADER_HEIGHT + weeksCount * cellH - gridBorderWidth
+                    : TOTAL_HEADER_HEIGHT + j * cellH;
+                return (
+                  <View
+                    key={`h-${j}`}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top,
+                      width: gridW,
+                      height: gridBorderWidth,
+                      backgroundColor: gridBorderColor,
+                    }}
+                  />
+                );
+              })}
+            </View>
+          </View>
+        </View>
       </View>
     </View>
   );

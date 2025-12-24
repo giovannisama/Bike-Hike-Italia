@@ -33,13 +33,74 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.onRideManualParticipantsUpdated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
 const userTokens_1 = require("./userTokens");
 if (!admin.apps.length) {
     admin.initializeApp();
+}
+// -----------------------------
+// Helpers: participants count
+// -----------------------------
+async function updateParticipantsCountsWithDelta(rideId, delta) {
+    const db = admin.firestore();
+    const rideRef = db.doc(`rides/${rideId}`);
+    await db.runTransaction(async (tx) => {
+        const rideSnap = await tx.get(rideRef);
+        if (!rideSnap.exists) {
+            functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+            return;
+        }
+        const rideData = rideSnap.data() || {};
+        const manualCount = Array.isArray(rideData.manualParticipants)
+            ? rideData.manualParticipants.length
+            : 0;
+        const baseSelf = typeof rideData.participantsCountSelf === "number"
+            ? rideData.participantsCountSelf
+            : typeof rideData.participantsCountTotal === "number"
+                ? rideData.participantsCountTotal - manualCount
+                : typeof rideData.participantsCount === "number"
+                    ? rideData.participantsCount - manualCount
+                    : 0;
+        const nextSelf = Math.max(baseSelf + delta, 0);
+        const total = nextSelf + manualCount;
+        tx.update(rideRef, {
+            participantsCountSelf: nextSelf,
+            participantsCountTotal: total,
+        });
+        functions.logger.info(`[participantsCount] ride=${rideId} delta=${delta} self=${nextSelf} manual=${manualCount} total=${total}`);
+    });
+}
+async function refreshParticipantsTotalForManualChange(rideId) {
+    const db = admin.firestore();
+    const rideRef = db.doc(`rides/${rideId}`);
+    await db.runTransaction(async (tx) => {
+        const rideSnap = await tx.get(rideRef);
+        if (!rideSnap.exists) {
+            functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+            return;
+        }
+        const rideData = rideSnap.data() || {};
+        const manualCount = Array.isArray(rideData.manualParticipants)
+            ? rideData.manualParticipants.length
+            : 0;
+        const baseSelf = typeof rideData.participantsCountSelf === "number"
+            ? rideData.participantsCountSelf
+            : typeof rideData.participantsCountTotal === "number"
+                ? rideData.participantsCountTotal - manualCount
+                : typeof rideData.participantsCount === "number"
+                    ? rideData.participantsCount - manualCount
+                    : 0;
+        const nextSelf = Math.max(baseSelf, 0);
+        const total = nextSelf + manualCount;
+        tx.update(rideRef, {
+            participantsCountSelf: nextSelf,
+            participantsCountTotal: total,
+        });
+        functions.logger.info(`[participantsCount] ride=${rideId} manual=${manualCount} total=${total}`);
+    });
 }
 // --------------------
 // 1) Health check HTTP
@@ -55,6 +116,18 @@ exports.onRideCreated = functions.firestore
     .onCreate(async (snapshot, context) => {
     const rideId = context.params.rideId;
     const data = snapshot.data();
+    const manualCount = Array.isArray(data?.manualParticipants)
+        ? data.manualParticipants.length
+        : 0;
+    try {
+        await snapshot.ref.update({
+            participantsCountSelf: 0,
+            participantsCountTotal: manualCount,
+        });
+    }
+    catch (err) {
+        functions.logger.error(`[participantsCount] init failed ride=${rideId}`, err);
+    }
     const title = typeof data?.title === "string" && data.title.trim().length > 0
         ? data.title
         : "Uscita";
@@ -138,6 +211,46 @@ exports.onRideUpdated = functions.firestore
     results.forEach((result, index) => {
         functions.logger.info(`[onRideUpdated] ${rideId} cancel chunk ${index} status=${result.status} ok=${result.ok}`);
     });
+});
+// -----------------------------
+// 3b) Trigger su partecipanti (conteggio)
+// -----------------------------
+exports.onParticipantWrite = functions.firestore
+    .document("rides/{rideId}/participants/{uid}")
+    .onWrite(async (change, context) => {
+    const rideId = context.params.rideId;
+    const beforeExists = change.before.exists;
+    const afterExists = change.after.exists;
+    const delta = !beforeExists && afterExists ? 1 : beforeExists && !afterExists ? -1 : 0;
+    if (delta === 0)
+        return;
+    try {
+        await updateParticipantsCountsWithDelta(rideId, delta);
+    }
+    catch (err) {
+        functions.logger.error(`[participantsCount] write failed ride=${rideId}`, err);
+    }
+});
+exports.onRideManualParticipantsUpdated = functions.firestore
+    .document("rides/{rideId}")
+    .onUpdate(async (change, context) => {
+    const rideId = context.params.rideId;
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+    const beforeCount = Array.isArray(before.manualParticipants)
+        ? before.manualParticipants.length
+        : 0;
+    const afterCount = Array.isArray(after.manualParticipants)
+        ? after.manualParticipants.length
+        : 0;
+    if (beforeCount === afterCount)
+        return;
+    try {
+        await refreshParticipantsTotalForManualChange(rideId);
+    }
+    catch (err) {
+        functions.logger.error(`[participantsCount] manual update failed ride=${rideId}`, err);
+    }
 });
 // -----------------------------
 // 4) Trigger su nuovo utente

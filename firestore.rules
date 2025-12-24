@@ -407,7 +407,7 @@ service cloud.firestore {
         return [
           'title','meetingPoint','description','bikes',
           'date','dateTime',
-          'maxParticipants','participantsCount',
+          'maxParticipants','participantsCount','participantsCountSelf','participantsCountTotal',
           'createdBy','createdAt',
           'status','archived','archiveYear','archiveMonth',
           'guidaName','guidaNames','link','difficulty',
@@ -484,6 +484,7 @@ service cloud.firestore {
           && (!has('date') || request.resource.data.date == null || request.resource.data.date is timestamp)
           && (!has('maxParticipants') || request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0))
           && (!has('participantsCount') || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
+          && (!has('participantsCountSelf') && !has('participantsCountTotal'))
           && (!has('status') || (request.resource.data.status == 'active' || request.resource.data.status == 'cancelled'))
           && (!has('archived') || request.resource.data.archived is bool)
           && (!has('archiveYear') || request.resource.data.archiveYear == null || request.resource.data.archiveYear is int)
@@ -512,6 +513,7 @@ service cloud.firestore {
           && (!(changed.hasAny(['date']) || added.hasAny(['date'])) || (request.resource.data.date == null || request.resource.data.date is timestamp))
           && (!(changed.hasAny(['maxParticipants']) || added.hasAny(['maxParticipants'])) || (request.resource.data.maxParticipants == null || (request.resource.data.maxParticipants is int && request.resource.data.maxParticipants >= 0)))
           && (!(changed.hasAny(['participantsCount']) || added.hasAny(['participantsCount'])) || (request.resource.data.participantsCount is int && request.resource.data.participantsCount >= 0))
+          && !(changed.hasAny(['participantsCountSelf','participantsCountTotal']) || added.hasAny(['participantsCountSelf','participantsCountTotal']))
           && (!(changed.hasAny(['status']) || added.hasAny(['status'])) || (request.resource.data.status == 'active' || request.resource.data.status == 'cancelled'))
           && (!(changed.hasAny(['archived']) || added.hasAny(['archived'])) || request.resource.data.archived is bool)
           && (!(changed.hasAny(['archiveYear']) || added.hasAny(['archiveYear'])) || (request.resource.data.archiveYear == null || request.resource.data.archiveYear is int))

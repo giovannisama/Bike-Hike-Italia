@@ -54,6 +54,8 @@ export interface RideDoc {
   dateTime?: any;
   maxParticipants?: number | null;
   participantsCount?: number | null;
+  participantsCountSelf?: number | null;
+  participantsCountTotal?: number | null;
   status?: string;
   archived?: boolean;
   archiveYear?: number | null;

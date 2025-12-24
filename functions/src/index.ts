@@ -14,31 +14,82 @@ if (!admin.apps.length) {
 // -----------------------------
 // Helpers: participants count
 // -----------------------------
-async function recomputeParticipantsCount(rideId: string) {
+async function updateParticipantsCountsWithDelta(rideId: string, delta: number) {
   const db = admin.firestore();
   const rideRef = db.doc(`rides/${rideId}`);
-  const rideSnap = await rideRef.get();
 
-  if (!rideSnap.exists) {
-    functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
-    return;
-  }
+  await db.runTransaction(async (tx) => {
+    const rideSnap = await tx.get(rideRef);
+    if (!rideSnap.exists) {
+      functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+      return;
+    }
 
-  const rideData = rideSnap.data() || {};
-  const manualParticipants = Array.isArray(rideData.manualParticipants)
-    ? rideData.manualParticipants
-    : [];
-  const manualCount = manualParticipants.length;
+    const rideData = rideSnap.data() || {};
+    const manualCount = Array.isArray(rideData.manualParticipants)
+      ? rideData.manualParticipants.length
+      : 0;
 
-  const participantsSnap = await rideRef.collection("participants").get();
-  const selfCount = participantsSnap.size;
+    const baseSelf =
+      typeof rideData.participantsCountSelf === "number"
+        ? rideData.participantsCountSelf
+        : typeof rideData.participantsCountTotal === "number"
+          ? rideData.participantsCountTotal - manualCount
+          : typeof rideData.participantsCount === "number"
+            ? rideData.participantsCount - manualCount
+            : 0;
 
-  const total = selfCount + manualCount;
-  await rideRef.update({ participantsCount: total });
+    const nextSelf = Math.max(baseSelf + delta, 0);
+    const total = nextSelf + manualCount;
 
-  functions.logger.info(
-    `[participantsCount] ride=${rideId} self=${selfCount} manual=${manualCount} total=${total}`
-  );
+    tx.update(rideRef, {
+      participantsCountSelf: nextSelf,
+      participantsCountTotal: total,
+    });
+
+    functions.logger.info(
+      `[participantsCount] ride=${rideId} delta=${delta} self=${nextSelf} manual=${manualCount} total=${total}`
+    );
+  });
+}
+
+async function refreshParticipantsTotalForManualChange(rideId: string) {
+  const db = admin.firestore();
+  const rideRef = db.doc(`rides/${rideId}`);
+
+  await db.runTransaction(async (tx) => {
+    const rideSnap = await tx.get(rideRef);
+    if (!rideSnap.exists) {
+      functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+      return;
+    }
+
+    const rideData = rideSnap.data() || {};
+    const manualCount = Array.isArray(rideData.manualParticipants)
+      ? rideData.manualParticipants.length
+      : 0;
+
+    const baseSelf =
+      typeof rideData.participantsCountSelf === "number"
+        ? rideData.participantsCountSelf
+        : typeof rideData.participantsCountTotal === "number"
+          ? rideData.participantsCountTotal - manualCount
+          : typeof rideData.participantsCount === "number"
+            ? rideData.participantsCount - manualCount
+            : 0;
+
+    const nextSelf = Math.max(baseSelf, 0);
+    const total = nextSelf + manualCount;
+
+    tx.update(rideRef, {
+      participantsCountSelf: nextSelf,
+      participantsCountTotal: total,
+    });
+
+    functions.logger.info(
+      `[participantsCount] ride=${rideId} manual=${manualCount} total=${total}`
+    );
+  });
 }
 
 // --------------------
@@ -56,6 +107,17 @@ export const onRideCreated = functions.firestore
   .onCreate(async (snapshot, context) => {
     const rideId = context.params.rideId;
     const data = snapshot.data();
+    const manualCount = Array.isArray(data?.manualParticipants)
+      ? data.manualParticipants.length
+      : 0;
+    try {
+      await snapshot.ref.update({
+        participantsCountSelf: 0,
+        participantsCountTotal: manualCount,
+      });
+    } catch (err) {
+      functions.logger.error(`[participantsCount] init failed ride=${rideId}`, err);
+    }
     const title =
       typeof data?.title === "string" && data.title.trim().length > 0
         ? data.title
@@ -180,25 +242,38 @@ export const onRideUpdated = functions.firestore
 // -----------------------------
 // 3b) Trigger su partecipanti (conteggio)
 // -----------------------------
-export const onParticipantCreated = functions.firestore
+export const onParticipantWrite = functions.firestore
   .document("rides/{rideId}/participants/{uid}")
-  .onCreate(async (_snap, context) => {
+  .onWrite(async (change, context) => {
     const rideId = context.params.rideId as string;
+    const beforeExists = change.before.exists;
+    const afterExists = change.after.exists;
+    const delta = !beforeExists && afterExists ? 1 : beforeExists && !afterExists ? -1 : 0;
+    if (delta === 0) return;
     try {
-      await recomputeParticipantsCount(rideId);
+      await updateParticipantsCountsWithDelta(rideId, delta);
     } catch (err) {
-      functions.logger.error(`[participantsCount] create failed ride=${rideId}`, err);
+      functions.logger.error(`[participantsCount] write failed ride=${rideId}`, err);
     }
   });
 
-export const onParticipantDeleted = functions.firestore
-  .document("rides/{rideId}/participants/{uid}")
-  .onDelete(async (_snap, context) => {
+export const onRideManualParticipantsUpdated = functions.firestore
+  .document("rides/{rideId}")
+  .onUpdate(async (change, context) => {
     const rideId = context.params.rideId as string;
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+    const beforeCount = Array.isArray(before.manualParticipants)
+      ? before.manualParticipants.length
+      : 0;
+    const afterCount = Array.isArray(after.manualParticipants)
+      ? after.manualParticipants.length
+      : 0;
+    if (beforeCount === afterCount) return;
     try {
-      await recomputeParticipantsCount(rideId);
+      await refreshParticipantsTotalForManualChange(rideId);
     } catch (err) {
-      functions.logger.error(`[participantsCount] delete failed ride=${rideId}`, err);
+      functions.logger.error(`[participantsCount] manual update failed ride=${rideId}`, err);
     }
   });
 

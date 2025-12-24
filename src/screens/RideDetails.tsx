@@ -39,6 +39,7 @@ import { Screen, UI } from "../components/Screen";
 import { PrimaryButton } from "../components/Button";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "./calendar/StatusBadge";
+import { getDifficultyMeta } from "../utils/rideDifficulty";
 import { deriveGuideSummary } from "../utils/guideHelpers";
 import { renderLinkedText } from "../utils/renderLinkedText";
 import type { RootStackParamList } from "../navigation/types";
@@ -1295,16 +1296,9 @@ export default function RideDetails() {
                   width: 8,
                   height: 8,
                   borderRadius: 4,
-                  backgroundColor: (() => {
-                    const d = (ride.difficulty || "").toLowerCase();
-                    if (d.includes("facile")) return ACTION_GREEN;
-                    if (d.includes("medio") || d.includes("moderato")) return "#f97316";
-                    if (d.includes("difficile") || d.includes("impegnativo")) return "#ef4444";
-                    if (d.includes("estremo")) return "#000000";
-                    return "#94a3b8";
-                  })()
+                  backgroundColor: getDifficultyMeta(ride.difficulty).color,
                 }} />
-                <Text style={styles.gridValue}>{ride.difficulty || "—"}</Text>
+                <Text style={styles.gridValue}>{getDifficultyMeta(ride.difficulty).label}</Text>
               </View>
             </View>
             <View style={{ flex: 1 }}>

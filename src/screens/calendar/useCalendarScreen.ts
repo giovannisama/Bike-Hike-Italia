@@ -72,6 +72,8 @@ export type CalendarState = {
   markedDates: MarkedDates;
   onDayPress: (day: DateData) => void;
   onMonthChange: (day: DateData) => void;
+  hasEventsForDay: (dateString: string) => boolean;
+  hasEventsForSelectedDay: boolean;
   collapsed: boolean;
   quickTargets: {
     today: string;
@@ -256,6 +258,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
             dateTime: d?.dateTime ?? null,
             status: (d?.status as Ride["status"]) ?? "active",
             archived: !!d?.archived,
+            difficulty: d?.difficulty ?? null,
+            guidaName: d?.guidaName ?? null,
+            guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
           });
         });
         rows.sort((a, b) => {
@@ -337,6 +342,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
           dateTime: d?.dateTime ?? null,
           status: (d?.status as Ride["status"]) ?? "active",
           archived: !!d?.archived,
+          difficulty: d?.difficulty ?? null,
+          guidaName: d?.guidaName ?? null,
+          guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
         });
       });
       const rows = Array.from(map.values()).sort((a, b) => {
@@ -450,6 +458,17 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return ridesVisible.filter((r) => toLocalISODate(r.dateTime || r.date) === key);
   }, [ridesVisible, selectedDay]);
 
+  const hasEventsForDay = useCallback(
+    (dateString: string) =>
+      ridesVisible.some((r) => toLocalISODate(r.dateTime || r.date) === dateString),
+    [ridesVisible]
+  );
+
+  const hasEventsForSelectedDay = useMemo(
+    () => listForSelected.length > 0,
+    [listForSelected]
+  );
+
   const resultsAll = useMemo(() => {
     // Return visible rides, sorted
     const list = [...ridesVisible];
@@ -490,16 +509,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
         monthChangeTimer.current = setTimeout(() => setCurrentMonth(yyyymm), 120);
       }
 
-      const dataSource = allRides.length > 0 ? allRides : rides;
-      const hasRidesForDay = dataSource.some(
-        (ride) => toLocalISODate(ride.dateTime || ride.date) === d.dateString
-      );
-
-      setCalendarCollapsed((prev) => {
-        if (prev === hasRidesForDay) return prev;
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        return hasRidesForDay;
-      });
+      setCalendarCollapsed((prev) => prev);
     },
     [visibleMonth, currentMonth, clearSearch, rides, allRides]
   );
@@ -693,6 +703,8 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     markedDates: marked,
     onDayPress,
     onMonthChange,
+    hasEventsForDay,
+    hasEventsForSelectedDay,
     collapsed: isCalendarCollapsed,
     quickTargets: {
       today: new Date().toISOString().slice(0, 10),

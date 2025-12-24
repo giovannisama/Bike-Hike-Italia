@@ -7,12 +7,93 @@ import {
   StyleProp,
   ViewStyle,
   Pressable,
+  StyleSheet,
 } from "react-native";
-import { format } from "date-fns";
-import { it } from "date-fns/locale";
-import { calendarStyles } from "./styles";
 import { Ride } from "./types";
+import { getBikeCategoryLabel } from "./bikeType";
+import { getDifficultyMeta } from "../../utils/rideDifficulty";
+import { deriveGuideSummary } from "../../utils/guideHelpers";
 import { StatusBadge } from "./StatusBadge";
+
+const ACTION_GREEN = "#22c55e";
+
+const styles = StyleSheet.create({
+  card: {
+    flexDirection: "row",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#fff",
+    padding: 14,
+    borderRadius: 14,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  badgeWrap: {
+    flexShrink: 0,
+    alignSelf: "flex-start",
+    maxWidth: 140,
+    overflow: "hidden",
+  },
+  title: {
+    fontWeight: "700",
+    color: "#111",
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  metaLabel: {
+    color: "#6B7280",
+    fontSize: 12,
+  },
+  metaBlock: {
+    marginTop: 8,
+  },
+  metaValue: {
+    color: "#111827",
+    fontWeight: "600",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  difficultyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  chipsTop: {
+    marginTop: 0,
+    marginBottom: 8,
+  },
+  chip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    borderWidth: 1,
+    borderColor: ACTION_GREEN,
+  },
+  chipText: {
+    color: ACTION_GREEN,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  centerRow: { padding: 12, alignItems: "center", justifyContent: "center" },
+});
 
 export type RideListProps = {
   data: Ride[];
@@ -41,46 +122,56 @@ export function RideList({
       keyExtractor={(item) => item.id}
       ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
       renderItem={({ item }) => {
-        const isCancelled = item.status === "cancelled";
         const isArchived = !!item.archived;
-        const dateObj = item.dateTime?.toDate?.() ?? item.date?.toDate?.() ?? null;
-        const dateLabel = dateObj ? format(dateObj, "EEEE d MMMM yyyy", { locale: it }) : "Data da definire";
-        const bikesLabel =
-          Array.isArray(item.bikes) && item.bikes.length > 0
-            ? item.bikes.join(", ")
-            : "Tipo bici non specificato";
+        const guideSummary = deriveGuideSummary({
+          guidaName: item.guidaName ?? null,
+          guidaNames: item.guidaNames ?? undefined,
+        });
+        const guidaLabel = guideSummary.all.length > 0 ? guideSummary.all.join("; ") : "—";
+        const difficultyMeta = getDifficultyMeta(item.difficulty);
+        const bikeCategoryRaw = getBikeCategoryLabel(item);
+        const bikeCategory = bikeCategoryRaw === "Altro" ? "MTB/Gravel" : bikeCategoryRaw;
+        const statusBadge = isArchived ? (
+          <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
+        ) : (
+          <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
+        );
         return (
-          <TouchableOpacity style={[calendarStyles.rideCard, { marginHorizontal: 12 }]} onPress={() => onSelect(item)}>
+          <TouchableOpacity style={styles.card} onPress={() => onSelect(item)}>
             <View style={{ flex: 1 }}>
-              <Text style={calendarStyles.rideDate} numberOfLines={1}>
-                {dateLabel}
-              </Text>
-              <Text
-                style={[
-                  calendarStyles.rideTitle,
-                  isCancelled && { textDecorationLine: "line-through", color: "#991B1B" },
-                  isArchived && { color: "#374151" },
-                ]}
-                numberOfLines={1}
-              >
-                {item.title || "Uscita"}
-              </Text>
-              <Text style={calendarStyles.rideBike} numberOfLines={1}>
-                {bikesLabel}
-              </Text>
+              <View style={[styles.chipsRow, styles.chipsTop]}>
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>{bikeCategory}</Text>
+                </View>
+              </View>
+              <View style={styles.headerRow}>
+                <View style={styles.titleWrap}>
+                  <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+                    {item.title || "Uscita"}
+                  </Text>
+                </View>
+                <View style={styles.badgeWrap}>{statusBadge}</View>
+              </View>
+              <View style={styles.metaBlock}>
+                <Text style={styles.metaLabel} numberOfLines={1}>
+                  Guida: <Text style={styles.metaValue}>{guidaLabel}</Text>
+                </Text>
+              </View>
+              <View style={styles.metaBlock}>
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Difficoltà:</Text>
+                  {difficultyMeta.label !== "—" ? (
+                    <View style={[styles.difficultyDot, { backgroundColor: difficultyMeta.color }]} />
+                  ) : null}
+                  <Text style={styles.metaValue}>{difficultyMeta.label}</Text>
+                </View>
+              </View>
             </View>
-            {isArchived ? (
-              <StatusBadge text="Arch." icon="📦" bg="#E5E7EB" fg="#374151" />
-            ) : isCancelled ? (
-              <StatusBadge text="Annul." icon="✖" bg="#FEE2E2" fg="#991B1B" />
-            ) : (
-              <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
-            )}
           </TouchableOpacity>
         );
       }}
       ListEmptyComponent={
-        <View style={[calendarStyles.centerRow, { paddingVertical: 40 }]}>
+        <View style={[styles.centerRow, { paddingVertical: 40 }]}>
           <View style={{ alignItems: "center", gap: 12, paddingHorizontal: 24 }}>
             <Text style={{ color: "#64748B", textAlign: "center" }}>
               {emptyMessage || "Nessuna uscita disponibile."}

@@ -9,6 +9,9 @@ export type Ride = {
   dateTime?: Timestamp | null;
   status?: "active" | "cancelled";
   archived?: boolean;
+  difficulty?: string | null;
+  guidaName?: string | null;
+  guidaNames?: string[] | null;
 };
 
 export type MarkedDate = {

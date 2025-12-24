@@ -1,17 +1,30 @@
 // src/screens/CalendarScreen.tsx
-import React, { useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DateData } from "react-native-calendars";
 
 import { Screen } from "../components/Screen";
 import { CalendarSearchModal } from "./calendar/CalendarSearchModal";
 import { CalendarHeaderSection } from "./calendar/CalendarHeaderSection";
 import { useCalendarScreen } from "./calendar/useCalendarScreen";
 import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
+import { RideList } from "./calendar/RideList";
 
 export default function CalendarScreen() {
   const [calendarArea, setCalendarArea] = useState({ width: 0, height: 0 });
+  const [viewMode, setViewMode] = useState<"month" | "day">("month");
+  const translateX = useRef(new Animated.Value(0)).current;
+  const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerTopPadding = insets.top + 8;
 
@@ -26,11 +39,45 @@ export default function CalendarScreen() {
     actions,
     searchModal,
     calendar,
+    rideLists,
     loading,
     isSearchOpen,
     filterSummary,
     hasActiveFilters,
   } = useCalendarScreen();
+
+  const pageWidth = gridWidth || windowWidth;
+  const bottomInset = useMemo(() => Math.max(insets.bottom, 16), [insets.bottom]);
+  const indicatorInsets = useMemo(() => ({ bottom: bottomInset }), [bottomInset]);
+
+  const handleDayPress = useCallback(
+    (day: DateData) => {
+      calendar.onDayPress(day);
+      const hasEvents = calendar.hasEventsForDay(day.dateString);
+      setViewMode(hasEvents ? "day" : "month");
+    },
+    [calendar]
+  );
+
+  const backToCalendar = useCallback(() => {
+    setViewMode("month");
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "day" && !calendar.hasEventsForSelectedDay) {
+      setViewMode("month");
+    }
+  }, [viewMode, calendar.hasEventsForSelectedDay]);
+
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+    Animated.timing(translateX, {
+      toValue: viewMode === "day" ? -pageWidth : 0,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [pageWidth, translateX, viewMode]);
 
   if (loading.initial) {
     return (
@@ -96,15 +143,74 @@ export default function CalendarScreen() {
           }}
         >
           {canRenderCalendar ? (
-            <CalendarHeaderSection
-              visibleMonth={calendar.visibleMonth}
-              markedDates={calendar.markedDates}
-              selectedDay={calendar.selectedDay}
-              onDayPress={calendar.onDayPress}
-              onMonthChange={calendar.onMonthChange}
-              gridWidth={gridWidth}
-              gridHeight={gridHeight}
-            />
+            <View style={{ flex: 1, overflow: "hidden" }}>
+              <Animated.View
+                style={{
+                  flexDirection: "row",
+                  width: pageWidth * 2,
+                  flex: 1,
+                  transform: [{ translateX }],
+                }}
+              >
+                <View style={{ width: pageWidth, flex: 1 }}>
+                  <CalendarHeaderSection
+                    visibleMonth={calendar.visibleMonth}
+                    markedDates={calendar.markedDates}
+                    selectedDay={calendar.selectedDay}
+                    onDayPress={handleDayPress}
+                    onMonthChange={calendar.onMonthChange}
+                    gridWidth={gridWidth}
+                    gridHeight={gridHeight}
+                  />
+                </View>
+                <View style={{ width: pageWidth, flex: 1, backgroundColor: "#F9FAFB" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                      backgroundColor: "#fff",
+                      borderBottomWidth: 1,
+                      borderBottomColor: "#F3F4F6",
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={backToCalendar}
+                      style={{ paddingRight: 12, paddingVertical: 4 }}
+                    >
+                      <Ionicons name="arrow-back" size={22} color="#111" />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#111" }}>
+                      {calendar.selectedDayLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingTop: 16,
+                      paddingBottom: 8,
+                      backgroundColor: "#F9FAFB",
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
+                      Ciclismo
+                    </Text>
+                  </View>
+                  <RideList
+                    data={rideLists.forSelectedDay}
+                    onSelect={actions.openRide}
+                    contentContainerStyle={{
+                      paddingTop: 8,
+                      paddingHorizontal: 16,
+                      paddingBottom: 32 + bottomInset,
+                    }}
+                    indicatorInsets={indicatorInsets}
+                    emptyMessage="Nessuna uscita per questo giorno."
+                  />
+                </View>
+              </Animated.View>
+            </View>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <ActivityIndicator size="small" color="#22c55e" />

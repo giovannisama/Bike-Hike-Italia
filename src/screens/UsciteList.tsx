@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
 import { StatusBadge } from "./calendar/StatusBadge";
+import { getBikeCategoryLabel } from "./calendar/bikeType";
 import { deriveGuideSummary } from "../utils/guideHelpers";
 
 // ---- Tipi ----
@@ -77,57 +78,16 @@ function ParticipantsBadge({ count, max }: { count?: number; max?: number | null
   );
 }
 
-// -- Bike type filter helpers (UI-only) --
-const normalizeBikeTypes = (value: any): string[] => {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value.map((v) => String(v).trim()).filter((v) => v.length > 0);
-  }
-  if (typeof value === "string") {
-    // Robustness: split by comma if mixed string, though unlikely based on type
-    return value
-      .split(",")
-      .map((v) => v.trim())
-      .filter((v) => v.length > 0);
-  }
-  return [];
-};
-
 const matchesBikeFilter = (
   ride: Ride,
   filter: "Tutte" | "MTBGravel" | "BDC" | "Enduro"
 ): boolean => {
   if (filter === "Tutte") return true;
-
-  const typeList = normalizeBikeTypes(ride.bikes);
-  // Case-insensitive check helper
-  const hasType = (t: string) =>
-    typeList.some((x) => x.toLowerCase() === t.toLowerCase());
-
-  if (filter === "Enduro") {
-    // Rule: Contains "Enduro" AND only allowed extras are ["eBike"]
-    // "Enduro" -> OK
-    // "Enduro, eBike" -> OK
-    // "Enduro, MTB" -> NO
-    const allowedExtras = ["enduro", "ebike"];
-    const isStrictlyEnduro = typeList.every((t) =>
-      allowedExtras.includes(t.toLowerCase())
-    );
-    return hasType("Enduro") && isStrictlyEnduro;
-  }
-
-  if (filter === "MTBGravel") {
-    // Rule: Contains "MTB" OR "Gravel" (mixed with Enduro ok)
-    // NOTE: An output with ["MTB", "Enduro"] will appear in BOTH Enduro and MTBGravel filters.
-    return hasType("MTB") || hasType("Gravel");
-  }
-
-  if (filter === "BDC") {
-    // Rule: EXACTLY and ONLY "BDC"
-    return typeList.length === 1 && hasType("BDC");
-  }
-
-  return true;
+  const category = getBikeCategoryLabel(ride);
+  if (filter === "Enduro") return category === "Enduro";
+  if (filter === "MTBGravel") return category === "MTB/Gravel";
+  if (filter === "BDC") return category === "Bici da Corsa";
+  return false;
 };
 
 // ---- Schermata lista uscite ----

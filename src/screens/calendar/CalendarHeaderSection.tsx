@@ -165,8 +165,6 @@ export function CalendarHeaderSection({
     return Math.min(gridHeight, total);
   }, [cellH, gridHeight, weeksCount]);
 
-  const gridOverlayHeight = useMemo(() => TOTAL_HEADER_HEIGHT + weeksCount * cellH, [cellH, weeksCount]);
-
   useEffect(() => {
     if (!SHOW_LAYOUT_DEBUG) return;
     // eslint-disable-next-line no-console
@@ -222,7 +220,6 @@ export function CalendarHeaderSection({
               width: gridW || "100%",
               maxWidth: "100%",
               height: calendarHeight,
-              position: "relative",
               ...(SHOW_LAYOUT_DEBUG ? { borderWidth: 1, borderColor: "green" } : null),
             }}
             onLayout={(event) => {
@@ -247,230 +244,192 @@ export function CalendarHeaderSection({
               onMonthChange={onMonthChange}
               firstDay={1}
               theme={{
-            backgroundColor: "#FFFFFF",
-            calendarBackground: "transparent",
-            textDayHeaderFontSize: 12,
-            textSectionTitleColor: "#6B7280",
-            dayTextColor: "#111827",
-            monthTextColor: "#111827",
-            selectedDayBackgroundColor: "transparent",
-            selectedDayTextColor: "#111827",
-            todayTextColor: ACTION_GREEN,
-            arrowColor: "#111827",
+                backgroundColor: "#FFFFFF",
+                calendarBackground: "transparent",
+                textDayHeaderFontSize: 12,
+                textSectionTitleColor: "#6B7280",
+                dayTextColor: "#111827",
+                monthTextColor: "#111827",
+                selectedDayBackgroundColor: "transparent",
+                selectedDayTextColor: "#111827",
+                todayTextColor: ACTION_GREEN,
+                arrowColor: "#111827",
 
-            // --- CRITICAL LAYOUT OVERRIDES ---
-            "stylesheet.calendar.main": {
-              container: {
-                paddingLeft: 0,
-                paddingRight: 0,
-                paddingTop: 0,
-                paddingBottom: 0,
-                backgroundColor: "transparent",
-              },
-              monthView: {
-                paddingTop: 0,
-                paddingBottom: 0,
-              },
-              dayContainer: {
-                flex: 0,
-                width: cellW,
-                height: cellH,
-                alignItems: "stretch",
-              },
-              emptyDayContainer: {
-                width: cellW,
-                height: cellH,
-              },
-              // Zero gaps between weeks
-              week: {
-                marginTop: 0,
-                marginBottom: 0,
-                paddingTop: 0,
-                paddingBottom: 0,
-                flexDirection: "row",
-                justifyContent: "flex-start",
-                alignItems: "stretch",
-                height: cellH, // critical: prevents invisible gaps between week rows
-              },
-            },
-            "stylesheet.calendar.header": {
-              // Month Title Row
-              header: {
-                flexDirection: "row",
-                justifyContent: "center",
-                alignItems: "center",
-                paddingTop: 0,
-                paddingBottom: 0,
-                marginTop: 0,
-                marginBottom: 0,
-                height: HEADER_TITLE_HEIGHT, // Force fixed height
-              },
-              monthText: {
-                fontSize: 16,
-                fontWeight: "700",
-                color: "#111827",
-                margin: 0, // Remove uncontrolled margins
-              },
-              // Weekday Row (L M M G V S D)
-              week: {
-                marginTop: 0,
-                marginBottom: 0,
-                flexDirection: "row",
-                justifyContent: "flex-start",
-                paddingTop: 0,
-                paddingBottom: 0,
-                paddingHorizontal: 0,
-                height: HEADER_WEEKDAY_HEIGHT, // fixed and compact
-                alignItems: "center",
-              },
-              dayHeader: {
-                flex: 1,
-                textAlign: "center",
-                fontWeight: "600",
-                color: "#6B7280",
-                marginTop: 0,
-                marginBottom: 0,
-              },
-            },
-            textMonthFontWeight: "700",
-            textDayHeaderFontWeight: "600",
+                // --- CRITICAL LAYOUT OVERRIDES ---
+                "stylesheet.calendar.main": {
+                  container: {
+                    paddingLeft: 0,
+                    paddingRight: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    backgroundColor: "transparent",
+                  },
+                  monthView: {
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                  },
+                  dayContainer: {
+                    flex: 0,
+                    width: cellW,
+                    height: cellH,
+                    alignItems: "stretch",
+                  },
+                  emptyDayContainer: {
+                    width: cellW,
+                    height: cellH,
+                  },
+                  // Zero gaps between weeks
+                  week: {
+                    marginTop: 0,
+                    marginBottom: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    flexDirection: "row",
+                    justifyContent: "flex-start",
+                    alignItems: "stretch",
+                    height: cellH, // critical: prevents invisible gaps between week rows
+                  },
+                },
+                "stylesheet.calendar.header": {
+                  // Month Title Row
+                  header: {
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    height: HEADER_TITLE_HEIGHT, // Force fixed height
+                  },
+                  monthText: {
+                    fontSize: 16,
+                    fontWeight: "700",
+                    color: "#111827",
+                    margin: 0, // Remove uncontrolled margins
+                  },
+                  // Weekday Row (L M M G V S D)
+                  week: {
+                    marginTop: 0,
+                    marginBottom: 0,
+                    flexDirection: "row",
+                    justifyContent: "flex-start",
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    paddingHorizontal: 0,
+                    height: HEADER_WEEKDAY_HEIGHT, // fixed and compact
+                    alignItems: "center",
+                  },
+                  dayHeader: {
+                    flex: 1,
+                    textAlign: "center",
+                    fontWeight: "600",
+                    color: "#6B7280",
+                    marginTop: 0,
+                    marginBottom: 0,
+                  },
+                },
+                textMonthFontWeight: "700",
+                textDayHeaderFontWeight: "600",
               }}
               dayComponent={({ date, state, marking }) => {
-            if (!date) {
-              return (
-                <View
-                  style={{
-                    width: cellW,
-                    height: cellH,
-                    backgroundColor: "#fff",
-                  }}
-                />
-              );
-            }
-
-            const calendarDate = date as DateData;
-            const info = marking || {};
-            const isMarked = !!info.marked;
-            const key = `${calendarDate.year}-${pad2(calendarDate.month)}-${pad2(calendarDate.day)}`;
-            const isSelected = key === selectedDay;
-            const isDisabled = state === "disabled";
-
-            const handlePress = () => {
-              const payload: DateData = {
-                dateString: key,
-                day: calendarDate.day,
-                month: calendarDate.month,
-                year: calendarDate.year,
-                timestamp: calendarDate.timestamp,
-              };
-              onDayPress(payload);
-            };
-
-            const textColor = isSelected ? "#FFFFFF" : isDisabled ? "#9CA3AF" : "#111827";
-
-            return (
-              <TouchableOpacity
-                style={{
-                  width: cellW,
-                  height: cellH,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                  margin: 0,
-                  backgroundColor: "#FFFFFF",
-                }}
-                onPress={!isDisabled ? handlePress : undefined}
-                disabled={isDisabled}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={{
-                    width: cellW,
-                    height: cellH,
-                    backgroundColor: "#FFFFFF",
-                    paddingTop: 6,
-                    paddingLeft: 8,
-                    paddingRight: 4,
-                    paddingBottom: 0,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      backgroundColor: isSelected ? ACTION_GREEN : "transparent",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ fontWeight: "600", color: textColor, fontSize: 15 }}>
-                      {calendarDate.day}
-                    </Text>
-                  </View>
-                  {isMarked && !isDisabled ? (
+                if (!date) {
+                  return (
                     <View
                       style={{
-                        height: 4,
-                        width: Math.min(36, Math.max(26, Math.floor(cellW * 0.6))),
-                        borderRadius: 2,
-                        backgroundColor: ACTION_GREEN,
-                        marginTop: 6,
-                        marginLeft: 2,
+                        width: cellW,
+                        height: cellH,
+                        borderWidth: 0.5,
+                        borderColor: gridBorderColor,
+                        backgroundColor: "#FFFFFF",
                       }}
                     />
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-            );
+                  );
+                }
+
+                const calendarDate = date as DateData;
+                const info = marking || {};
+                const isMarked = !!info.marked;
+                const key = `${calendarDate.year}-${pad2(calendarDate.month)}-${pad2(calendarDate.day)}`;
+                const isSelected = key === selectedDay;
+                const isDisabled = state === "disabled";
+                const dateUTC = Date.UTC(calendarDate.year, calendarDate.month - 1, calendarDate.day);
+
+                // Calculate Position in Grid for borders
+                const diffDays = Math.round((dateUTC - gridStartUTC) / 86400000);
+                const rowIndex = diffDays >= 0 ? Math.floor(diffDays / 7) : 0;
+                const colIndex = diffDays >= 0 ? diffDays % 7 : 0;
+
+                const isFirstRow = rowIndex === 0;
+                const isFirstCol = colIndex === 0;
+
+                const handlePress = () => {
+                  const payload: DateData = {
+                    dateString: key,
+                    day: calendarDate.day,
+                    month: calendarDate.month,
+                    year: calendarDate.year,
+                    timestamp: calendarDate.timestamp,
+                  };
+                  onDayPress(payload);
+                };
+
+                const textColor = isSelected ? "#FFFFFF" : isDisabled ? "#9CA3AF" : "#111827";
+                const borderColor = gridBorderColor;
+                const barW = Math.min(36, Math.max(26, Math.floor(cellW * 0.6)));
+
+                return (
+                  <View
+                    style={{
+                      width: cellW,
+                      height: cellH,
+                      borderWidth: 0.5,
+                      borderColor: gridBorderColor,
+                      backgroundColor: "#FFFFFF",
+                    }}
+                  >
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onPress={!isDisabled ? handlePress : undefined}
+                      disabled={isDisabled}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: isSelected ? ACTION_GREEN : "transparent",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text style={{ fontWeight: "600", color: textColor, fontSize: 15 }}>
+                          {calendarDate.day}
+                        </Text>
+                      </View>
+
+                      {isMarked && !isDisabled ? (
+                        <View
+                          style={{
+                            position: "absolute",
+                            bottom: 10,
+                            height: 4,
+                            width: barW,
+                            borderRadius: 2,
+                            backgroundColor: ACTION_GREEN,
+                          }}
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  </View>
+                );
               }}
             />
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                width: gridW,
-                height: gridOverlayHeight,
-              }}
-            >
-              {Array.from({ length: 8 }).map((_, i) => {
-                const left = i === 7 ? gridW - gridBorderWidth : i * cellW;
-                return (
-                  <View
-                    key={`v-${i}`}
-                    style={{
-                      position: "absolute",
-                      left,
-                      top: TOTAL_HEADER_HEIGHT,
-                      height: weeksCount * cellH,
-                      width: gridBorderWidth,
-                      backgroundColor: gridBorderColor,
-                    }}
-                  />
-                );
-              })}
-              {Array.from({ length: weeksCount + 1 }).map((_, j) => {
-                const top =
-                  j === weeksCount
-                    ? TOTAL_HEADER_HEIGHT + weeksCount * cellH - gridBorderWidth
-                    : TOTAL_HEADER_HEIGHT + j * cellH;
-                return (
-                  <View
-                    key={`h-${j}`}
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top,
-                      width: gridW,
-                      height: gridBorderWidth,
-                      backgroundColor: gridBorderColor,
-                    }}
-                  />
-                );
-              })}
-            </View>
           </View>
         </View>
       </View>

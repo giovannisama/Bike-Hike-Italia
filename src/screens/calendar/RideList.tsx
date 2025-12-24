@@ -9,6 +9,8 @@ import {
   Pressable,
   StyleSheet,
 } from "react-native";
+import { format } from "date-fns";
+import { it } from "date-fns/locale";
 import { Ride } from "./types";
 import { getBikeCategoryLabel } from "./bikeType";
 import { getDifficultyMeta } from "../../utils/rideDifficulty";
@@ -103,6 +105,7 @@ export type RideListProps = {
   listRef?: React.RefObject<FlatList<Ride> | null>;
   emptyMessage?: string;
   onClearFilters?: () => void;
+  showDate?: boolean;
 };
 
 export function RideList({
@@ -113,6 +116,7 @@ export function RideList({
   listRef,
   emptyMessage,
   onClearFilters,
+  showDate,
 }: RideListProps) {
   return (
     <FlatList
@@ -136,6 +140,16 @@ export function RideList({
         ) : (
           <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
         );
+
+        let dateLabel = null;
+        if (showDate) {
+          const d = item.dateTime?.toDate?.() ?? item.date?.toDate?.();
+          if (d) {
+            // Formato IT: "10 gennaio 2026"
+            dateLabel = format(d, "d MMMM yyyy", { locale: it });
+          }
+        }
+
         return (
           <TouchableOpacity style={styles.card} onPress={() => onSelect(item)}>
             <View style={{ flex: 1 }}>
@@ -149,6 +163,11 @@ export function RideList({
                   <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
                     {item.title || "Uscita"}
                   </Text>
+                  {dateLabel && (
+                    <Text style={{ fontSize: 13, color: "#64748B", marginTop: 2, fontWeight: "500" }}>
+                      {dateLabel}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.badgeWrap}>{statusBadge}</View>
               </View>

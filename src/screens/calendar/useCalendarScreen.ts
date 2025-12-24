@@ -22,6 +22,8 @@ import {
   rideDateValue,
   startOfMonthISO,
   toLocalISODate,
+  getFilterTitle,
+  MONTH_NAMES,
 } from "./helpers";
 import { MarkedDates, Ride } from "./types";
 
@@ -67,6 +69,7 @@ export type CalendarState = {
   visibleMonth: string;
   selectedDay: string;
   selectedDayLabel: string;
+  filterTitle: string;
   hasRangeFilters: boolean;
   resultsCount: number;
   markedDates: MarkedDates;
@@ -75,6 +78,8 @@ export type CalendarState = {
   hasEventsForDay: (dateString: string) => boolean;
   hasEventsForSelectedDay: boolean;
   collapsed: boolean;
+  isFilteredView: boolean;
+  viewMode: "month" | "day";
   quickTargets: {
     today: string;
     nextRide?: {
@@ -112,6 +117,8 @@ export type CalendarActions = {
   toggleCalendar: () => void;
   clearFilters: () => void;
   goToDate: (dateString: string) => void;
+  openDayPage: (date: string) => void;
+  closeDayPage: () => void;
 };
 
 export type UseCalendarScreenResult = {
@@ -159,7 +166,14 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const [ymLocal, setYmLocalRaw] = useState<string>("");
   const [fromLocal, setFromLocalRaw] = useState<string>("");
   const [toLocal, setToLocalRaw] = useState<string>("");
+
   const [textLocal, setTextLocal] = useState<string>("");
+  /* --- STATE DEFINITIONS --- */
+  const [isFilteredView, setFilteredView] = useState(false);
+  const [viewMode, setViewMode] = useState<"month" | "day">("month");
+
+  /* --- COMPATIBILITY / HELPERS --- */
+  // ... (Restore missing helper functions and state if any were lost)
 
   const setYmLocal = useCallback(
     (value: string) => {
@@ -305,7 +319,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       return false;
     });
+    setFilteredView(false);
     setSearchOpen(false);
+    setViewMode("month");
   }, [clearSearch]);
 
   useEffect(() => {
@@ -528,6 +544,48 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     [currentMonth]
   );
 
+  const openDayPage = useCallback((params: {
+    dateString?: string;
+    filtersApplied?: boolean;
+  }) => {
+    // 1. Position calendar if needed
+    if (params.dateString) {
+      const d = new Date(params.dateString);
+      const payload: DateData = {
+        dateString: params.dateString,
+        day: d.getDate(),
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        timestamp: d.getTime()
+      }
+      // Reuse existing logic to set month/selected day without clearing search unless explicit
+      if (!params.filtersApplied) {
+        applyDaySelection(payload);
+      } else {
+        setSelectedDay(params.dateString);
+        // Determine if we need to switch month
+        const yyyymm = params.dateString.slice(0, 7);
+        const currentVis = visibleMonth.slice(0, 7);
+        if (yyyymm !== currentVis) {
+          setVisibleMonth(`${yyyymm}-01`);
+          setCurrentMonth(yyyymm);
+        }
+      }
+    }
+
+    // 2. Set mode
+    if (params.filtersApplied) {
+      setFilteredView(true);
+    } else {
+      // If standard day tap, we ensure filtered view is OFF
+      if (isFilteredView) setFilteredView(false);
+    }
+
+    // 3. Switch view & collapse
+    setViewMode("day");
+    setCalendarCollapsed(true);
+  }, [applyDaySelection, visibleMonth, isFilteredView]);
+
   const applySearchAndClose = useCallback(() => {
     const trimmedYm = ymLocal.trim();
     const trimmedFrom = fromLocal.trim();
@@ -550,32 +608,34 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       finalHasYearMonth = false;
     }
 
-    const finalHasFrom = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalFrom);
-    const finalHasTo = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(finalTo);
-    const hasDateFilters = finalHasYearMonth || finalHasFrom || finalHasTo;
-
     setYearMonthInput(finalYm);
     setDateFromInput(finalFrom);
     setDateToInput(finalTo);
     setSearchText(txt);
 
+    // Anchor calculation logic
+    let anchorDate = selectedDay;
     if (finalHasYearMonth) {
-      setVisibleMonth(`${finalYm}-01`);
-      if (monthChangeTimer.current) clearTimeout(monthChangeTimer.current);
-      monthChangeTimer.current = setTimeout(() => setCurrentMonth(finalYm), 120);
-      setSelectedDay(`${finalYm}-01`);
-    }
-
-    if (hasDateFilters) {
-      setCalendarCollapsed((prev) => {
-        if (prev) return prev;
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        return true;
-      });
+      anchorDate = `${finalYm}-01`;
+    } else if (finalFrom) {
+      anchorDate = finalFrom;
+    } else if (finalTo) {
+      // If only TO is set, maybe anchor to TO? or Today? Let's use Today or TO.
+      // Requirement said: "Da" se presente altrimenti "A", else today.
+      anchorDate = finalTo;
+    } else {
+      // use today if no date filters
+      anchorDate = new Date().toISOString().slice(0, 10);
     }
 
     setSearchOpen(false);
-  }, [ymLocal, fromLocal, toLocal, textLocal]);
+
+    // Defer the openDayPage call slightly to allow modal to close smoothly if needed, 
+    // though React state updates are batched.
+    // Calling directly is usually fine in RN unless simulating navigation.
+    openDayPage({ dateString: anchorDate, filtersApplied: true });
+
+  }, [ymLocal, fromLocal, toLocal, textLocal, selectedDay, openDayPage]);
 
   const openRide = useCallback(
     (ride: Ride) => {
@@ -600,10 +660,31 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     [applyDaySelection]
   );
 
+  const closeDayPage = useCallback(() => {
+    if (isFilteredView) {
+      resetFiltersAndView();
+    } else {
+      setViewMode("month");
+      setCalendarCollapsed(false);
+    }
+  }, [isFilteredView, resetFiltersAndView]);
+
   const selectedDayLabel = useMemo(
     () => format(new Date(selectedDay), "eeee d MMMM yyyy", { locale: it }),
     [selectedDay]
   );
+
+  const filterTitle = useMemo(() => {
+    return getFilterTitle(
+      {
+        yearMonth: yearMonthInput,
+        dateFrom: dateFromInput,
+        dateTo: dateToInput,
+        searchText,
+      },
+      MONTH_NAMES
+    );
+  }, [yearMonthInput, dateFromInput, dateToInput, searchText]);
 
   const filterSummary = useMemo(() => {
     const chips: string[] = [];
@@ -622,6 +703,8 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
     return chips;
   }, [searchText, dateFromInput, dateToInput, yearMonthInput]);
+
+  // ... (rest of rideDateSequence and quickNavigation) ...
 
   const rideDateSequence = useMemo(() => {
     const dates = new Set<string>();
@@ -694,10 +777,30 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     reset: resetFiltersAndView,
   };
 
+  const loadingFlags: LoadingFlags = {
+    initial: loading && rides.length === 0,
+    keyword: allRidesLoading && allRides.length === 0,
+  };
+
+  const actions: CalendarActions = {
+    openSearch: () => setSearchOpen(true),
+    closeSearch: () => setSearchOpen(false),
+    openRide,
+    toggleCalendar: () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCalendarCollapsed((prev) => !prev);
+    },
+    clearFilters: () => resetFiltersAndView(),
+    goToDate,
+    openDayPage: (date) => openDayPage({ dateString: date }),
+    closeDayPage
+  };
+
   const calendar: CalendarState = {
     visibleMonth,
     selectedDay,
     selectedDayLabel,
+    filterTitle,
     hasRangeFilters,
     resultsCount: resultsAll.length,
     markedDates: marked,
@@ -706,6 +809,8 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     hasEventsForDay,
     hasEventsForSelectedDay,
     collapsed: isCalendarCollapsed,
+    isFilteredView,
+    viewMode, // Exposed
     quickTargets: {
       today: new Date().toISOString().slice(0, 10),
       ...(quickNavigation.previous ? { previousRide: quickNavigation.previous } : {}),
@@ -723,23 +828,6 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const rideLists: RideLists = {
     forSelectedDay: listForSelected,
     filtered: resultsAll,
-  };
-
-  const loadingFlags: LoadingFlags = {
-    initial: loading && rides.length === 0,
-    keyword: allRidesLoading && allRides.length === 0,
-  };
-
-  const actions: CalendarActions = {
-    openSearch: () => setSearchOpen(true),
-    closeSearch: () => setSearchOpen(false),
-    openRide,
-    toggleCalendar: () => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setCalendarCollapsed((prev) => !prev);
-    },
-    clearFilters: () => resetFiltersAndView(),
-    goToDate,
   };
 
   return {

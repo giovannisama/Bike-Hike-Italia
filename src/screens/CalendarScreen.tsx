@@ -24,7 +24,7 @@ import { RideList } from "./calendar/RideList";
 
 export default function CalendarScreen() {
   const [calendarArea, setCalendarArea] = useState({ width: 0, height: 0 });
-  const [viewMode, setViewMode] = useState<"month" | "day">("month");
+  // viewMode is now managed in useCalendarScreen hook
   const translateX = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -54,32 +54,26 @@ export default function CalendarScreen() {
 
   const handleDayPress = useCallback(
     (day: DateData) => {
-      calendar.onDayPress(day);
-      const hasEvents = calendar.hasEventsForDay(day.dateString);
-      setViewMode(hasEvents ? "day" : "month");
+      // Single entry point for day view
+      actions.openDayPage(day.dateString);
     },
-    [calendar]
+    [actions]
   );
 
-  const backToCalendar = useCallback(() => {
-    setViewMode("month");
-  }, []);
+  const handleBack = useCallback(() => {
+    actions.closeDayPage();
+  }, [actions]);
 
-  useEffect(() => {
-    if (viewMode === "day" && !calendar.hasEventsForSelectedDay) {
-      setViewMode("month");
-    }
-  }, [viewMode, calendar.hasEventsForSelectedDay]);
-
+  // Sync animation with hook's viewMode
   useEffect(() => {
     if (pageWidth <= 0) return;
     Animated.timing(translateX, {
-      toValue: viewMode === "day" ? -pageWidth : 0,
+      toValue: calendar.viewMode === "day" ? -pageWidth : 0,
       duration: 260,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [pageWidth, translateX, viewMode]);
+  }, [pageWidth, translateX, calendar.viewMode]);
 
   if (loading.initial) {
     return (
@@ -135,7 +129,8 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </View>
 
-        {hasActiveFilters && (
+        {/* Banner Filtri (nascosto in filtered view per richiesta design: titolo composto sostituisce chip) */}
+        {hasActiveFilters && !calendar.isFilteredView && (
           <View
             style={{ paddingHorizontal: 16, paddingBottom: 8, backgroundColor: "#fff" }}
           >
@@ -186,13 +181,24 @@ export default function CalendarScreen() {
                     }}
                   >
                     <TouchableOpacity
-                      onPress={backToCalendar}
+                      onPress={handleBack}
                       style={{ paddingRight: 12, paddingVertical: 4 }}
                     >
                       <Ionicons name="arrow-back" size={22} color="#111" />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#111" }}>
-                      {calendar.selectedDayLabel}
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "700",
+                        color: "#111",
+                        flex: 1, // Ensure title breaks if too long
+                      }}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {calendar.isFilteredView
+                        ? calendar.filterTitle
+                        : calendar.selectedDayLabel}
                     </Text>
                   </View>
                   <View
@@ -208,7 +214,11 @@ export default function CalendarScreen() {
                     </Text>
                   </View>
                   <RideList
-                    data={rideLists.forSelectedDay}
+                    data={
+                      calendar.isFilteredView
+                        ? rideLists.filtered
+                        : rideLists.forSelectedDay
+                    }
                     onSelect={actions.openRide}
                     contentContainerStyle={{
                       paddingTop: 8,
@@ -216,7 +226,12 @@ export default function CalendarScreen() {
                       paddingBottom: 32 + bottomInset,
                     }}
                     indicatorInsets={indicatorInsets}
-                    emptyMessage="Nessuna uscita per questo giorno."
+                    emptyMessage={
+                      calendar.isFilteredView
+                        ? "Nessun evento corrispondente ai filtri impostati."
+                        : "Nessuna uscita per questo giorno."
+                    }
+                    showDate={calendar.isFilteredView}
                   />
                 </View>
               </Animated.View>

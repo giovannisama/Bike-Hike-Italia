@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from "react";
 import {
+  Animated,
+  Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,8 +15,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { calendarStyles } from "./styles";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { SearchModalState } from "./useCalendarScreen";
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -21,6 +23,10 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { pad2 } from "./helpers";
 import { Picker } from "@react-native-picker/picker";
+import { Ionicons } from "@expo/vector-icons";
+
+// Using standardized colors/styles from observation of new files
+const ACTION_GREEN = "#22c55e";
 
 type CalendarSearchModalProps = {
   visible: boolean;
@@ -31,11 +37,62 @@ type CalendarSearchModalProps = {
 export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchModalProps) {
   const [iosPickerField, setIosPickerField] = useState<"from" | "to" | null>(null);
   const [iosPickerDate, setIosPickerDate] = useState<Date>(new Date());
+
+  const insets = useSafeAreaInsets();
+  const headerTopPadding = insets.top > 0 ? insets.top + 12 : 24;
+
+  // Animation state for Top Sheet
+  const translateY = React.useRef(new Animated.Value(-600)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        speed: 12,
+        bounciness: 4
+      }).start();
+    } else {
+      translateY.setValue(-600);
+    }
+  }, [visible]);
+
+  const handleClose = () => {
+    Animated.timing(translateY, {
+      toValue: -600,
+      duration: 250,
+      useNativeDriver: true,
+      easing: Easing.in(Easing.cubic)
+    }).start(() => {
+      onClose();
+    });
+  };
+
+  // Hook apply/reset to animate out first
+  const handleApply = () => {
+    Animated.timing(translateY, {
+      toValue: -600,
+      duration: 200, // faster
+      useNativeDriver: true
+    }).start(() => {
+      state.apply();
+    });
+  };
+
+  const handleReset = () => {
+    state.reset(); // reset clears immediately, maybe we want to keep it open? 
+    // Usually reset just clears fields. 
+    // If user wants to close, they press X. 
+    // But let's assume standard behavior is just clear fields.
+  };
+
+  // Custom Year/Month picker states
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [androidYmModalVisible, setAndroidYmModalVisible] = useState(false);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(() => new Date().getMonth());
+
   const isIos = Platform.OS === "ios";
 
   const hasYearMonthFilter = state.ymLocal.trim().length > 0;
@@ -59,6 +116,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
     ],
     []
   );
+
   const yearOptions = useMemo(() => {
     const start = 2020;
     const end = new Date().getFullYear() + 2;
@@ -193,407 +251,348 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
-      onRequestClose={onClose}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={handleClose}
     >
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <SafeAreaView edges={["top", "left", "right"]}>
-          <View
-            style={{
-              paddingHorizontal: 16,
-              paddingTop: 8,
-              paddingBottom: 8,
-              borderBottomWidth: 1,
-              borderColor: "#e5e7eb",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={{ fontSize: 18, fontWeight: "800", color: "#111827" }}>Cerca</Text>
-            <TouchableOpacity onPress={onClose} accessibilityLabel="Chiudi filtri" accessibilityRole="button">
-              <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }}>×</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ padding: 16 }}>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={calendarStyles.inputLabel}>Anno-Mese</Text>
-              <Pressable
-                onPress={openYearMonthPicker}
-                disabled={hasDateRangeFilter}
-                style={({ pressed }) => [
-                  calendarStyles.textInput,
-                  {
-                    justifyContent: "center",
-                    opacity: hasDateRangeFilter ? 0.55 : pressed ? 0.7 : 1,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Apri selezione anno e mese"
-                accessibilityState={{ disabled: hasDateRangeFilter }}
-              >
-                <Text style={{ color: state.ymLocal ? "#111827" : "#9CA3AF" }}>
-                  {state.ymLocal ? formatMonthYearLabel(state.ymLocal) : "YYYY-MM"}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={calendarStyles.inputLabel}>Intervallo date</Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable
-                  onPress={() => openPicker("from")}
-                  disabled={hasYearMonthFilter}
-                  style={({ pressed }) => [
-                    calendarStyles.textInput,
-                    {
-                      flex: 1,
-                      justifyContent: "center",
-                      opacity: hasYearMonthFilter ? 0.55 : pressed ? 0.7 : 1,
-                    },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Apri selezione data Da"
-                  accessibilityState={{ disabled: hasYearMonthFilter }}
-                >
-                  <Text style={{ color: state.fromLocal ? "#111827" : "#9CA3AF" }}>
-                    {state.fromLocal || "Da YYYY-MM-DD"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => openPicker("to")}
-                  disabled={hasYearMonthFilter}
-                  style={({ pressed }) => [
-                    calendarStyles.textInput,
-                    {
-                      flex: 1,
-                      justifyContent: "center",
-                      opacity: hasYearMonthFilter ? 0.55 : pressed ? 0.7 : 1,
-                    },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Apri selezione data A"
-                  accessibilityState={{ disabled: hasYearMonthFilter }}
-                >
-                  <Text style={{ color: state.toLocal ? "#111827" : "#9CA3AF" }}>
-                    {state.toLocal || "A YYYY-MM-DD"}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={calendarStyles.inputLabel}>Cerca (titolo/luogo/bici)</Text>
-              <TextInput
-                value={state.textLocal}
-                onChangeText={state.setTextLocal}
-                placeholder="Es. Gran Fondo, Pista ciclabile..."
-                placeholderTextColor="#9CA3AF"
-                style={calendarStyles.textInput}
-                returnKeyType="search"
-              />
-            </View>
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-              <Pressable onPress={state.apply} style={[calendarStyles.goBtn, { backgroundColor: "#111" }]}>
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Applica</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={state.reset}
-                style={[calendarStyles.goBtn, { backgroundColor: "#6B7280" }]}
-              >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Reimposta</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </View>
-
-      {/* Modal iOS per il DateTimePicker "Da/A" */}
-      {Platform.OS === "ios" && iosPickerField && (
-        <Modal
-          transparent
-          visible={true}
-          animationType="slide"
-          onRequestClose={() => setIosPickerField(null)}
-        >
-          <View style={pickerModalStyles.wrapper}>
-            {/* backdrop cliccabile */}
-            <TouchableWithoutFeedback onPress={() => setIosPickerField(null)}>
-              <View style={pickerModalStyles.overlay} />
-            </TouchableWithoutFeedback>
-
-            {/* sheet in basso con header + picker */}
-            <View style={pickerModalStyles.container}>
-              <View style={pickerModalStyles.actions}>
-                <Pressable onPress={() => setIosPickerField(null)}>
-                  <Text style={pickerModalStyles.cancelText}>Annulla</Text>
-                </Pressable>
-                <Pressable onPress={confirmIosPicker}>
-                  <Text style={pickerModalStyles.confirmText}>Fatto</Text>
-                </Pressable>
-              </View>
-              <DateTimePicker
-                value={iosPickerDate}
-                mode="date"
-                display={isIos ? "spinner" : "default"}
-                preferredDatePickerStyle={isIos ? "spinner" : undefined}
-                onChange={(_: DateTimePickerEvent, selected) => {
-                  if (selected) setIosPickerDate(selected);
-                }}
-                locale="it-IT"
-                style={pickerModalStyles.picker}
-              />
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Picker Mese/Anno */}
-      {isIos && monthPickerVisible && (
-        <Modal
-          transparent
-          visible={true}
-          animationType="slide"
-          onRequestClose={() => setMonthPickerVisible(false)}
-        >
-          <View style={{ flex: 1, justifyContent: "flex-end" }}>
-            <TouchableWithoutFeedback onPress={() => setMonthPickerVisible(false)}>
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
-            </TouchableWithoutFeedback>
-            <View
+      {/* Overlay Background */}
+      <TouchableWithoutFeedback onPress={handleClose}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}>
+          {/* Top Sheet Container */}
+          <TouchableWithoutFeedback>
+            <Animated.View
               style={{
-                backgroundColor: "#fff",
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                paddingBottom: 16,
+                transform: [{ translateY }],
+                backgroundColor: "#FDFCF8",
+                borderBottomLeftRadius: 24,
+                borderBottomRightRadius: 24,
+                overflow: 'hidden',
+                maxHeight: '90%', // safety
+                elevation: 5,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+                paddingTop: headerTopPadding // Apply safe area padding here to container or header
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: 16,
-                }}
-              >
-                <Pressable onPress={() => setMonthPickerVisible(false)}>
-                  <Text style={{ color: "#111827", fontWeight: "600" }}>Annulla</Text>
-                </Pressable>
-                <Pressable onPress={confirmYearMonth}>
-                  <Text style={{ color: "#0B3D2E", fontWeight: "700" }}>Fatto</Text>
-                </Pressable>
+              {/* HEADER */}
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                paddingBottom: 18, // moved top padding to container
+                paddingTop: 12, // small internal top padding
+                backgroundColor: '#FDFCF8',
+                borderBottomWidth: 1,
+                borderBottomColor: '#F1F5F9'
+              }}>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 }}>
+                  Cerca
+                </Text>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={{
+                    width: 36, // Slightly larger visual
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: '#F1F5F9',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Ionicons name="close" size={22} color="#0F172A" />
+                </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: "row" }}>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: 12,
-                      color: "#6B7280",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Mese
-                  </Text>
-                  <Picker
-                    selectedValue={selectedMonth}
-                    onValueChange={(value) => setSelectedMonth(value)}
-                  >
-                    {monthNames.map((label, index) => (
-                      <Picker.Item key={label} label={label} value={index + 1} />
-                    ))}
-                  </Picker>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: 12,
-                      color: "#6B7280",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Anno
-                  </Text>
-                  <Picker
-                    selectedValue={selectedYear}
-                    onValueChange={(value) => setSelectedYear(value)}
-                  >
-                    {yearOptions.map((year) => (
-                      <Picker.Item key={year} label={String(year)} value={year} />
-                    ))}
-                  </Picker>
-                </View>
+
+              {/* Content */}
+              <View>
+
+                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+                  <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 24 }}>
+
+                    {/* ANNO-MESE */}
+                    <View>
+                      <Text style={styles.sectionTitle}>PERIODO (MESE)</Text>
+                      <Pressable
+                        onPress={openYearMonthPicker}
+                        disabled={hasDateRangeFilter}
+                        style={({ pressed }) => [
+                          styles.inputBase,
+                          {
+                            opacity: hasDateRangeFilter ? 0.5 : pressed ? 0.8 : 1,
+                            backgroundColor: hasDateRangeFilter ? "#F3F4F6" : "#FFF",
+                          },
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Ionicons name="calendar-outline" size={20} color={state.ymLocal ? "#0F172A" : "#94A3B8"} />
+                          <Text style={{ fontSize: 16, color: state.ymLocal ? "#0F172A" : "#94A3B8", fontWeight: state.ymLocal ? '600' : '400' }}>
+                            {state.ymLocal ? formatMonthYearLabel(state.ymLocal) : "Seleziona mese..."}
+                          </Text>
+                        </View>
+                        {state.ymLocal && (
+                          <TouchableOpacity onPress={() => state.setYmLocal('')} hitSlop={10}>
+                            <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                          </TouchableOpacity>
+                        )}
+                      </Pressable>
+                    </View>
+
+                    {/* INTERVALLO DATE */}
+                    <View>
+                      <Text style={styles.sectionTitle}>OPPURE INTERVALLO DATE</Text>
+                      <View style={{ flexDirection: "row", gap: 12 }}>
+                        <Pressable
+                          onPress={() => openPicker("from")}
+                          disabled={hasYearMonthFilter}
+                          style={({ pressed }) => [
+                            styles.inputBase,
+                            {
+                              flex: 1,
+                              opacity: hasYearMonthFilter ? 0.5 : pressed ? 0.8 : 1,
+                              backgroundColor: hasYearMonthFilter ? "#F3F4F6" : "#FFF",
+                            },
+                          ]}
+                        >
+                          <View>
+                            <Text style={styles.miniLabel}>DA</Text>
+                            <Text style={{ fontSize: 15, color: state.fromLocal ? "#0F172A" : "#94A3B8", fontWeight: state.fromLocal ? '600' : '400', marginTop: 2 }}>
+                              {state.fromLocal || "GG/MM/AAAA"}
+                            </Text>
+                          </View>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={() => openPicker("to")}
+                          disabled={hasYearMonthFilter}
+                          style={({ pressed }) => [
+                            styles.inputBase,
+                            {
+                              flex: 1,
+                              opacity: hasYearMonthFilter ? 0.5 : pressed ? 0.8 : 1,
+                              backgroundColor: hasYearMonthFilter ? "#F3F4F6" : "#FFF",
+                            },
+                          ]}
+                        >
+                          <View>
+                            <Text style={styles.miniLabel}>A</Text>
+                            <Text style={{ fontSize: 15, color: state.toLocal ? "#0F172A" : "#94A3B8", fontWeight: state.toLocal ? '600' : '400', marginTop: 2 }}>
+                              {state.toLocal || "GG/MM/AAAA"}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    {/* RICERCA TESTO */}
+                    <View>
+                      <Text style={styles.sectionTitle}>PAROLA CHIAVE</Text>
+                      <View style={[styles.inputBase, { paddingHorizontal: 12 }]}>
+                        <Ionicons name="search" size={20} color="#94A3B8" style={{ marginRight: 8 }} />
+                        <TextInput
+                          value={state.textLocal}
+                          onChangeText={state.setTextLocal}
+                          placeholder="Titolo, luogo, tipo bici..."
+                          placeholderTextColor="#94A3B8"
+                          style={{ flex: 1, fontSize: 16, color: "#0F172A", height: '100%' }}
+                          returnKeyType="search"
+                          clearButtonMode="while-editing"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={{ height: 40 }} />
+
+                  </ScrollView>
+
+                  {/* FOOTER ACTIONS */}
+                  <View style={{
+                    padding: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: '#F1F5F9',
+                    flexDirection: 'row',
+                    gap: 12,
+                    paddingBottom: Platform.OS === 'ios' ? 32 : 16
+                  }}>
+                    <TouchableOpacity
+                      onPress={handleReset}
+                      style={[styles.btnBase, { backgroundColor: '#F1F5F9', flex: 1 }]}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#475569' }}>Azzera Filtri</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={handleApply}
+                      style={[styles.btnBase, { backgroundColor: '#0F172A', flex: 1.5 }]}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#FFF' }}>Applica Filtri</Text>
+                    </TouchableOpacity>
+                  </View>
+                </KeyboardAvoidingView>
+              </View>
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+
+      {/* --- MODALS PICKERS --- */}
+
+      {/* Modal iOS DateTimePicker */}
+      {Platform.OS === "ios" && iosPickerField && (
+        <Modal transparent visible={true} animationType="fade" onRequestClose={() => setIosPickerField(null)}>
+          <TouchableWithoutFeedback onPress={() => setIosPickerField(null)}>
+            <View style={pickerStyles.overlay} />
+          </TouchableWithoutFeedback>
+          <View style={pickerStyles.container}>
+            <View style={pickerStyles.header}>
+              <TouchableOpacity onPress={() => setIosPickerField(null)}>
+                <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmIosPicker}>
+                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={iosPickerDate}
+              mode="date"
+              display="spinner"
+              onChange={(_, sel) => sel && setIosPickerDate(sel)}
+              locale="it-IT"
+              style={{ height: 200 }}
+            />
+          </View>
+        </Modal>
+      )}
+
+      {/* Picker Mese/Anno (iOS) */}
+      {isIos && monthPickerVisible && (
+        <Modal transparent visible={true} animationType="fade" onRequestClose={() => setMonthPickerVisible(false)}>
+          <TouchableWithoutFeedback onPress={() => setMonthPickerVisible(false)}>
+            <View style={pickerStyles.overlay} />
+          </TouchableWithoutFeedback>
+          <View style={pickerStyles.container}>
+            <View style={pickerStyles.header}>
+              <TouchableOpacity onPress={() => setMonthPickerVisible(false)}>
+                <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmYearMonth}>
+                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', height: 200 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 10 }}>MESE</Text>
+                <Picker
+                  selectedValue={selectedMonth}
+                  onValueChange={(v) => setSelectedMonth(v)}
+                >
+                  {monthNames.map((l, i) => <Picker.Item key={l} label={l} value={i + 1} />)}
+                </Picker>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 10 }}>ANNO</Text>
+                <Picker
+                  selectedValue={selectedYear}
+                  onValueChange={(v) => setSelectedYear(v)}
+                >
+                  {yearOptions.map((y) => <Picker.Item key={y} label={String(y)} value={y} />)}
+                </Picker>
               </View>
             </View>
           </View>
         </Modal>
       )}
 
-      {/* FIX: su Android il picker "Anno-Mese" usa una modal custom mese/anno invece del calendario con i giorni */}
+      {/* Android Custom YM Picker */}
       {Platform.OS === "android" && androidYmModalVisible && (
-        <Modal
-          transparent
-          visible={true}
-          animationType="slide"
-          onRequestClose={() => setAndroidYmModalVisible(false)}
-        >
-          <View style={androidMonthPickerStyles.overlay}>
-            <TouchableWithoutFeedback onPress={() => setAndroidYmModalVisible(false)}>
-              <View style={{ flex: 1 }} />
-            </TouchableWithoutFeedback>
-            <View style={androidMonthPickerStyles.sheet}>
-              <View style={androidMonthPickerStyles.header}>
-                <Pressable onPress={() => setAndroidYmModalVisible(false)}>
-                  <Text style={androidMonthPickerStyles.cancelText}>Annulla</Text>
-                </Pressable>
-                <Pressable onPress={confirmYearMonth}>
-                  <Text style={androidMonthPickerStyles.confirmText}>Fatto</Text>
-                </Pressable>
-              </View>
-              <View style={androidMonthPickerStyles.columns}>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={[androidMonthPickerStyles.column, { marginRight: 8 }]}
-                >
-                  {yearOptions.map((year) => (
-                    <Pressable
-                      key={year}
-                      onPress={() => setSelectedYear(year)}
-                      style={androidMonthPickerStyles.option}
-                    >
-                      <Text
-                        style={[
-                          androidMonthPickerStyles.optionText,
-                          selectedYear === year && androidMonthPickerStyles.optionTextSelected,
-                        ]}
-                      >
-                        {year}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={androidMonthPickerStyles.column}
-                >
-                  {monthNames.map((label, index) => (
-                    <Pressable
-                      key={label}
-                      onPress={() => setSelectedMonthIndex(index)}
-                      style={androidMonthPickerStyles.option}
-                    >
-                      <Text
-                        style={[
-                          androidMonthPickerStyles.optionText,
-                          selectedMonthIndex === index &&
-                            androidMonthPickerStyles.optionTextSelected,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
+        <Modal transparent visible={true} animationType="fade" onRequestClose={() => setAndroidYmModalVisible(false)}>
+          <TouchableWithoutFeedback onPress={() => setAndroidYmModalVisible(false)}>
+            <View style={pickerStyles.overlay} />
+          </TouchableWithoutFeedback>
+          <View style={[pickerStyles.container, { height: 320 }]}>
+            <View style={pickerStyles.header}>
+              <TouchableOpacity onPress={() => setAndroidYmModalVisible(false)}>
+                <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmYearMonth}>
+                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', flex: 1, padding: 16 }}>
+              <ScrollView style={{ flex: 1, marginRight: 8 }} showsVerticalScrollIndicator={false}>
+                {yearOptions.map(y => (
+                  <TouchableOpacity key={y} onPress={() => setSelectedYear(y)} style={{ padding: 12, alignItems: 'center', backgroundColor: selectedYear === y ? '#F0FDF4' : 'transparent', borderRadius: 8 }}>
+                    <Text style={{ fontWeight: selectedYear === y ? '700' : '400', color: selectedYear === y ? ACTION_GREEN : '#1E293B' }}>{y}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                {monthNames.map((m, i) => (
+                  <TouchableOpacity key={m} onPress={() => setSelectedMonthIndex(i)} style={{ padding: 12, alignItems: 'center', backgroundColor: selectedMonthIndex === i ? '#F0FDF4' : 'transparent', borderRadius: 8 }}>
+                    <Text style={{ fontWeight: selectedMonthIndex === i ? '700' : '400', color: selectedMonthIndex === i ? ACTION_GREEN : '#1E293B' }}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           </View>
         </Modal>
       )}
+
     </Modal>
   );
 }
 
-const pickerModalStyles = StyleSheet.create({
-  wrapper: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
+const styles = StyleSheet.create({
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+    marginBottom: 8,
+    letterSpacing: 0.5
   },
-  // backdrop sopra il foglio
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  // sheet in basso con altezza minima sufficiente
-  container: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 16,
+  inputBase: {
+    height: 56,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    minHeight: 320,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
   },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 4,
+  miniLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8'
   },
-  cancelText: {
-    color: "#111827",
-    fontWeight: "600",
-  },
-  confirmText: {
-    color: "#0B3D2E",
-    fontWeight: "700",
-  },
-  picker: {
-    width: "100%",
-    minHeight: 260,
-  },
+  btnBase: {
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center'
+  }
 });
 
-const androidMonthPickerStyles = StyleSheet.create({
+const pickerStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: 'rgba(15, 23, 42, 0.4)'
   },
-  sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 12,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    maxHeight: 320,
+  container: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 20
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 4,
-  },
-  cancelText: {
-    color: "#111827",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  confirmText: {
-    color: "#0B3D2E",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  columns: {
-    flexDirection: "row",
-    marginTop: 12,
-    height: 220,
-  },
-  column: {
-    flex: 1,
-  },
-  option: {
-    paddingVertical: 10,
-  },
-  optionText: {
-    textAlign: "center",
-    fontSize: 16,
-    color: "#111827",
-  },
-  optionTextSelected: {
-    color: "#0B3D2E",
-    fontWeight: "700",
-  },
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  }
 });

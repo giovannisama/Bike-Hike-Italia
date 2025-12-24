@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.onRideManualParticipantsUpdated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
@@ -44,6 +44,15 @@ if (!admin.apps.length) {
 // -----------------------------
 // Helpers: participants count
 // -----------------------------
+async function getParticipantsCount(rideRef) {
+    const colRef = rideRef.collection("participants");
+    if (typeof colRef.count === "function") {
+        const snap = await colRef.count().get();
+        return snap.data().count;
+    }
+    const snap = await colRef.get();
+    return snap.size;
+}
 async function updateParticipantsCountsWithDelta(rideId, delta) {
     const db = admin.firestore();
     const rideRef = db.doc(`rides/${rideId}`);
@@ -71,6 +80,27 @@ async function updateParticipantsCountsWithDelta(rideId, delta) {
             participantsCountTotal: total,
         });
         functions.logger.info(`[participantsCount] ride=${rideId} delta=${delta} self=${nextSelf} manual=${manualCount} total=${total}`);
+    });
+}
+async function reconcileParticipantsCounts(rideId) {
+    const db = admin.firestore();
+    const rideRef = db.doc(`rides/${rideId}`);
+    const selfCount = await getParticipantsCount(rideRef);
+    await db.runTransaction(async (tx) => {
+        const rideSnap = await tx.get(rideRef);
+        if (!rideSnap.exists) {
+            functions.logger.info(`[participantsCount] ride missing: ${rideId}`);
+            return;
+        }
+        const rideData = rideSnap.data() || {};
+        const manualCount = Array.isArray(rideData.manualParticipants)
+            ? rideData.manualParticipants.length
+            : 0;
+        const total = selfCount + manualCount;
+        tx.update(rideRef, {
+            participantsCountSelf: selfCount,
+            participantsCountTotal: total,
+        });
     });
 }
 async function refreshParticipantsTotalForManualChange(rideId) {
@@ -222,10 +252,11 @@ exports.onParticipantWrite = functions.firestore
     const beforeExists = change.before.exists;
     const afterExists = change.after.exists;
     const delta = !beforeExists && afterExists ? 1 : beforeExists && !afterExists ? -1 : 0;
-    if (delta === 0)
-        return;
     try {
-        await updateParticipantsCountsWithDelta(rideId, delta);
+        if (delta !== 0) {
+            await updateParticipantsCountsWithDelta(rideId, delta);
+        }
+        await reconcileParticipantsCounts(rideId);
     }
     catch (err) {
         functions.logger.error(`[participantsCount] write failed ride=${rideId}`, err);
@@ -251,6 +282,15 @@ exports.onRideManualParticipantsUpdated = functions.firestore
     catch (err) {
         functions.logger.error(`[participantsCount] manual update failed ride=${rideId}`, err);
     }
+});
+// -----------------------------
+// 3c) Backfill participants counts (admin-only)
+// -----------------------------
+exports.backfillParticipantsCounts = functions.https.onRequest(async (req, res) => {
+    // ONE-SHOT endpoint disabled after stabilization (2025-12-24).
+    res.status(410).json({ error: "gone" });
+    return;
+    // Backfill logic intentionally disabled.
 });
 // -----------------------------
 // 4) Trigger su nuovo utente

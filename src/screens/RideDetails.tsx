@@ -77,6 +77,8 @@ type Ride = {
   dateTime?: Timestamp | null;
   maxParticipants?: number | null;
   participantsCount?: number;
+  participantsCountSelf?: number;
+  participantsCountTotal?: number;
   guidaName?: string | null;
   guidaNames?: string[] | null;
   createdBy: string;
@@ -270,9 +272,11 @@ export default function RideDetails() {
           .filter(Boolean) as ManualParticipant[];
 
         const updatedCount =
-          typeof d?.participantsCount === "number"
-            ? d.participantsCount
-            : participants.length + manualParticipants.length;
+          typeof d?.participantsCountTotal === "number"
+            ? d.participantsCountTotal
+            : typeof d?.participantsCount === "number"
+              ? d.participantsCount
+              : participants.length + manualParticipants.length;
 
         setRide({
           title: d?.title ?? "",
@@ -285,6 +289,10 @@ export default function RideDetails() {
           dateTime: d?.dateTime ?? null,
           maxParticipants: d?.maxParticipants ?? null,
           participantsCount: updatedCount,
+          participantsCountSelf:
+            typeof d?.participantsCountSelf === "number" ? d.participantsCountSelf : null,
+          participantsCountTotal:
+            typeof d?.participantsCountTotal === "number" ? d.participantsCountTotal : null,
           guidaName: d?.guidaName ?? null,
           guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
           createdBy: d?.createdBy,
@@ -775,15 +783,8 @@ export default function RideDetails() {
   const adjustParticipantsCount = useCallback(
     async (delta: number) => {
       if (!rideId || delta === 0) return;
-      try {
-        const rideRef = doc(db, "rides", rideId);
-        const snap = await getDoc(rideRef);
-        const current = snap.exists() ? (snap.data()?.participantsCount ?? 0) : 0;
-        const next = Math.max(current + delta, 0);
-        await updateDoc(rideRef, { participantsCount: next });
-      } catch (e) {
-        console.warn("adjustParticipantsCount", e);
-      }
+      // Count is server-managed via Cloud Functions (participantsCountSelf/Total).
+      return;
     },
     [rideId]
   );
@@ -1365,6 +1366,56 @@ export default function RideDetails() {
 
         {/* Elenco partecipanti */}
         {/* TODO: blocco elenco partecipanti (lista + azioni admin) candidabile a sottocomponente riusabile. */}
+        {serviceQuestions.length > 0 && (
+          <View style={[styles.card, { marginHorizontal: 16, marginBottom: 16, padding: 16 }]}>
+            <Text style={styles.sectionTitle}>Servizi extra</Text>
+            <View style={{ gap: 10, marginTop: 8 }}>
+              {serviceQuestions.map((key) => (
+                <View
+                  key={key}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: "#111827", fontWeight: "600" }}>
+                    {getServiceLabel(key)}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: ACTION_GREEN,
+                        }}
+                      />
+                      <Text style={{ color: "#111827", fontWeight: "600" }}>
+                        {serviceSummary[key].yes} Sì
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: "#94A3B8",
+                        }}
+                      />
+                      <Text style={{ color: "#64748B", fontWeight: "600" }}>
+                        {serviceSummary[key].no} No
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* CARD PARTECIPANTI (Stitch Preview + Expanded) */}
         <View style={[styles.card, { marginHorizontal: 16, marginBottom: 32 }]}>
           <View style={{ marginBottom: 16 }}>

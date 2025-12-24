@@ -103,34 +103,36 @@ export default function CalendarScreen() {
         {/* Custom Clean Header */}
         <View
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
             paddingHorizontal: 16,
-            paddingVertical: 16,
             paddingTop: headerTopPadding,
+            paddingBottom: 16,
             backgroundColor: "transparent",
             borderBottomWidth: hasActiveFilters ? 0 : 1,
             borderBottomColor: "#F3F4F6",
           }}
         >
-          <Text style={{ fontSize: 28, fontWeight: "800", color: "#111", letterSpacing: -0.5 }}>
-            Calendario
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 28, fontWeight: "800", color: "#111", letterSpacing: -0.5 }}>
+              Calendario
+            </Text>
+            <TouchableOpacity
+              onPress={actions.openSearch}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "#F3F4F6",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 20,
+              }}
+            >
+              <Ionicons name="filter" size={18} color="#111" style={{ marginRight: 6 }} />
+              <Text style={{ color: "#111", fontWeight: "600", fontSize: 14 }}>Filtri</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ marginTop: 4, fontSize: 14, fontWeight: "500", color: "#64748B" }}>
+            Scopri e pianifica le uscite
           </Text>
-          <TouchableOpacity
-            onPress={actions.openSearch}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#F3F4F6",
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 20,
-            }}
-          >
-            <Ionicons name="filter" size={18} color="#111" style={{ marginRight: 6 }} />
-            <Text style={{ color: "#111", fontWeight: "600", fontSize: 14 }}>Filtri</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Banner Filtri (nascosto in filtered view per richiesta design: titolo composto sostituisce chip) */}

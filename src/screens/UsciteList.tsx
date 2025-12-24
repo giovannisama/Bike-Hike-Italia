@@ -47,6 +47,8 @@ type Ride = {
   dateTime?: Timestamp | null;
   maxParticipants?: number | null;
   participantsCount?: number;
+  participantsCountSelf?: number;
+  participantsCountTotal?: number;
   guidaName?: string | null;
   guidaNames?: string[];
   status?: "active" | "cancelled";
@@ -118,9 +120,10 @@ export default function UsciteList() {
   const [filterType, setFilterType] = useState<"active" | "archived">("active");
 
   const [searchText, setSearchText] = useState("");
-  // Deprecated: kept for legacy counting logic; badge now uses participantsCount from ride doc.
+  // Deprecated: kept for legacy counting logic; badge now uses participantsCountTotal from ride doc.
   const [counts, setCounts] = useState<Record<string, number>>({});
   const warnedMissingParticipantsCountRef = useRef<Set<string>>(new Set());
+  const SHOW_BADGE_DEBUG = false;
 
   // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
@@ -272,6 +275,10 @@ export default function UsciteList() {
           const archived = !!d?.archived;
           const manualParticipants = Array.isArray(d?.manualParticipants) ? d.manualParticipants : undefined;
           const participantsCount = typeof d?.participantsCount === "number" ? d.participantsCount : undefined;
+          const participantsCountSelf =
+            typeof d?.participantsCountSelf === "number" ? d.participantsCountSelf : undefined;
+          const participantsCountTotal =
+            typeof d?.participantsCountTotal === "number" ? d.participantsCountTotal : undefined;
 
           if (__DEV__ && typeof d?.participantsCount !== "number") {
             // We don't rely on this anymore, but good for debug
@@ -287,6 +294,8 @@ export default function UsciteList() {
             dateTime: d?.dateTime ?? null,
             maxParticipants: d?.maxParticipants ?? null,
             participantsCount,
+            participantsCountSelf,
+            participantsCountTotal,
             guidaName: d?.guidaName ?? null,
             guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : undefined,
             status: d?.status ?? "active",
@@ -412,16 +421,27 @@ export default function UsciteList() {
 
     // BADGE CALCULATION LOGIC
     const manualCount = Array.isArray(item.manualParticipants) ? item.manualParticipants.length : 0;
-    const selfCount = counts[item.id]; // Only self-registered from server/snapshot
-    const hasCount = typeof selfCount === "number";
+    const docTotal =
+      typeof item.participantsCountTotal === "number" ? item.participantsCountTotal : undefined;
+    const legacyTotal =
+      typeof item.participantsCount === "number" ? item.participantsCount : undefined;
+    // TODO: remove legacy participantsCount fallback after one stable release.
+    const displayTotal = typeof docTotal === "number" ? docTotal : (legacyTotal ?? 0);
 
-    // Total count: always sum self + manual. 
-    // If selfCount is missing, we render partial (manual) or placeholder?
-    // User req: "mostra temporaneamente manualCount (o 0) + un placeholder discreto"
-    const displayTotal = hasCount ? (selfCount + manualCount) : manualCount;
-
-    if (__DEV__) {
-      // console.log(`[RideList] ${item.title}: manual=${manualCount} self=${selfCount} total=${displayTotal} (stale=${item.participantsCount})`);
+    if (SHOW_BADGE_DEBUG && __DEV__) {
+      const source = typeof docTotal === "number"
+        ? "doc_total"
+        : typeof legacyTotal === "number"
+          ? "fallback_doc"
+          : "other";
+      // eslint-disable-next-line no-console
+      console.log("[RideBadgeCount]", {
+        id: item.id,
+        shown: displayTotal,
+        manualCount,
+        docParticipantsCount: legacyTotal,
+        source,
+      });
     }
 
     const statusBadge = isArchived ? (

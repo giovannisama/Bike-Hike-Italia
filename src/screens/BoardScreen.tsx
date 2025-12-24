@@ -420,9 +420,6 @@ export default function BoardScreen({ navigation, route }: any) {
             <View style={styles.headerBlock}>
               {/* Custom Header Title */}
               <View style={styles.headerRow}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8, marginTop: 4 }}>
-                  <Ionicons name="arrow-back" size={24} color="#1E293B" />
-                </TouchableOpacity>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.headerTitle}>BACHECA</Text>
                   <Text style={styles.headerSubtitle}>Novità e comunicazioni</Text>

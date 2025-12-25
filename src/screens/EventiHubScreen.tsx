@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen, UI } from "../components/Screen";
 import { db } from "../firebase";
 import { LinearGradient } from "expo-linear-gradient";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import AccessDenied from "../components/AccessDenied";
 
 // ------------------------------------------------------------------
 // HOOK: useActiveRidesCount (Local)
@@ -45,6 +47,7 @@ type EventSection = {
   icon: any;         // MaterialCommunityIcons name
   badge?: number | null;
   enabled: boolean;
+  permissionKey?: "ciclismo" | "trekking" | "bikeaut";
   onPress?: () => void;
 };
 
@@ -127,6 +130,13 @@ function GridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }
 // MAIN SCREEN
 // ------------------------------------------------------------------
 export default function EventiHubScreen({ navigation }: any) {
+  const {
+    enabledSectionsNormalized,
+    canSeeCiclismo,
+    canSeeTrekking,
+    canSeeBikeAut,
+    loading: profileLoading,
+  } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
   const insets = useSafeAreaInsets();
@@ -144,6 +154,14 @@ export default function EventiHubScreen({ navigation }: any) {
     viaggi: { name: "bag-checked", color: "#9CA3AF" },
   };
 
+  const hasOverrides = enabledSectionsNormalized !== null;
+  const anyAllowed = canSeeCiclismo || canSeeTrekking || canSeeBikeAut;
+  if (!profileLoading && hasOverrides && !anyAllowed) {
+    return (
+      <AccessDenied message="Non hai sezioni eventi abilitate per questo profilo." showBack={false} />
+    );
+  }
+
   // Sections Data
   const sections: EventSection[] = [
     {
@@ -155,6 +173,7 @@ export default function EventiHubScreen({ navigation }: any) {
       iconColor: iconMap.bici.color,
       badge: activeCount ?? 0,
       enabled: true,
+      permissionKey: "ciclismo",
       onPress: () => rootNav.navigate("UsciteList"),
     },
     {
@@ -166,6 +185,7 @@ export default function EventiHubScreen({ navigation }: any) {
       iconColor: iconMap.trekking.color,
       badge: 0,
       enabled: true, // As per prompt requirement to keep original behavior (it was enabled)
+      permissionKey: "trekking",
       onPress: () => rootNav.navigate("TrekkingPlaceholder"),
     },
     {
@@ -176,6 +196,7 @@ export default function EventiHubScreen({ navigation }: any) {
       iconColor: iconMap.bikeaut.color,
       badge: null,
       enabled: false,
+      permissionKey: "bikeaut",
     },
     {
       id: "viaggi",
@@ -188,8 +209,22 @@ export default function EventiHubScreen({ navigation }: any) {
     },
   ];
 
-  const enabledSections = sections.filter(s => s.enabled);
-  const disabledSections = sections.filter(s => !s.enabled);
+  const permissionMap = {
+    ciclismo: canSeeCiclismo,
+    trekking: canSeeTrekking,
+    bikeaut: canSeeBikeAut,
+  } as const;
+
+  const visibleSections = hasOverrides
+    ? sections.filter((section) => {
+        const key = section.permissionKey as keyof typeof permissionMap | undefined;
+        if (!key) return true;
+        return permissionMap[key];
+      })
+    : sections;
+
+  const enabledSections = visibleSections.filter(s => s.enabled);
+  const disabledSections = visibleSections.filter(s => !s.enabled);
   const renderGridItem = ({ item }: { item: EventSection }) => (
     <GridCard item={item} cardWidth={cardWidth} />
   );

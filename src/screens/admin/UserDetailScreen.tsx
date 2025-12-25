@@ -1,6 +1,6 @@
 // src/screens/admin/UserDetailScreen.tsx
 import React, { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, Switch, Pressable } from "react-native";
 
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../../firebase";
@@ -11,10 +11,17 @@ import {
   deleteDoc,
   deleteField,
 } from "firebase/firestore";
-import { Screen, Hero } from "../../components/Screen";
+import { Screen, Hero, UI } from "../../components/Screen";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
+import { getUserStatus } from "../../utils/userStatus";
+import {
+  DEFAULT_ENABLED_SECTIONS,
+  normalizeEnabledSections,
+  type EnabledSectionKey,
+} from "../../utils/enabledSections";
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
+const ACTION_GREEN = "#22c55e";
 
 type UserRole = "member" | "admin" | "owner";
 
@@ -56,8 +63,9 @@ type UserDoc = {
   displayName?: string | null;
   nickname?: string | null;
   role?: UserRole;
-  approved?: boolean;
-  disabled?: boolean;
+  approved?: boolean | string | number | null;
+  disabled?: boolean | string | number | null;
+  enabledSections?: string[] | null;
   createdAt?: any;
   selfDeleted?: boolean;
   selfDeletedAt?: any;
@@ -79,6 +87,7 @@ export default function UserDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string | null>(initialMeRole ?? null);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
 
   // MODIFICA PROFILO (inline)
   const [editMode, setEditMode] = useState(false);
@@ -140,8 +149,9 @@ export default function UserDetailScreen() {
           displayName: isSelfDeleted ? "" : displayNameRaw,
           nickname: isSelfDeleted ? "" : d.nickname ?? "",
           role: d.role ?? "member",
-          approved: d.approved === true,
-          disabled: d.disabled === true,
+          approved: d.approved,
+          disabled: d.disabled,
+          enabledSections: d.enabledSections ?? null,
           createdAt: d.createdAt,
           selfDeleted: isSelfDeleted,
           selfDeletedAt: d.selfDeletedAt,
@@ -190,31 +200,41 @@ export default function UserDetailScreen() {
   const isSelf  = !!currentUid && user?.uid === currentUid;
   const isCurrentOwner = myRole === "owner";
   const isSelfDeleted = user?.selfDeleted === true;
+  const status = user ? getUserStatus(user) : null;
+  const canEditVisibility = isCurrentOwner && !isSelfDeleted;
+  const baseVisibility = useMemo(
+    () => normalizeEnabledSections(user?.enabledSections) ?? DEFAULT_ENABLED_SECTIONS,
+    [user?.enabledSections]
+  );
+  const [enabledSectionsDraft, setEnabledSectionsDraft] =
+    useState<EnabledSectionKey[]>(DEFAULT_ENABLED_SECTIONS);
+  useEffect(() => {
+    setEnabledSectionsDraft(baseVisibility);
+  }, [user?.uid, baseVisibility]);
 
   // Abilitazioni azioni
-  const canApprove   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && user?.approved === false && user?.disabled !== true;
-  const canActivate  = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.disabled === true;
-  const canDeactivate= isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
-  const canDelete    = isCurrentOwner && !isOwner && !isSelf && (user?.disabled === true || isSelfDeleted);
-  const canEditProfile = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.approved === true && user?.disabled !== true;
+  const canApprove   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && !!status?.isPending;
+  const canActivate  = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isDisabled;
+  const canDeactivate= isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isActive;
+  const canDelete    = isCurrentOwner && !isOwner && !isSelf && (!!status?.isDisabled || isSelfDeleted);
+  const canEditProfile = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isActive;
   const currentRole: UserRole = (user?.role ?? "member") as UserRole;
   const canChangeRole =
     isCurrentOwner &&
     !isSelf &&
     !isSelfDeleted &&
-    user?.approved === true &&
-    user?.disabled !== true;
+    !!status?.isActive;
   const availableRoleTargets: UserRole[] = canChangeRole ? ROLE_TRANSITIONS[currentRole] : [];
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
     const isMember = user?.role === "member";
-    const isApproved = user?.approved === true;
-    const isDisabled = user?.disabled === true;
+    const isApproved = !!status?.approved;
+    const isDisabled = !!status?.disabled;
     const wasSelfDeleted = user?.selfDeleted === true;
 
     return { isAdmin, isMember, isApproved, isDisabled, wasSelfDeleted };
-  }, [user]);
+  }, [user, status]);
 
   const fullName = () => {
     if (user?.selfDeleted) return "Account eliminato";
@@ -224,26 +244,22 @@ export default function UserDetailScreen() {
     return user?.displayName || user?.email || user?.uid || "Utente";
   };
 
-  if (loading) {
-    return (
-      <Screen useNativeHeader={true} scroll={false}>
-        <View style={styles.center}>
-          <ActivityIndicator />
-          <Text style={{ marginTop: 8 }}>Carico utente…</Text>
-        </View>
-      </Screen>
+  const toggleSection = (key: EnabledSectionKey) => {
+    if (!canEditVisibility) return;
+    setEnabledSectionsDraft((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
-  }
+  };
 
-  if (!user) {
-    return (
-      <Screen useNativeHeader={true} scroll={false}>
-        <View style={styles.center}>
-          <Text>Utente non trovato.</Text>
-        </View>
-      </Screen>
-    );
-  }
+  const isVisibilityDirty = useMemo(() => {
+    const current = new Set(baseVisibility);
+    const draft = new Set(enabledSectionsDraft);
+    if (current.size !== draft.size) return true;
+    for (const key of current) {
+      if (!draft.has(key)) return true;
+    }
+    return false;
+  }, [baseVisibility, enabledSectionsDraft]);
 
   // ─────────────────────────────────────────
   // ACTION HANDLERS
@@ -472,17 +488,51 @@ export default function UserDetailScreen() {
     }
   };
 
+  const saveVisibility = async () => {
+    if (!user || !canEditVisibility || !isVisibilityDirty) return;
+    try {
+      setVisibilitySaving(true);
+      const allowed = new Set(["ciclismo", "trekking", "bikeaut"]);
+      const normalized = Array.from(new Set(enabledSectionsDraft))
+        .filter((value) => allowed.has(value))
+        .sort();
+      await updateDoc(doc(db, "users", user.uid), {
+        enabledSections: normalized,
+      });
+    } catch (e: any) {
+      Alert.alert("Errore", e?.message ?? "Impossibile salvare la visibilità.");
+    } finally {
+      setVisibilitySaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Screen useNativeHeader={true} scroll={false}>
+        <View style={styles.center}>
+          <ActivityIndicator />
+          <Text style={{ marginTop: 8 }}>Carico utente…</Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Screen useNativeHeader={true} scroll={false}>
+        <View style={styles.center}>
+          <Text>Utente non trovato.</Text>
+        </View>
+      </Screen>
+    );
+  }
+
   // ─────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────
   const roleLabel = user?.role === "owner" ? "Owner" : state.isAdmin ? "Admin" : "Member";
-  const statusLabel = isSelfDeleted
-    ? "Eliminato"
-    : user?.disabled
-    ? "Disattivo"
-    : user?.approved
-    ? "Attivo"
-    : "In attesa";
+  const statusKey = status?.statusKey ?? "pending";
+  const statusLabel = isSelfDeleted ? "Eliminato" : status?.statusLabel ?? "In attesa";
   const heroSubtitle = `${roleLabel} • ${statusLabel} • ${user?.email || "—"}`;
 
   return (
@@ -490,29 +540,32 @@ export default function UserDetailScreen() {
       <Hero title={fullName()} subtitle={heroSubtitle} />
 
       <View style={styles.container}>
-        <Text style={styles.title}>Dettagli</Text>
-
-        <View style={styles.badgeRow}>
-          <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
-            <Text style={styles.badgeText}>{roleLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.badge,
-              isSelfDeleted
-                ? styles.badgeDanger
-                : user.disabled
-                ? styles.badgeMuted
-                : user.approved
-                ? styles.badgeSuccess
-                : styles.badgePending,
-            ]}
-          >
-            <Text style={styles.badgeText}>{statusLabel}</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Stato e ruolo</Text>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+              <Text style={styles.badgeText}>{roleLabel}</Text>
+            </View>
+            <View
+              style={[
+                styles.badge,
+                isSelfDeleted
+                  ? styles.badgeDanger
+                  : statusKey === "disabled"
+                  ? styles.badgeMuted
+                  : statusKey === "active"
+                  ? styles.badgeSuccess
+                  : styles.badgePending,
+              ]}
+            >
+              <Text style={styles.badgeText}>{statusLabel}</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dati profilo</Text>
+          <View style={styles.card}>
           {!editMode ? (
             <>
               <InfoRow
@@ -573,82 +626,139 @@ export default function UserDetailScreen() {
               />
             </>
           )}
+          </View>
         </View>
 
-        <View style={{ gap: 8 }}>
-          {editMode ? (
-            <>
-              <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
-              <Button title="Annulla" onPress={cancelEdit} />
-            </>
-          ) : (
-            <>
-              {isSelfDeleted ? (
-                <Text style={{ color: "#b91c1c", fontWeight: "600" }}>
-                  Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
-                </Text>
-              ) : isCurrentOwner ? (
-                <>
-                  {canEditProfile && (
-                    <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading} />
-                  )}
-                  {availableRoleTargets.map((targetRole) => {
-                    const loadingKey = `role:${targetRole}`;
-                    const isDemotion = ROLE_WEIGHTS[targetRole] < ROLE_WEIGHTS[currentRole];
-                    const buttonTitle =
-                      actionLoading === loadingKey
-                        ? "Aggiornamento ruolo…"
-                        : getRoleActionLabel(currentRole, targetRole);
-                    return (
-                      <Button
-                        key={`role-${targetRole}`}
-                        title={buttonTitle}
-                        onPress={() => handleChangeRole(targetRole)}
-                        disabled={!!actionLoading}
-                        danger={isDemotion}
+        {isCurrentOwner && !editMode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Visibilità sezioni</Text>
+            <View style={styles.card}>
+              {(
+                [
+                  { key: "ciclismo", label: "Ciclismo" },
+                  { key: "trekking", label: "Trekking" },
+                  { key: "bikeaut", label: "Bike Aut" },
+                ] as Array<{ key: EnabledSectionKey; label: string }>
+              ).map((item) => {
+                const enabled = enabledSectionsDraft.includes(item.key);
+                const disabledToggle = !canEditVisibility || visibilitySaving;
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={({ pressed }) => [
+                      styles.settingRow,
+                      pressed && styles.rowPressed,
+                    ]}
+                    onPress={() => toggleSection(item.key)}
+                    disabled={disabledToggle}
+                    hitSlop={{ top: 6, bottom: 6 }}
+                  >
+                    <View style={styles.rowText}>
+                      <Text style={styles.toggleLabel}>{item.label}</Text>
+                    </View>
+                    <View style={styles.switchWrapper} pointerEvents="none">
+                      <Switch
+                        value={enabled}
+                        disabled={disabledToggle}
+                        trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
+                        thumbColor={enabled ? ACTION_GREEN : "#fff"}
                       />
-                    );
-                  })}
-                  {canDeactivate && (
-                    <Button
-                      title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
-                      onPress={handleDeactivate}
-                      disabled={!!actionLoading}
-                      danger
-                    />
-                  )}
-                  {canApprove && (
-                    <Button
-                      title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
-                      onPress={handleApprove}
-                      disabled={!!actionLoading}
-                    />
-                  )}
-                  {canActivate && (
-                    <Button
-                      title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
-                      onPress={handleActivate}
-                      disabled={!!actionLoading}
-                    />
-                  )}
-                </>
-              ) : (
-                <Text style={{ color: "#64748b", fontWeight: "600" }}>
-                  Solo un Owner può modificare o approvare altri utenti.
-                </Text>
-              )}
+                    </View>
+                  </Pressable>
+                );
+              })}
+              <Button
+                title={visibilitySaving ? "Salvataggio…" : "Salva visibilità"}
+                onPress={saveVisibility}
+                disabled={!isVisibilityDirty || visibilitySaving}
+              />
+            </View>
+          </View>
+        )}
 
-              {canDelete && (
-                <Button
-                  title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"}
-                  onPress={handleDelete}
-                  disabled={!!actionLoading}
-                  danger
-                />
-              )}
-            </>
-          )}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Azioni</Text>
+          <View style={styles.actionGroup}>
+            {editMode ? (
+              <>
+                <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
+                <Button title="Annulla" onPress={cancelEdit} />
+              </>
+            ) : (
+              <>
+                {isSelfDeleted ? (
+                  <Text style={styles.selfDeletedNote}>
+                    Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
+                  </Text>
+                ) : isCurrentOwner ? (
+                  <>
+                    {canEditProfile && (
+                      <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading} />
+                    )}
+                    {availableRoleTargets.map((targetRole) => {
+                      const loadingKey = `role:${targetRole}`;
+                      const isDemotion = ROLE_WEIGHTS[targetRole] < ROLE_WEIGHTS[currentRole];
+                      const buttonTitle =
+                        actionLoading === loadingKey
+                          ? "Aggiornamento ruolo…"
+                          : getRoleActionLabel(currentRole, targetRole);
+                      return (
+                        <Button
+                          key={`role-${targetRole}`}
+                          title={buttonTitle}
+                          onPress={() => handleChangeRole(targetRole)}
+                          disabled={!!actionLoading}
+                          danger={isDemotion}
+                        />
+                      );
+                    })}
+                    {canDeactivate && (
+                      <Button
+                        title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
+                        onPress={handleDeactivate}
+                        disabled={!!actionLoading}
+                        danger
+                      />
+                    )}
+                    {canApprove && (
+                      <Button
+                        title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
+                        onPress={handleApprove}
+                        disabled={!!actionLoading}
+                      />
+                    )}
+                    {canActivate && (
+                      <Button
+                        title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
+                        onPress={handleActivate}
+                        disabled={!!actionLoading}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.ownerOnlyNote}>
+                    Solo un Owner può modificare o approvare altri utenti.
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
         </View>
+
+        {!editMode && canDelete && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Eliminazione</Text>
+            <View style={styles.dangerCard}>
+              <Text style={styles.dangerNote}>Azione irreversibile.</Text>
+              <Button
+                title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"}
+                onPress={handleDelete}
+                disabled={!!actionLoading}
+                danger
+              />
+            </View>
+          </View>
+        )}
       </View>
     </Screen>
   );
@@ -669,7 +779,7 @@ function Button({
     <TouchableOpacity
       style={[
         styles.btn,
-        { backgroundColor: danger ? "#B91C1C" : "#111", opacity: disabled ? 0.6 : 1 },
+        { backgroundColor: danger ? "#B91C1C" : ACTION_GREEN, opacity: disabled ? 0.6 : 1 },
       ]}
       onPress={onPress}
       disabled={disabled}
@@ -682,14 +792,21 @@ function Button({
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 22, fontWeight: "900", color: "#111", marginBottom: 12 },
   container: {
     paddingHorizontal: 4,
     paddingBottom: 32,
-    gap: 20,
+    gap: 18,
   },
+  section: { gap: 10 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#64748b",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  actionGroup: { gap: 8 },
   btn: {
-    backgroundColor: "#111",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
@@ -752,7 +869,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
   },
   badgeSuccess: {
-    backgroundColor: "#16A34A",
+    backgroundColor: ACTION_GREEN,
   },
   badgeDanger: {
     backgroundColor: "#DC2626",
@@ -780,6 +897,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#0f172a",
   },
+  toggleLabel: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingVertical: 12,
+    paddingHorizontal: UI.spacing.sm,
+    borderRadius: 10,
+  },
+  rowPressed: {
+    backgroundColor: "#F8FAFC",
+  },
+  rowText: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  switchWrapper: {
+    justifyContent: "center",
+    alignItems: "flex-end",
+    paddingLeft: UI.spacing.md,
+    flexShrink: 0,
+    minWidth: 68,
+    marginTop: -2,
+  },
+  selfDeletedNote: { color: "#b91c1c", fontWeight: "600" },
+  ownerOnlyNote: { color: "#64748b", fontWeight: "600" },
+  dangerCard: {
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fff5f5",
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  dangerNote: { color: "#b91c1c", fontWeight: "700" },
 });
 
 type LabeledInputProps = {

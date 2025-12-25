@@ -4,14 +4,12 @@
 import React, { useEffect } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { Screen, Hero } from "../components/Screen";
+import { Screen, UI } from "../components/Screen";
 import { Ionicons } from "@expo/vector-icons";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 
 // Fallback theme (in caso l'UI del Screen non sia esportata)
-const THEME = {
-  colors: { primary: "#1D4ED8", tint: "#ECFEFF" },
-} as const;
+const ACTION_GREEN = "#22c55e";
 
 export default function AdminScreen() {
   const navigation = useNavigation<any>();
@@ -35,42 +33,30 @@ export default function AdminScreen() {
 
   return (
     <Screen useNativeHeader={true} scroll={false}>
-      <Hero
-        title="Amministrazione"
-        subtitle={heroSubtitle}
-        rightSlot={
-          isOwner ? (
-            <View style={styles.badgeOwner}>
-              <Text style={styles.badgeOwnerText}>OWNER</Text>
-            </View>
-          ) : isAdmin ? (
-            <View style={styles.badgeAdmin}>
-              <Text style={styles.badgeAdminText}>ADMIN</Text>
-            </View>
-          ) : undefined
-        }
-      />
+      <View style={styles.headerWrap}>
+        <Text style={styles.title}>Amministrazione</Text>
+        <Text style={styles.subtitle}>{heroSubtitle}</Text>
+        {(isOwner || isAdmin) && (
+          <View style={[styles.rolePill, isOwner ? styles.rolePillOwner : styles.rolePillAdmin]}>
+            <Text style={styles.rolePillText}>{isOwner ? "OWNER" : "ADMIN"}</Text>
+          </View>
+        )}
+      </View>
 
-      <View style={{ padding: 16, gap: 12 }}>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Sezioni</Text>
         {/* SOTTOMENU 1: Gestione Utenti */}
         <MenuTile
           title="Gestione Utenti"
           subtitle={
             isOwner
-              ? "Approva, attiva/disattiva, ruoli (Admin/Member)"
+              ? "Approva e gestisci ruoli. Altre sezioni in arrivo."
               : "Riservata al ruolo Owner"
           }
-          icon={<Ionicons name="people-outline" size={26} color={THEME.colors.primary} />}
+          icon={<Ionicons name="people-outline" size={26} color={ACTION_GREEN} />}
           onPress={goUsers}
           disabled={!isOwner}
         />
-
-        {/* Qui potrai aggiungere gli altri sottomenu in futuro:
-            - Archivi
-            - Calendario (admin)
-            - Log/moderazione
-            ecc.
-        */}
       </View>
     </Screen>
   );
@@ -101,7 +87,7 @@ function MenuTile({
       ]}
       disabled={disabled}
     >
-      <View style={[styles.tileIcon, { backgroundColor: THEME.colors.tint }]}>
+      <View style={styles.tileIcon}>
         {icon}
       </View>
       <View style={{ flex: 1 }}>
@@ -114,58 +100,65 @@ function MenuTile({
 }
 
 const styles = StyleSheet.create({
-  badgeAdmin: {
-    backgroundColor: "#FDE68A",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  headerWrap: {
+    paddingBottom: UI.spacing.md,
+    gap: 6,
+  },
+  title: { fontSize: 28, fontWeight: "900", color: UI.colors.text },
+  subtitle: { marginTop: 6, color: UI.colors.muted, fontWeight: "600" },
+  rolePill: {
+    alignSelf: "flex-start",
+    marginTop: UI.spacing.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
   },
-  badgeAdminText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#92400E",
+  rolePillOwner: { backgroundColor: "#0f172a" },
+  rolePillAdmin: { backgroundColor: "#111827" },
+  rolePillText: { color: "#fff", fontSize: 12, fontWeight: "800", letterSpacing: 0.4 },
+
+  section: {
+    paddingTop: UI.spacing.sm,
+    gap: UI.spacing.sm,
   },
-  badgeOwner: {
-    backgroundColor: "#1D4ED8",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  badgeOwnerText: {
+  sectionLabel: {
+    color: UI.colors.muted,
+    fontWeight: "700",
     fontSize: 12,
-    fontWeight: "800",
-    color: "#EFF6FF",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   tile: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
   },
   tileIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
   },
   tileTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
     color: "#0f172a",
   },
   tileSub: {
-    marginTop: 2,
+    marginTop: 4,
     color: "#64748b",
   },
   shadowCard: {
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
     elevation: 3,
   },
   tileDisabled: {

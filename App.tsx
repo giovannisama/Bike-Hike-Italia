@@ -169,7 +169,10 @@ function MoreHomeScreen() {
         marginHorizontal: 16,
         backgroundColor: "#fff",
         borderRadius: 20, // Modern radius
-        ...UI.shadow.card, // Reuse shared shadow
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 3,
         overflow: "hidden", // For ripple/press containment
       }}>
         {items.map((item, index) => {

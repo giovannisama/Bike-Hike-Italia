@@ -10,10 +10,13 @@ import { RootStackParamList } from "../navigation/types";
 import { Ride } from "./calendar/types";
 import { RideList } from "./calendar/RideList";
 import { Screen } from "../components/Screen";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import AccessDenied from "../components/AccessDenied";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CalendarDay">;
 
 export default function CalendarDayScreen({ navigation, route }: Props) {
+    const { canSeeCiclismo, loading: profileLoading } = useCurrentProfile();
     const { day, rides } = route.params;
     const insets = useSafeAreaInsets();
 
@@ -43,6 +46,21 @@ export default function CalendarDayScreen({ navigation, route }: Props) {
             <Ionicons name="arrow-back" size={24} color="#111" />
         </TouchableOpacity>
     );
+
+    if (profileLoading) {
+        return (
+            <Screen useNativeHeader={true} scroll={false}>
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                    <Text>Caricamento…</Text>
+                </View>
+            </Screen>
+        );
+    }
+    if (!canSeeCiclismo) {
+        return (
+            <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
+        );
+    }
 
     return (
         <Screen

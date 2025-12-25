@@ -44,6 +44,8 @@ import { deriveGuideSummary } from "../utils/guideHelpers";
 import { renderLinkedText } from "../utils/renderLinkedText";
 import type { RootStackParamList } from "../navigation/types";
 import type { ParticipantDoc, RideDoc, UserDoc } from "../types/firestore";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import AccessDenied from "../components/AccessDenied";
 
 type RideServiceKey = "lunch" | "dinner" | "overnight";
 type RideServiceChoice = "yes" | "no";
@@ -127,6 +129,7 @@ export default function RideDetails() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, "RideDetails">>();
   const rideId = route.params?.rideId;
+  const { canSeeCiclismo, loading: profileLoading } = useCurrentProfile();
 
   // Hide native stack header
   useLayoutEffect(() => {
@@ -1070,6 +1073,21 @@ export default function RideDetails() {
   // ─────────────────────────────────────────
   // Rendering
   // ─────────────────────────────────────────
+  if (profileLoading) {
+    return (
+      <Screen useNativeHeader={true} scroll={false}>
+        <View style={styles.center}>
+          <ActivityIndicator />
+          <Text style={{ marginTop: 8 }}>Caricamento…</Text>
+        </View>
+      </Screen>
+    );
+  }
+  if (!canSeeCiclismo) {
+    return (
+      <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
+    );
+  }
   if (loadingRide) {
     return (
       <View style={styles.center}>

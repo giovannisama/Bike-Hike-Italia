@@ -4,6 +4,10 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import type { UserDoc } from "../types/firestore";
+import {
+  normalizeEnabledSections,
+  type EnabledSectionKey,
+} from "../utils/enabledSections";
 
 export type UserRole = "member" | "admin" | "owner";
 export type UserProfile = UserDoc;
@@ -47,6 +51,12 @@ export default function useCurrentProfile() {
   const isAdmin = role === "admin" || role === "owner";
   const isOwner = role === "owner";
 
+  const enabledSectionsNormalized = normalizeEnabledSections(
+    (profile as any)?.enabledSections
+  );
+  const canSeeSection = (key: EnabledSectionKey) =>
+    !enabledSectionsNormalized || enabledSectionsNormalized.includes(key);
+
   const displayName =
     profile?.displayName ||
     authUser?.displayName ||
@@ -60,6 +70,10 @@ export default function useCurrentProfile() {
     role,
     isAdmin,
     isOwner,
+    enabledSectionsNormalized,
+    canSeeCiclismo: canSeeSection("ciclismo"),
+    canSeeTrekking: canSeeSection("trekking"),
+    canSeeBikeAut: canSeeSection("bikeaut"),
     displayName,
     loading,
   };

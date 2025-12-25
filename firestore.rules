@@ -2,10 +2,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Backfill token: no client access.
-    match /adminConfig/backfill {
-      allow read, write: if false;
-    }
 
     // -----------------------
     // Helpers
@@ -110,6 +106,7 @@ service cloud.firestore {
           'uid','email','displayName','firstName','lastName','nickname',
           'role','approved','disabled','createdAt','expoPushToken','membershipCard',
           'selfDeleted','selfDeletedAt',
+          'enabledSections',
           // nuovi campi per le notifiche
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
@@ -117,6 +114,41 @@ service cloud.firestore {
           'notificationsDisabledForPendingUser',
           'notificationsDisabledForBoardPost'
         ];
+      }
+
+      // ---- enabledSections validation (Owner-only via validUserUpdateAdmin) ----
+      function isAllowedSection(val) {
+        return val is string
+          && (val == 'ciclismo' || val == 'trekking' || val == 'bikeaut');
+      }
+
+      function validEnabledSections() {
+        return !request.resource.data.keys().hasAny(['enabledSections'])
+          || (
+            request.resource.data.enabledSections is list
+            && request.resource.data.enabledSections.size() <= 3
+            && (
+              request.resource.data.enabledSections.size() == 0
+              || (
+                isAllowedSection(request.resource.data.enabledSections[0])
+                && (
+                  request.resource.data.enabledSections.size() == 1
+                  || (
+                    isAllowedSection(request.resource.data.enabledSections[1])
+                    && request.resource.data.enabledSections[1] != request.resource.data.enabledSections[0]
+                    && (
+                      request.resource.data.enabledSections.size() == 2
+                      || (
+                        isAllowedSection(request.resource.data.enabledSections[2])
+                        && request.resource.data.enabledSections[2] != request.resource.data.enabledSections[0]
+                        && request.resource.data.enabledSections[2] != request.resource.data.enabledSections[1]
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          );
       }
 
       function validUserCreateSelf() {
@@ -134,6 +166,7 @@ service cloud.firestore {
           && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
           && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
           && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null)
+          && (!has('enabledSections'))
           // se presenti, i flag di notifica devono essere booleani
           && (!has('notificationsDisabled') || request.resource.data.notificationsDisabled is bool)
           && (!has('notificationsDisabledForCreatedRide') || request.resource.data.notificationsDisabledForCreatedRide is bool)
@@ -163,6 +196,7 @@ service cloud.firestore {
           && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
           && (!changed.hasAny(['selfDeleted'])   || request.resource.data.selfDeleted is bool)
           && (!changed.hasAny(['selfDeletedAt']) || request.resource.data.selfDeletedAt == null || request.resource.data.selfDeletedAt is timestamp)
+          && (!changed.hasAny(['enabledSections']) || validEnabledSections())
           // nuovi flag notifica: se cambiano, devono essere bool
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
           && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)

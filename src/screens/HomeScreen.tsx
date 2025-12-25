@@ -162,7 +162,8 @@ function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor 
 }
 
 export default function HomeScreen({ navigation }: any) {
-  const { profile, isAdmin, isOwner } = useCurrentProfile();
+  const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking } =
+    useCurrentProfile();
   const activeCount = useActiveRidesCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
 
@@ -326,6 +327,7 @@ export default function HomeScreen({ navigation }: any) {
               caption="Uscite attive"
               badge={activeCount ?? 0}
               onPress={() => rootNav.navigate("UsciteList")}
+              disabled={!canSeeCiclismo}
               icon={<MaterialCommunityIcons name="bike" size={24} color="#15803D" />}
               iconBgColor="#DCFCE7" // Green-100
             />
@@ -335,6 +337,7 @@ export default function HomeScreen({ navigation }: any) {
               caption="In arrivo"
               badge={0}
               onPress={() => rootNav.navigate("TrekkingPlaceholder")}
+              disabled={!canSeeTrekking}
               icon={<MaterialCommunityIcons name="hiking" size={24} color="#0F766E" />}
               iconBgColor="#CCFBF1" // Teal-100
             />

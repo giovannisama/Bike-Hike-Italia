@@ -35,6 +35,7 @@ import { Screen, UI } from "../components/Screen";
 import { StatusBadge } from "./calendar/StatusBadge";
 import { getBikeCategoryLabel } from "./calendar/bikeType";
 import { deriveGuideSummary } from "../utils/guideHelpers";
+import AccessDenied from "../components/AccessDenied";
 
 // ---- Tipi ----
 type Ride = {
@@ -96,7 +97,8 @@ const matchesBikeFilter = (
 export default function UsciteList() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions(); // Used for deterministic chip width
-  const { isAdmin, profile, loading: profileLoading } = useCurrentProfile() as any;
+  const { isAdmin, profile, loading: profileLoading, canSeeCiclismo } =
+    useCurrentProfile() as any;
 
   const approvedOk =
     !!profile &&
@@ -258,6 +260,11 @@ export default function UsciteList() {
   // Caricamento rides
   useEffect(() => {
     if (profileLoading) return;
+    if (!canSeeCiclismo) {
+      setRides([]);
+      setLoading(false);
+      return;
+    }
     if (!canReadRides) {
       setRides([]);
       setLoading(false);
@@ -327,7 +334,7 @@ export default function UsciteList() {
       subsRef.current.clear();
       visibleSetRef.current.clear();
     };
-  }, [profileLoading, canReadRides]);
+  }, [profileLoading, canReadRides, canSeeCiclismo]);
 
   // Utility: refresh counts
   const refreshCounts = useCallback(async () => {
@@ -533,6 +540,20 @@ export default function UsciteList() {
   // Remove gaps (2 gaps between 3 items) and divide by 3
   const chipWidth = Math.floor((containerWidth - (GAP * 2)) / 3);
 
+  if (profileLoading) {
+    return (
+      <Screen useNativeHeader={true} scroll={false}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={ACTION_GREEN} />
+        </View>
+      </Screen>
+    );
+  }
+  if (!canSeeCiclismo) {
+    return (
+      <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
+    );
+  }
   if (loading) {
     return (
       <View style={styles.center}>

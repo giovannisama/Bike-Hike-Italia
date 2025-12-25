@@ -24,24 +24,19 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
+import { getUserStatus, normalizeBooleanFlag } from "../../utils/userStatus";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "../calendar/StatusBadge";
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
+const ACTION_GREEN = "#22c55e";
 
 type BooleanFirestoreValue =
   | boolean
   | string
   | number
   | null
-  | undefined
-  | {
-      valueOf?: () => any;
-      booleanValue?: boolean;
-      stringValue?: string;
-      integerValue?: string;
-      doubleValue?: number;
-    };
+  | undefined;
 
 type UserRow = {
   uid: string;
@@ -53,10 +48,12 @@ type UserRow = {
   role?: "member" | "admin" | "owner";
   approved?: BooleanFirestoreValue;
   disabled?: BooleanFirestoreValue;
-  approvedFlag?: boolean | null;
-  disabledFlag?: boolean | null;
+  approvedFlag?: boolean;
+  disabledFlag?: boolean;
   selfDeleted?: BooleanFirestoreValue;
-  selfDeletedFlag?: boolean | null;
+  selfDeletedFlag?: boolean;
+  statusKey?: "pending" | "active" | "disabled";
+  statusLabel?: "In attesa" | "Attivo" | "Disattivo";
 };
 
 type FilterKey = "all" | "active" | "disabled" | "pending";
@@ -73,50 +70,6 @@ const normalize = (value?: string | null) =>
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-
-function normalizeBooleanFlag(value: BooleanFirestoreValue): boolean | null {
-  if (value === null || value === undefined) return null;
-  let v: any = value;
-
-  if (typeof v === "object") {
-    if (typeof v.valueOf === "function" && v.valueOf() !== v) {
-      v = v.valueOf();
-    } else {
-      const candidate =
-        (v as any).booleanValue ??
-        (v as any).stringValue ??
-        (v as any).integerValue ??
-        (v as any).doubleValue ??
-        (typeof (v as any).valueOf === "function" ? (v as any).valueOf() : undefined);
-      if (candidate !== undefined && candidate !== v) {
-        v = candidate;
-      }
-    }
-  }
-
-  if (typeof v === "string") {
-    const lower = v.trim().toLowerCase();
-    if (lower === "true" || lower === "1" || lower === "yes") return true;
-    if (lower === "false" || lower === "0" || lower === "no") return false;
-    return null;
-  }
-  if (typeof v === "number") return v === 1;
-  if (typeof v === "boolean") return v;
-  return null;
-}
-
-type UserStatus = "active" | "pending" | "disabled" | "selfDeleted";
-
-function getUserStatus(user: UserRow): UserStatus {
-  const approvedFlag = user.approvedFlag ?? normalizeBooleanFlag(user.approved);
-  const disabledFlag = user.disabledFlag ?? normalizeBooleanFlag(user.disabled);
-  const selfDeletedFlag = user.selfDeletedFlag ?? normalizeBooleanFlag(user.selfDeleted);
-
-  if (selfDeletedFlag === true) return "selfDeleted";
-  if (disabledFlag === true) return "disabled";
-  if (approvedFlag === true) return "active";
-  return "pending";
-}
 
 function getRoleWeight(role?: string | null): number {
   switch ((role || "").toLowerCase()) {
@@ -146,7 +99,7 @@ function SmallBtn({
   disabled?: boolean;
   kind?: "primary" | "warning";
 }) {
-  const bg = kind === "warning" ? UI.colors.danger : UI.colors.primary;
+  const resolvedBg = kind === "warning" ? UI.colors.danger : ACTION_GREEN;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -154,7 +107,7 @@ function SmallBtn({
       accessibilityRole="button"
       style={[
         styles.smallBtn,
-        { backgroundColor: bg, opacity: disabled ? 0.6 : 1 },
+        { backgroundColor: resolvedBg, opacity: disabled ? 0.6 : 1 },
       ]}
     >
       <Text style={styles.smallBtnText}>{title}</Text>
@@ -184,19 +137,14 @@ function Row({
   const ruolo =
     user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Member";
 
-  const approvedFlag = user.approvedFlag ?? normalizeBooleanFlag(user.approved);
-  const disabledFlag = user.disabledFlag ?? normalizeBooleanFlag(user.disabled);
-  const selfDeletedFlag = user.selfDeletedFlag ?? normalizeBooleanFlag(user.selfDeleted);
+  const selfDeletedFlag =
+    user.selfDeletedFlag ?? normalizeBooleanFlag(user.selfDeleted);
 
   const isSelfDeleted = selfDeletedFlag === true;
 
   const stato = isSelfDeleted
     ? ("Eliminato" as const)
-    : disabledFlag === true
-    ? ("Disattivo" as const)
-    : approvedFlag === true
-    ? ("Attivo" as const)
-    : ("In attesa" as const);
+    : (user.statusLabel ?? getUserStatus(user).statusLabel);
 
   const title = isSelfDeleted
     ? "Account eliminato"
@@ -216,12 +164,12 @@ function Row({
 
   const statusPalette =
     stato === "Attivo"
-      ? { bg: UI.colors.secondary, fg: UI.colors.text }
-      : stato === "Disattivo"
+      ? { bg: ACTION_GREEN, fg: "#0f172a" }
+    : stato === "Disattivo"
       ? { bg: UI.colors.muted, fg: "#fff" }
-      : stato === "Eliminato"
+    : stato === "Eliminato"
       ? { bg: UI.colors.danger, fg: "#fff" }
-      : { bg: UI.colors.accentWarm, fg: UI.colors.text };
+    : { bg: UI.colors.accentWarm, fg: UI.colors.text };
 
   const statusBadge = (
     <StatusBadge
@@ -254,19 +202,19 @@ function Row({
         />
       ) : null}
 
-      <View style={{ flex: 1, gap: 6, minWidth: 0 }}>
+      <View style={{ flex: 1, gap: 8, minWidth: 0 }}>
         <Text style={styles.rowTitle} numberOfLines={2} ellipsizeMode="tail">
           {title}
         </Text>
         <Text style={styles.rowEmail} numberOfLines={1} ellipsizeMode="tail">
           {user.email || "—"}
         </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <View style={styles.badgeRow}>
           {roleBadge}
+          {statusBadge}
         </View>
       </View>
       <View style={{ alignItems: "flex-end", gap: 6 }}>
-        {statusBadge}
         {right ? <View>{right}</View> : null}
       </View>
     </TouchableOpacity>
@@ -438,17 +386,15 @@ export default function UserListScreen() {
 
     const addFlags = rows.map((r) => {
       const selfDeletedFlag = normalizeBooleanFlag(r.selfDeleted);
-      const disabledFlag = normalizeBooleanFlag(r.disabled);
-      const approvedFlag = normalizeBooleanFlag(r.approved);
-
-      const effectiveDisabled = selfDeletedFlag === true ? true : disabledFlag;
-      const effectiveApproved = selfDeletedFlag === true ? false : approvedFlag;
+      const status = getUserStatus(r);
 
       return {
         ...r,
         selfDeletedFlag,
-        disabledFlag: effectiveDisabled,
-        approvedFlag: effectiveApproved,
+        disabledFlag: status.disabled,
+        approvedFlag: status.approved,
+        statusKey: status.statusKey,
+        statusLabel: status.statusLabel,
       };
     });
 
@@ -456,15 +402,11 @@ export default function UserListScreen() {
 
     let filtered = withoutSelfDeleted;
     if (filter === "active") {
-      filtered = withoutSelfDeleted.filter(
-        (r) => r.approvedFlag !== false && r.disabledFlag !== true
-      );
+      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "active");
     } else if (filter === "pending") {
-      filtered = withoutSelfDeleted.filter(
-        (r) => r.approvedFlag !== true && r.disabledFlag !== true
-      );
+      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "pending");
     } else if (filter === "disabled") {
-      filtered = withoutSelfDeleted.filter((r) => r.disabledFlag === true);
+      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "disabled");
     }
 
     if (searchNormalized) {
@@ -594,7 +536,10 @@ export default function UserListScreen() {
   );
   const selectedCount = selectedUsersDetailed.length;
   const selectedStatuses = useMemo(
-    () => selectedUsersDetailed.map(getUserStatus),
+    () =>
+      selectedUsersDetailed.map(
+        (user) => user.statusKey ?? getUserStatus(user).statusKey
+      ),
     [selectedUsersDetailed]
   );
   const canApproveBulk =
@@ -834,14 +779,14 @@ export default function UserListScreen() {
       const isSelf = currentUid === item.uid;
       const isOwner = item.role === "owner";
 
-      const approvedFlag = item.approvedFlag ?? normalizeBooleanFlag(item.approved);
-      const disabledFlag = item.disabledFlag ?? normalizeBooleanFlag(item.disabled);
-      const selfDeletedFlag = item.selfDeletedFlag ?? normalizeBooleanFlag(item.selfDeleted);
+      const selfDeletedFlag =
+        item.selfDeletedFlag ?? normalizeBooleanFlag(item.selfDeleted);
+      const statusKey = item.statusKey ?? getUserStatus(item).statusKey;
 
       const isSelfDeleted = selfDeletedFlag === true;
-      const isPending = !isSelfDeleted && approvedFlag !== true && disabledFlag !== true;
-      const isActive = !isSelfDeleted && approvedFlag === true && disabledFlag !== true;
-      const isDisabled = !isSelfDeleted && disabledFlag === true;
+      const isPending = !isSelfDeleted && statusKey === "pending";
+      const isActive = !isSelfDeleted && statusKey === "active";
+      const isDisabled = !isSelfDeleted && statusKey === "disabled";
 
       const busy = actionUid === item.uid && !!actionType;
 
@@ -1056,26 +1001,27 @@ const styles = StyleSheet.create({
 
   row: {
     width: "100%",
-    backgroundColor: UI.colors.card,
-    borderRadius: UI.radius.lg,
+    backgroundColor: "#fff",
+    borderRadius: 18,
     padding: UI.spacing.md,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#e2e8f0",
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: UI.spacing.sm,
+    alignItems: "center",
+    gap: UI.spacing.md,
   },
   selectDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
-    borderColor: "#d1d5db",
+    borderColor: "#cbd5f5",
     marginRight: UI.spacing.sm,
+    backgroundColor: "#fff",
   },
   selectDotActive: {
-    borderColor: UI.colors.primary,
-    backgroundColor: UI.colors.primary,
+    borderColor: ACTION_GREEN,
+    backgroundColor: ACTION_GREEN,
   },
   selectDotDisabled: {
     opacity: 0.4,
@@ -1085,12 +1031,14 @@ const styles = StyleSheet.create({
   rowEmail: {
     color: UI.colors.muted,
     marginTop: 2,
+    fontSize: 13,
   },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
 
   smallBtn: {
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
-    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
   },
   smallBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
 
@@ -1111,7 +1059,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -1133,10 +1081,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: UI.spacing.sm,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: UI.radius.md,
+    borderColor: "#e2e8f0",
+    borderRadius: UI.radius.lg,
     paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
+    paddingVertical: 8,
     backgroundColor: "#fff",
   },
   searchInput: {
@@ -1146,13 +1094,13 @@ const styles = StyleSheet.create({
   },
   bulkRow: {
     borderWidth: 1,
-    borderColor: "#cbd5f5",
-    backgroundColor: "#e0e7ff",
-    borderRadius: UI.radius.md,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    borderRadius: UI.radius.lg,
     padding: UI.spacing.sm,
     gap: UI.spacing.xs,
   },
-  bulkLabel: { fontWeight: "700", color: "#1e3a8a" },
+  bulkLabel: { fontWeight: "700", color: UI.colors.text },
   bulkBtnRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1161,14 +1109,14 @@ const styles = StyleSheet.create({
   },
   bulkBtn: {
     paddingHorizontal: UI.spacing.md,
-    paddingVertical: UI.spacing.xs,
+    paddingVertical: 8,
     borderRadius: UI.radius.md,
   },
   bulkBtnText: { color: "#fff", fontWeight: "700" },
-  clearSelectionText: { color: "#1d4ed8", fontWeight: "600" },
+  clearSelectionText: { color: ACTION_GREEN, fontWeight: "700" },
   bulkHelp: {
     marginTop: UI.spacing.xs,
-    color: "#1e3a8a",
+    color: UI.colors.muted,
     fontSize: 12,
   },
 });

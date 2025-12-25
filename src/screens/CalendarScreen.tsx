@@ -21,8 +21,11 @@ import { CalendarHeaderSection } from "./calendar/CalendarHeaderSection";
 import { useCalendarScreen } from "./calendar/useCalendarScreen";
 import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
 import { RideList } from "./calendar/RideList";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import AccessDenied from "../components/AccessDenied";
 
 export default function CalendarScreen() {
+  const { canSeeCiclismo, loading: profileLoading } = useCurrentProfile();
   const [calendarArea, setCalendarArea] = useState({ width: 0, height: 0 });
   // viewMode is now managed in useCalendarScreen hook
   const translateX = useRef(new Animated.Value(0)).current;
@@ -79,13 +82,18 @@ export default function CalendarScreen() {
     }).start();
   }, [pageWidth, translateX, calendar.viewMode]);
 
-  if (loading.initial) {
+  if (profileLoading || loading.initial) {
     return (
       <Screen useNativeHeader={true} scroll={false}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color="#22c55e" />
         </View>
       </Screen>
+    );
+  }
+  if (!canSeeCiclismo) {
+    return (
+      <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
     );
   }
 

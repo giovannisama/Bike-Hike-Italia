@@ -1,8 +1,25 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Screen, UI } from "../components/Screen";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import AccessDenied from "../components/AccessDenied";
 
 export default function TrekkingPlaceholderScreen() {
+  const { canSeeTrekking, loading } = useCurrentProfile();
+  if (loading) {
+    return (
+      <Screen useNativeHeader scroll={false}>
+        <View style={styles.container}>
+          <Text>Caricamento…</Text>
+        </View>
+      </Screen>
+    );
+  }
+  if (!canSeeTrekking) {
+    return (
+      <AccessDenied message="La sezione Trekking non è abilitata per il tuo profilo." />
+    );
+  }
   return (
     <Screen useNativeHeader scroll={false}>
       <View style={styles.container}>

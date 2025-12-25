@@ -19,6 +19,7 @@ export interface UserDoc {
   notificationsDisabledForCancelledRide?: boolean;
   notificationsDisabledForPendingUser?: boolean;
   notificationsDisabledForBoardPost?: boolean;
+  enabledSections?: string[];
   expoPushTokens?: string[];
   membershipCard?:
     | string

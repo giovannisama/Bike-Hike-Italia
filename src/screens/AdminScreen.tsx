@@ -1,59 +1,58 @@
 // src/screens/AdminScreen.tsx
 // Schermata Amministrazione: accesso ai sottomenu (Gestione Utenti, ecc.)
 
-import React, { useEffect } from "react";
+import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, UI } from "../components/Screen";
+import { LinearGradient } from "expo-linear-gradient"; // Import Gradient
 import { Ionicons } from "@expo/vector-icons";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 
-// Fallback theme (in caso l'UI del Screen non sia esportata)
-const ACTION_GREEN = "#22c55e";
+const ACTION_GREEN = "#22c55e"; // Global Action Green
 
 export default function AdminScreen() {
   const navigation = useNavigation<any>();
   const { isAdmin, isOwner } = useCurrentProfile();
 
-  // Mostra header nativo coerente
-  useEffect(() => {
-    navigation.setOptions?.({
-      headerShown: true,
-      headerTitle: "Amministrazione",
-      headerTitleAlign: "center",
-    });
+  // Hide Native Header
+  React.useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  const goUsers = () => navigation.navigate("UserList"); // <-- ROTTA verso la lista utenti
-  const heroSubtitle = isOwner
-    ? "Accesso completo (Owner)"
-    : isAdmin
-    ? "Accesso a funzioni amministrative"
-    : "Permessi insufficienti";
+  const goUsers = () => navigation.navigate("UserList");
 
   return (
-    <Screen useNativeHeader={true} scroll={false}>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>Amministrazione</Text>
-        <Text style={styles.subtitle}>{heroSubtitle}</Text>
-        {(isOwner || isAdmin) && (
-          <View style={[styles.rolePill, isOwner ? styles.rolePillOwner : styles.rolePillAdmin]}>
-            <Text style={styles.rolePillText}>{isOwner ? "OWNER" : "ADMIN"}</Text>
-          </View>
-        )}
+    <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
+      {/* HEADER GRADIENT */}
+      <View style={styles.headerGradientContainer}>
+        <LinearGradient
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+
+      {/* MANUAL HEADER */}
+      <View style={styles.headerBlock}>
+        {/* Back button removed as per request (Root Tab screen) */}
+        <Text style={styles.headerTitle}>AMMINISTRAZIONE</Text>
+        <Text style={styles.headerSubtitle}>Pannello di controllo</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Sezioni</Text>
+        <Text style={styles.sectionLabel}>SEZIONI</Text>
+
         {/* SOTTOMENU 1: Gestione Utenti */}
         <MenuTile
           title="Gestione Utenti"
           subtitle={
             isOwner
-              ? "Approva e gestisci ruoli. Altre sezioni in arrivo."
+              ? "Approva e gestisci ruoli."
               : "Riservata al ruolo Owner"
           }
-          icon={<Ionicons name="people-outline" size={26} color={ACTION_GREEN} />}
+          icon="people-outline"
           onPress={goUsers}
           disabled={!isOwner}
         />
@@ -71,7 +70,7 @@ function MenuTile({
 }: {
   title: string;
   subtitle?: string;
-  icon: React.ReactNode;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   disabled?: boolean;
 }) {
@@ -79,89 +78,99 @@ function MenuTile({
     <TouchableOpacity
       onPress={disabled ? undefined : onPress}
       accessibilityRole="button"
-      accessibilityState={disabled ? { disabled: true } : undefined}
       style={[
         styles.tile,
-        styles.shadowCard,
         disabled ? styles.tileDisabled : undefined,
       ]}
+      activeOpacity={0.7}
       disabled={disabled}
     >
       <View style={styles.tileIcon}>
-        {icon}
+        <Ionicons name={icon} size={24} color={ACTION_GREEN} />
       </View>
+
       <View style={{ flex: 1 }}>
         <Text style={styles.tileTitle}>{title}</Text>
         {!!subtitle && <Text style={styles.tileSub}>{subtitle}</Text>}
       </View>
-      <Ionicons name="chevron-forward" size={22} />
+
+      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingBottom: UI.spacing.md,
-    gap: 6,
+  headerGradientContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: 200 },
+
+  headerBlock: {
+    paddingHorizontal: 16,
+    paddingTop: 60, // Increased top padding since back button is gone
+    paddingBottom: 24
   },
-  title: { fontSize: 28, fontWeight: "900", color: UI.colors.text },
-  subtitle: { marginTop: 6, color: UI.colors.muted, fontWeight: "600" },
-  rolePill: {
-    alignSelf: "flex-start",
-    marginTop: UI.spacing.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.5,
+    textTransform: 'uppercase'
   },
-  rolePillOwner: { backgroundColor: "#0f172a" },
-  rolePillAdmin: { backgroundColor: "#111827" },
-  rolePillText: { color: "#fff", fontSize: 12, fontWeight: "800", letterSpacing: 0.4 },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginTop: 4
+  },
 
   section: {
-    paddingTop: UI.spacing.sm,
-    gap: UI.spacing.sm,
+    paddingHorizontal: 16,
+    gap: 12,
+    marginTop: 20, // Push content down below header logic
   },
   sectionLabel: {
-    color: UI.colors.muted,
+    color: "#94a3b8",
     fontWeight: "700",
     fontSize: 12,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
   },
+
+  // Modern Tile
   tile: {
     backgroundColor: "#fff",
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 16,
+    // Soft Shadow
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(241, 245, 249, 1)",
+  },
+  tileDisabled: {
+    opacity: 0.6,
   },
   tileIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    backgroundColor: "#dcfce7", // Light Green bg
   },
   tileTitle: {
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#0f172a",
   },
   tileSub: {
-    marginTop: 4,
+    marginTop: 2,
     color: "#64748b",
-  },
-  shadowCard: {
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  tileDisabled: {
-    opacity: 0.55,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

@@ -268,7 +268,7 @@ export default function HomeScreen({ navigation }: any) {
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               <View style={styles.infoIconBox}>
-                <Ionicons name="people-circle-outline" size={24} color="#0F172A" />
+                <Ionicons name="settings-outline" size={24} color="#0F172A" />
               </View>
               <View>
                 <Text style={styles.adminText}>Amministrazione</Text>

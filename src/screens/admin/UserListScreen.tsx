@@ -10,7 +10,12 @@ import {
   Alert,
   TextInput,
   Pressable,
+  useWindowDimensions,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, UI } from "../../components/Screen";
 import { auth, db } from "../../firebase";
@@ -29,7 +34,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge } from "../calendar/StatusBadge";
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
-const ACTION_GREEN = "#22c55e";
+const ACTION_GREEN = "#22c55e"; // Consistent Green
 
 type BooleanFirestoreValue =
   | boolean
@@ -84,7 +89,6 @@ function getRoleWeight(role?: string | null): number {
   }
 }
 
-
 // ─────────────────────────────────────────
 // UI Helpers
 // ─────────────────────────────────────────
@@ -99,26 +103,51 @@ function SmallBtn({
   disabled?: boolean;
   kind?: "primary" | "warning";
 }) {
-  const resolvedBg = kind === "warning" ? UI.colors.danger : ACTION_GREEN;
+  const isPrimary = kind === "primary";
+  // Stronger colors for better legibility and aesthetics
+  const bg = isPrimary ? ACTION_GREEN : "#fee2e2";
+  const text = isPrimary ? "#ffffff" : "#991b1b";
+
+  // If warning, use red bg
+  const finalBg = kind === "warning" ? "#ef4444" : bg;
+  const finalText = kind === "warning" ? "#ffffff" : text;
+
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
+      hitSlop={8}
       style={[
         styles.smallBtn,
-        { backgroundColor: resolvedBg, opacity: disabled ? 0.6 : 1 },
+        { backgroundColor: finalBg, opacity: disabled ? 0.6 : 1 },
       ]}
     >
-      <Text style={styles.smallBtnText}>{title}</Text>
+      <Text style={[styles.smallBtnText, { color: finalText }]}>{title}</Text>
     </TouchableOpacity>
+  );
+}
+
+// Simple Avatar using initials
+function UserAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <View style={styles.avatar}>
+      <Text style={styles.avatarText}>{initials || "?"}</Text>
+    </View>
   );
 }
 
 function Row({
   user,
   onPress,
-  right,
+  actions,
   selected,
   onToggleSelect,
   showSelection,
@@ -126,7 +155,7 @@ function Row({
 }: {
   user: UserRow;
   onPress: (uid: string) => void;
-  right?: React.ReactNode;
+  actions?: React.ReactNode;
   selected?: boolean;
   onToggleSelect?: (uid: string) => void;
   showSelection?: boolean;
@@ -139,47 +168,17 @@ function Row({
 
   const selfDeletedFlag =
     user.selfDeletedFlag ?? normalizeBooleanFlag(user.selfDeleted);
-
   const isSelfDeleted = selfDeletedFlag === true;
 
   const stato = isSelfDeleted
     ? ("Eliminato" as const)
     : (user.statusLabel ?? getUserStatus(user).statusLabel);
 
-  const title = isSelfDeleted
+  const displayName = isSelfDeleted
     ? "Account eliminato"
     : cognome || nome
-    ? `${cognome}${cognome && nome ? ", " : ""}${nome}`
-    : user.displayName || user.email || "Utente";
-
-  const roleBadge = (
-    <StatusBadge
-      text={ruolo}
-      icon={ruolo === "Owner" ? "⭐" : ruolo === "Admin" ? "🛠" : "👤"}
-      bg={ruolo === "Owner" ? "#1c1917" : ruolo === "Admin" ? "#1f2937" : "#6b7280"}
-      fg="#fff"
-      accessibilityLabel={`Ruolo: ${ruolo}`}
-    />
-  );
-
-  const statusPalette =
-    stato === "Attivo"
-      ? { bg: ACTION_GREEN, fg: "#0f172a" }
-    : stato === "Disattivo"
-      ? { bg: UI.colors.muted, fg: "#fff" }
-    : stato === "Eliminato"
-      ? { bg: UI.colors.danger, fg: "#fff" }
-    : { bg: UI.colors.accentWarm, fg: UI.colors.text };
-
-  const statusBadge = (
-    <StatusBadge
-      text={stato}
-      icon={stato === "Attivo" ? "✓" : stato === "Disattivo" ? "⏸" : "⌛"}
-      bg={statusPalette.bg}
-      fg={statusPalette.fg}
-      accessibilityLabel={`Stato: ${stato}`}
-    />
-  );
+      ? `${cognome} ${nome}`
+      : user.displayName || user.email || "Utente";
 
   const handleToggleSelect = useCallback(() => {
     if (onToggleSelect && !selectDisabled) onToggleSelect(user.uid);
@@ -188,34 +187,67 @@ function Row({
   return (
     <TouchableOpacity
       onPress={() => onPress(user.uid)}
-      style={styles.row}
+      style={[styles.row, selected && styles.rowSelected]}
+      activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`Apri dettagli utente ${title}`}
     >
-      {showSelection ? (
-        <Pressable
-          onPress={handleToggleSelect}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: !!selected, disabled: selectDisabled }}
-          accessibilityLabel={`${selected ? "Deseleziona" : "Seleziona"} utente ${title}`}
-          style={[styles.selectDot, selected && styles.selectDotActive, selectDisabled && styles.selectDotDisabled]}
-        />
-      ) : null}
+      <View style={styles.rowMain}>
+        {/* Top Section: Avatar + Info */}
+        <View style={styles.rowTop}>
+          {/* Selection Dot (Left) */}
+          {showSelection && (
+            <Pressable
+              onPress={handleToggleSelect}
+              hitSlop={12}
+              style={[
+                styles.selectDot,
+                selected && styles.selectDotActive,
+                selectDisabled && styles.selectDotDisabled,
+              ]}
+            >
+              {selected && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </Pressable>
+          )}
 
-      <View style={{ flex: 1, gap: 8, minWidth: 0 }}>
-        <Text style={styles.rowTitle} numberOfLines={2} ellipsizeMode="tail">
-          {title}
-        </Text>
-        <Text style={styles.rowEmail} numberOfLines={1} ellipsizeMode="tail">
-          {user.email || "—"}
-        </Text>
-        <View style={styles.badgeRow}>
-          {roleBadge}
-          {statusBadge}
+          {/* Avatar */}
+          <UserAvatar name={displayName} />
+
+          {/* Info */}
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.rowTitle} numberOfLines={1}>{displayName}</Text>
+
+            <Text style={styles.rowEmail} numberOfLines={1}>
+              {user.email || "Nessuna email"}
+            </Text>
+
+            {/* Badges */}
+            <View style={styles.badgeRow}>
+              {/* Role Badge */}
+              <View style={[styles.miniBadge, ruolo === "Owner" ? styles.bgBlack : styles.bgGray]}>
+                <Text style={[styles.miniBadgeText, ruolo === "Owner" ? styles.textWhite : null]}>{ruolo}</Text>
+              </View>
+              {/* Status Badge */}
+              <View style={[
+                styles.miniBadge,
+                stato === "Attivo" ? styles.bgGreen :
+                  stato === "Disattivo" ? styles.bgMuted :
+                    stato === "In attesa" ? styles.bgOrange : styles.bgRed
+              ]}>
+                <Text style={[styles.miniBadgeText, stato === "Attivo" ? styles.textGreen : null]}>
+                  {stato}
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
-      </View>
-      <View style={{ alignItems: "flex-end", gap: 6 }}>
-        {right ? <View>{right}</View> : null}
+
+        {/* Bottom Section: Actions (if any) */}
+        {/* Moving actions here solves the truncation issue by giving full width to buttons */}
+        {actions && (
+          <View style={styles.rowFooter}>
+            {actions}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -226,25 +258,33 @@ function Row({
 // ─────────────────────────────────────────
 export default function UserListScreen() {
   const navigation = useNavigation<any>();
+
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [items, setItems] = useState<UserRow[]>([]);
+
+  // Data State
   const [publicData, setPublicData] = useState<Record<string, DocumentData>>({});
   const [privateData, setPrivateData] = useState<Record<string, DocumentData>>({});
   const [publicLoaded, setPublicLoaded] = useState(false);
   const [privateLoaded, setPrivateLoaded] = useState(false);
+
+  // Actions State
   const [actionUid, setActionUid] = useState<string | null>(null);
   const [actionType, setActionType] = useState<QuickAction>(null);
+
+  // Role State
   const [meRole, setMeRole] = useState<string | null>(null);
   const [meRoleLoaded, setMeRoleLoaded] = useState(false);
+
   const [searchText, setSearchText] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
-  const searchNormalized = useMemo(() => normalize(searchText), [searchText]);
 
+  const searchNormalized = useMemo(() => normalize(searchText), [searchText]);
   const currentUid = auth.currentUser?.uid || null;
 
-  // Ruolo dell'utente corrente (per debug/UX)
+  // --- EFFECT: Load MeRole ---
   useEffect(() => {
     if (!currentUid) {
       setMeRole(null);
@@ -252,105 +292,61 @@ export default function UserListScreen() {
       return;
     }
     setMeRoleLoaded(false);
-    const unsubMe = onSnapshot(
-      doc(db, "users", currentUid),
+    const unsubMe = onSnapshot(doc(db, "users", currentUid),
       (ds) => {
         const r = ds.exists() ? (ds.data() as any)?.role : null;
         setMeRole(typeof r === "string" ? r : null);
         setMeRoleLoaded(true);
       },
-      () => {
-        setMeRole(null);
-        setMeRoleLoaded(true);
-      }
+      () => { setMeRole(null); setMeRoleLoaded(true); }
     );
-    return () => {
-      try { unsubMe(); } catch {}
-    };
+    return () => { try { unsubMe(); } catch { } };
   }, [currentUid]);
 
-  // Header nativo
-  useEffect(() => {
-    navigation.setOptions?.({
-      headerShown: true,
-      headerTitle: "Gestione Utenti",
-      headerTitleAlign: "center",
-    });
+  // --- EFFECT: Hide Native Header ---
+  React.useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // Sorgenti Firestore (pubblico + privato)
+  // --- EFFECT: Load Data ---
   useEffect(() => {
     setLoading(true);
-    const unsubPublic = onSnapshot(
-      collection(db, "users_public"),
+    const unsubPublic = onSnapshot(collection(db, "users_public"),
       (snap) => {
         const next: Record<string, DocumentData> = {};
-        snap.forEach((docSnap) => {
-          next[docSnap.id] = docSnap.data() as DocumentData;
-        });
+        snap.forEach((docSnap) => next[docSnap.id] = docSnap.data() as DocumentData);
         setPublicData(next);
         setPublicLoaded(true);
       },
-      (err) => {
-        console.error("[UserList] users_public error:", err);
-        setPublicData({});
-        setPublicLoaded(true);
-      }
+      (err) => { console.error(err); setPublicData({}); setPublicLoaded(true); }
     );
-
-    const unsubPrivate = onSnapshot(
-      collection(db, "users"),
+    const unsubPrivate = onSnapshot(collection(db, "users"),
       (snap) => {
         const next: Record<string, DocumentData> = {};
-        snap.forEach((docSnap) => {
-          next[docSnap.id] = docSnap.data() as DocumentData;
-        });
+        snap.forEach((docSnap) => next[docSnap.id] = docSnap.data() as DocumentData);
         setPrivateData(next);
         setPrivateLoaded(true);
       },
-      (err) => {
-        console.error("[UserList] users error:", err);
-        setPrivateData({});
-        setPrivateLoaded(true);
-      }
+      (err) => { console.error(err); setPrivateData({}); setPrivateLoaded(true); }
     );
-
-    return () => {
-      try { unsubPublic(); } catch {}
-      try { unsubPrivate(); } catch {}
-    };
+    return () => { try { unsubPublic(); } catch { } try { unsubPrivate(); } catch { } };
   }, []);
 
-  // Aggiorna elementi mostrati quando cambiano i dati o il filtro
-  // TODO: logica di merge pubblico/privato + filtri/ricerca potrebbe essere estratta in hook useUserListData.
+  // --- EFFECT: Filter & Sort ---
   useEffect(() => {
-    if (!publicLoaded || !privateLoaded) {
-      setLoading(true);
-      return;
-    }
+    if (!publicLoaded || !privateLoaded) { setLoading(true); return; }
 
-    const allIds = new Set([
-      ...Object.keys(publicData),
-      ...Object.keys(privateData),
-    ]);
-
+    const allIds = new Set([...Object.keys(publicData), ...Object.keys(privateData)]);
     const rows: UserRow[] = [];
+
     allIds.forEach((uid) => {
       const pub = publicData[uid] || {};
       const priv = privateData[uid] || {};
 
-      const selfDeletedCandidates = [
-        (priv as any)?.selfDeleted,
-        (pub as any)?.selfDeleted,
-      ];
-      const displayNameCandidates = [
-        (priv as any)?.displayName,
-        (pub as any)?.displayName,
-      ];
+      const selfDeletedCandidates = [(priv as any)?.selfDeleted, (pub as any)?.selfDeleted];
+      const displayNameCandidates = [(priv as any)?.displayName, (pub as any)?.displayName];
       const sentinelHit = displayNameCandidates.some((v) => v === SELF_DELETED_SENTINEL);
-      if (sentinelHit) {
-        selfDeletedCandidates.push(true);
-      }
+      if (sentinelHit) selfDeletedCandidates.push(true);
       const selfDeleted = selfDeletedCandidates.find((v) => v !== undefined);
 
       rows.push({
@@ -367,27 +363,19 @@ export default function UserListScreen() {
       });
     });
 
+    // Sort
     rows.sort((a, b) => {
       const roleDiff = getRoleWeight(a.role) - getRoleWeight(b.role);
       if (roleDiff !== 0) return roleDiff;
-
       const lnA = (a.lastName || "").toLowerCase();
       const lnB = (b.lastName || "").toLowerCase();
       if (lnA !== lnB) return lnA.localeCompare(lnB);
-
-      const fnA = (a.firstName || "").toLowerCase();
-      const fnB = (b.firstName || "").toLowerCase();
-      if (fnA !== fnB) return fnA.localeCompare(fnB);
-
-      const dnA = (a.displayName || "").toLowerCase();
-      const dnB = (b.displayName || "").toLowerCase();
-      return dnA.localeCompare(dnB);
+      return 0;
     });
 
     const addFlags = rows.map((r) => {
       const selfDeletedFlag = normalizeBooleanFlag(r.selfDeleted);
       const status = getUserStatus(r);
-
       return {
         ...r,
         selfDeletedFlag,
@@ -398,22 +386,16 @@ export default function UserListScreen() {
       };
     });
 
-    const withoutSelfDeleted = addFlags.filter((r) => r.selfDeletedFlag !== true);
+    let filtered = addFlags.filter((r) => r.selfDeletedFlag !== true);
 
-    let filtered = withoutSelfDeleted;
-    if (filter === "active") {
-      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "active");
-    } else if (filter === "pending") {
-      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "pending");
-    } else if (filter === "disabled") {
-      filtered = withoutSelfDeleted.filter((r) => r.statusKey === "disabled");
-    }
+    if (filter === "active") filtered = filtered.filter((r) => r.statusKey === "active");
+    else if (filter === "pending") filtered = filtered.filter((r) => r.statusKey === "pending");
+    else if (filter === "disabled") filtered = filtered.filter((r) => r.statusKey === "disabled");
 
     if (searchNormalized) {
       filtered = filtered.filter((r) => {
         const haystack = [r.firstName, r.lastName, r.displayName, r.email]
-          .map((value) => normalize(value))
-          .join(" ");
+          .map((v) => normalize(v)).join(" ");
         return haystack.includes(searchNormalized);
       });
     }
@@ -421,702 +403,480 @@ export default function UserListScreen() {
     const filteredIds = new Set(filtered.map((r) => r.uid));
     setSelected((prev) => {
       const next = new Set(Array.from(prev).filter((id) => filteredIds.has(id)));
-      if (next.size === prev.size) return prev;
-      return next;
+      return next.size === prev.size ? prev : next;
     });
 
     setItems(filtered);
     setLoading(false);
   }, [filter, publicData, privateData, publicLoaded, privateLoaded, searchNormalized]);
 
-  const openDetail = useCallback(
-    (uid: string) => {
-      navigation.navigate("UserDetail", { uid, meRole });
-    },
-    [navigation, meRole]
-  );
+  // --- ACTIONS ---
+  const openDetail = useCallback((uid: string) => {
+    navigation.navigate("UserDetail", { uid, meRole });
+  }, [navigation, meRole]);
 
   const requireOwner = useCallback(() => {
     if (meRole !== "owner") {
-      Alert.alert(
-        "Permessi insufficienti",
-        "Solo il ruolo Owner può eseguire questa azione."
-      );
+      Alert.alert("Permessi insufficienti", "Solo il ruolo Owner può eseguire questa azione.");
       return false;
     }
     return true;
   }, [meRole]);
 
-  // TODO: azioni approve/activate/deactivate potrebbero essere centralizzate in un piccolo service/helper per ridurre duplicazioni.
-  // Azioni rapide
   const doApprove = useCallback(async (uid: string) => {
     if (!requireOwner()) return;
     try {
-      setActionUid(uid);
-      setActionType("approve");
+      setActionUid(uid); setActionType("approve");
       await updateDoc(doc(db, "users", uid), { approved: true });
       await mergeUsersPublic(uid, { approved: true }, "UserList");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile approvare l'utente.");
-    } finally {
-      setActionUid(null);
-      setActionType(null);
-    }
+    } catch (e: any) { Alert.alert("Errore", e?.message); }
+    finally { setActionUid(null); setActionType(null); }
   }, [requireOwner]);
 
-  const doReject = useCallback(
-    (uid: string) => {
-      if (!requireOwner()) return;
-      Alert.alert(
-        "Conferma",
-        "Rifiutare questa richiesta di accesso? L'utente verrà spostato tra i disattivati.",
-        [
-          { text: "Annulla", style: "cancel" },
-          {
-            text: "Rifiuta",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                setActionUid(uid);
-                setActionType("reject");
-                await updateDoc(doc(db, "users", uid), { approved: false, disabled: true });
-                await mergeUsersPublic(uid, { approved: false, disabled: true }, "UserList.reject");
-              } catch (e: any) {
-                Alert.alert("Errore", e?.message ?? "Impossibile rifiutare la richiesta.");
-              } finally {
-                setActionUid(null);
-                setActionType(null);
-              }
-            },
-          },
-        ]
-      );
-    },
-    [requireOwner]
-  );
+  const doReject = useCallback((uid: string) => {
+    if (!requireOwner()) return;
+    Alert.alert("Conferma", "Rifiutare richiesta?", [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: "Rifiuta", style: "destructive", onPress: async () => {
+          try {
+            setActionUid(uid); setActionType("reject");
+            await updateDoc(doc(db, "users", uid), { approved: false, disabled: true });
+            await mergeUsersPublic(uid, { approved: false, disabled: true }, "UserList.reject");
+          } catch (e: any) { Alert.alert("Errore", e?.message); }
+          finally { setActionUid(null); setActionType(null); }
+        }
+      }
+    ]);
+  }, [requireOwner]);
 
   const doActivate = useCallback(async (uid: string) => {
     if (!requireOwner()) return;
     try {
-      setActionUid(uid);
-      setActionType("activate");
+      setActionUid(uid); setActionType("activate");
       await updateDoc(doc(db, "users", uid), { disabled: false });
       await mergeUsersPublic(uid, { disabled: false }, "UserList");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile attivare l'utente.");
-    } finally {
-      setActionUid(null);
-      setActionType(null);
-    }
+    } catch (e: any) { Alert.alert("Errore", e?.message); }
+    finally { setActionUid(null); setActionType(null); }
   }, [requireOwner]);
 
-  const isCurrentOwner = meRole === "owner";
-  
+  // --- SELECTION & BULK ---
   const toggleSelect = useCallback((uid: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(uid)) {
-        next.delete(uid);
-      } else {
-        next.add(uid);
-      }
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
       return next;
     });
   }, []);
-
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
-  const selectedUsersDetailed = useMemo(
-    () => items.filter((item) => selected.has(item.uid)),
-    [items, selected]
-  );
-  const selectedIds = useMemo(
-    () => selectedUsersDetailed.map((user) => user.uid),
-    [selectedUsersDetailed]
-  );
+  const isCurrentOwner = meRole === "owner";
+
+  // Bulk Logic
+  const selectedUsersDetailed = useMemo(() => items.filter((item) => selected.has(item.uid)), [items, selected]);
+  const selectedIds = useMemo(() => selectedUsersDetailed.map((user) => user.uid), [selectedUsersDetailed]);
   const selectedCount = selectedUsersDetailed.length;
-  const selectedStatuses = useMemo(
-    () =>
-      selectedUsersDetailed.map(
-        (user) => user.statusKey ?? getUserStatus(user).statusKey
-      ),
-    [selectedUsersDetailed]
-  );
-  const canApproveBulk =
-    selectedCount > 0 && selectedStatuses.every((status) => status === "pending");
-  const canActivateBulk =
-    selectedCount > 0 && selectedStatuses.every((status) => status === "disabled");
-  const canDeactivateBulk =
-    selectedCount > 0 && selectedStatuses.every((status) => status === "active");
-  const canDeleteBulk =
-    selectedCount > 0 &&
-    selectedStatuses.every((status) => status === "pending" || status === "disabled");
-  const bulkButtons = useMemo(
-    () =>
-      [
-        canApproveBulk
-          ? {
-              type: "approve" as BulkAction,
-              label: "Approva",
-              color: UI.colors.secondary,
-              textColor: UI.colors.text,
-            }
-          : null,
-        canActivateBulk
-          ? {
-              type: "activate" as BulkAction,
-              label: "Attiva",
-              color: UI.colors.primary,
-              textColor: "#fff",
-            }
-          : null,
-        canDeactivateBulk
-          ? {
-              type: "deactivate" as BulkAction,
-              label: "Disattiva",
-              color: UI.colors.danger,
-              textColor: "#fff",
-            }
-          : null,
-        canDeleteBulk
-          ? {
-              type: "delete" as BulkAction,
-              label: "Elimina",
-              color: "#111827",
-              textColor: "#fff",
-            }
-          : null,
-      ].filter(Boolean) as Array<{
-        type: BulkAction;
-        label: string;
-        color: string;
-        textColor: string;
-      }>,
-    [canApproveBulk, canActivateBulk, canDeactivateBulk, canDeleteBulk]
-  );
+
+  const bulkButtons = useMemo(() => {
+    const statuses = selectedUsersDetailed.map((u) => u.statusKey ?? getUserStatus(u).statusKey);
+    const canApprove = selectedCount > 0 && statuses.every((s) => s === "pending");
+    const canActivate = selectedCount > 0 && statuses.every((s) => s === "disabled");
+    const canDeactivate = selectedCount > 0 && statuses.every((s) => s === "active");
+    const canDelete = selectedCount > 0 && statuses.every((s) => s === "pending" || s === "disabled");
+
+    return [
+      canApprove ? { type: "approve", label: "Approva", color: UI.colors.secondary, textColor: UI.colors.text } : null,
+      canActivate ? { type: "activate", label: "Attiva", color: UI.colors.primary, textColor: "#fff" } : null,
+      canDeactivate ? { type: "deactivate", label: "Disattiva", color: UI.colors.danger, textColor: "#fff" } : null,
+      canDelete ? { type: "delete", label: "Elimina", color: "#111827", textColor: "#fff" } : null,
+    ].filter(Boolean) as any[];
+  }, [selectedUsersDetailed, selectedCount]);
+
   const hasBulkActions = bulkButtons.length > 0;
 
-  const runBulk = useCallback(
-    async (
-      usersToProcess: UserRow[],
-      executor: (user: UserRow) => Promise<void>,
-      successMessage?: string
-    ) => {
-      setBulkLoading(true);
-      try {
-        for (const user of usersToProcess) {
-          await executor(user);
-        }
-        if (successMessage) {
-          Alert.alert("Completato", successMessage);
-        }
-      } catch (e: any) {
-        Alert.alert("Errore", e?.message ?? "Operazione non riuscita.");
-      } finally {
-        setBulkLoading(false);
-        clearSelection();
-      }
-    },
-    [clearSelection]
-  );
+  const runBulk = useCallback(async (users: UserRow[], exec: any, msg: string) => {
+    setBulkLoading(true);
+    try { for (const u of users) await exec(u); if (msg) Alert.alert("Fatto", msg); }
+    catch (e: any) { Alert.alert("Errore", e?.message); }
+    finally { setBulkLoading(false); clearSelection(); }
+  }, [clearSelection]);
 
-  const handleBulk = useCallback(
-    (type: BulkAction) => {
-      if (!requireOwner()) return;
-      if (selectedCount === 0) return;
-
-      const ids = selectedIds;
-      const label =
-        type === "approve"
-          ? "Approva"
-          : type === "activate"
-          ? "Attiva"
-          : type === "deactivate"
-          ? "Disattiva"
-          : "Elimina";
-      const confirmBody =
-        type === "delete"
-          ? `Eliminare definitivamente ${ids.length} utente${ids.length === 1 ? "" : "i"} selezionati?`
-          : `${label} ${ids.length} utente${ids.length === 1 ? "" : "i"}?`;
-      Alert.alert(
-        "Conferma",
-        confirmBody,
-        [
-          { text: "Annulla", style: "cancel" },
-          {
-            text: label,
-            style: type === "deactivate" || type === "delete" ? "destructive" : "default",
-            onPress: () => {
-              if (type === "approve") {
-                runBulk(
-                  selectedUsersDetailed,
-                  async (user) => {
-                    await updateDoc(doc(db, "users", user.uid), {
-                      approved: true,
-                      disabled: false,
-                    });
-                    await mergeUsersPublic(
-                      user.uid,
-                      { approved: true, disabled: false },
-                      "UserListBulk.approve"
-                    );
-                  },
-                  ids.length === 1
-                    ? "Utente approvato."
-                    : `${ids.length} utenti approvati.`
-                );
-              } else if (type === "activate") {
-                runBulk(
-                  selectedUsersDetailed,
-                  async (user) => {
-                    await updateDoc(doc(db, "users", user.uid), { disabled: false });
-                    await mergeUsersPublic(
-                      user.uid,
-                      { disabled: false },
-                      "UserListBulk.activate"
-                    );
-                  },
-                  ids.length === 1
-                    ? "Utente attivato."
-                    : `${ids.length} utenti attivati.`
-                );
-              } else if (type === "deactivate") {
-                runBulk(
-                  selectedUsersDetailed,
-                  async (user) => {
-                    await updateDoc(doc(db, "users", user.uid), { disabled: true });
-                    await mergeUsersPublic(
-                      user.uid,
-                      { disabled: true },
-                      "UserListBulk.deactivate"
-                    );
-                  },
-                  ids.length === 1
-                    ? "Utente disattivato."
-                    : `${ids.length} utenti disattivati.`
-                );
-              } else if (type === "delete") {
-                runBulk(
-                  selectedUsersDetailed,
-                  async (user) => {
-                    const userRef = doc(db, "users", user.uid);
-                    let removed = false;
-                    try {
-                      await deleteDoc(userRef);
-                      removed = true;
-                    } catch (fireErr: any) {
-                      if (fireErr?.code === "permission-denied") {
-                        try {
-                          await updateDoc(userRef, {
-                            displayName: SELF_DELETED_SENTINEL,
-                            firstName: null,
-                            lastName: null,
-                            nickname: null,
-                            approved: false,
-                            disabled: true,
-                            membershipCard: deleteField(),
-                          });
-                          removed = true;
-                        } catch (fallbackErr: any) {
-                          if (fallbackErr?.code === "permission-denied") {
-                            throw new Error(
-                              "Permessi insufficienti per eliminare uno degli utenti selezionati."
-                            );
-                          }
-                          throw fallbackErr;
-                        }
-                      } else if (fireErr?.code === "not-found") {
-                        removed = true;
-                      } else {
-                        throw fireErr;
-                      }
-                    }
-
-                    const publicRemoved = await deleteUsersPublic(
-                      user.uid,
-                      "UserListBulk.delete"
-                    );
-                    if (!publicRemoved) {
-                      await mergeUsersPublic(
-                        user.uid,
-                        {
-                          displayName: SELF_DELETED_SENTINEL,
-                          firstName: null,
-                          lastName: null,
-                          nickname: null,
-                          email: user.email ?? null,
-                          disabled: true,
-                          approved: false,
-                        },
-                        "UserListBulk.deleteFallback"
-                      );
-                    }
-
-                    if (!removed) {
-                      throw new Error(
-                        "Operazione completata solo parzialmente: impossibile eliminare un profilo."
-                      );
-                    }
-                  },
-                  ids.length === 1
-                    ? "Utente eliminato."
-                    : `${ids.length} utenti eliminati.`
-                );
-              }
-            },
-          },
-        ]
-      );
-    },
-    [requireOwner, runBulk, selectedCount, selectedIds, selectedUsersDetailed]
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: UserRow }) => {
-      // decide azione rapida e label
-      let actionNode: React.ReactNode = null;
-
-      const isSelf = currentUid === item.uid;
-      const isOwner = item.role === "owner";
-
-      const selfDeletedFlag =
-        item.selfDeletedFlag ?? normalizeBooleanFlag(item.selfDeleted);
-      const statusKey = item.statusKey ?? getUserStatus(item).statusKey;
-
-      const isSelfDeleted = selfDeletedFlag === true;
-      const isPending = !isSelfDeleted && statusKey === "pending";
-      const isActive = !isSelfDeleted && statusKey === "active";
-      const isDisabled = !isSelfDeleted && statusKey === "disabled";
-
-      const busy = actionUid === item.uid && !!actionType;
-
-      if (isCurrentOwner && !isSelf && !isOwner && !isSelfDeleted) {
-        if (isPending) {
-          actionNode = (
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <SmallBtn
-                title={busy && actionType === "approve" ? "…" : "Approva"}
-                onPress={() => doApprove(item.uid)}
-                disabled={busy}
-              />
-              <SmallBtn
-                title={busy && actionType === "reject" ? "…" : "Rifiuta"}
-                onPress={() => doReject(item.uid)}
-                disabled={busy}
-                kind="warning"
-              />
-            </View>
-          );
-        } else if (isDisabled) {
-          actionNode = (
-            <SmallBtn
-              title={busy && actionType === "activate" ? "…" : "Attiva"}
-              onPress={() => doActivate(item.uid)}
-              disabled={busy}
-            />
-          );
+  const handleBulk = useCallback((type: BulkAction) => {
+    if (!requireOwner() || selectedCount === 0) return;
+    const label = type === "approve" ? "Approva" : type === "activate" ? "Attiva" : type === "deactivate" ? "Disattiva" : "Elimina";
+    Alert.alert("Conferma", `${label} ${selectedCount} utenti?`, [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: label, style: "destructive", onPress: () => {
+          if (type === "approve") runBulk(selectedUsersDetailed, async (u: UserRow) => {
+            await updateDoc(doc(db, "users", u.uid), { approved: true, disabled: false });
+            await mergeUsersPublic(u.uid, { approved: true, disabled: false }, "Bulk");
+          }, "Utenti approvati");
+          else if (type === "activate") runBulk(selectedUsersDetailed, async (u: UserRow) => {
+            await updateDoc(doc(db, "users", u.uid), { disabled: false });
+            await mergeUsersPublic(u.uid, { disabled: false }, "Bulk");
+          }, "Utenti attivati");
+          else if (type === "deactivate") runBulk(selectedUsersDetailed, async (u: UserRow) => {
+            await updateDoc(doc(db, "users", u.uid), { disabled: true });
+            await mergeUsersPublic(u.uid, { disabled: true }, "Bulk");
+          }, "Utenti disattivati");
+          else if (type === "delete") runBulk(selectedUsersDetailed, async (u: UserRow) => {
+            const userRef = doc(db, "users", u.uid);
+            await deleteDoc(userRef);
+            await deleteUsersPublic(u.uid, "Bulk");
+          }, "Utenti eliminati");
         }
       }
+    ]);
+  }, [requireOwner, selectedCount, selectedIds, runBulk, selectedUsersDetailed]);
 
-      const selectionAllowed = isCurrentOwner && !isSelf && !isOwner && !isSelfDeleted;
-      const isSelected = selected.has(item.uid);
+  // --- RENDER ROW ---
+  const renderItem = useCallback(({ item }: { item: UserRow }) => {
+    const isSelf = currentUid === item.uid;
+    const isOwner = item.role === "owner";
+    const statusKey = item.statusKey ?? getUserStatus(item).statusKey;
+    const isPending = statusKey === "pending";
+    const isActive = statusKey === "active";
+    const isDisabled = statusKey === "disabled";
+    const busy = actionUid === item.uid && !!actionType;
 
-      return (
-        <Row
-          user={item}
-          onPress={openDetail}
-          right={actionNode}
-          selected={isSelected}
-          onToggleSelect={toggleSelect}
-          showSelection={isCurrentOwner}
-          selectDisabled={!selectionAllowed}
-        />
+    let actions: React.ReactNode = null;
+    if (isCurrentOwner && !isSelf && !isOwner) {
+      if (isPending) actions = (
+        <View style={{ flexDirection: 'row', gap: 8, flex: 1 }}>
+          <View style={{ flex: 1 }}><SmallBtn title={busy ? "…" : "Approva"} onPress={() => doApprove(item.uid)} disabled={busy} /></View>
+          <View style={{ flex: 1 }}><SmallBtn title="Rifiuta" onPress={() => doReject(item.uid)} kind="warning" disabled={busy} /></View>
+        </View>
       );
-    },
-    [
-      openDetail,
-      currentUid,
-      actionUid,
-      actionType,
-      doApprove,
-      doReject,
-      doActivate,
-      isCurrentOwner,
-      selected,
-      toggleSelect,
-    ]
-  );
-
-  // Tab filtro
-  const FilterTab = () => {
-    const Tab = ({
-      k,
-      label,
-    }: {
-      k: FilterKey;
-      label: string;
-    }) => {
-      const active = filter === k;
-      const isAll = k === "all";
-      return (
-        <TouchableOpacity
-          onPress={() => setFilter(k)}
-          style={[
-            styles.tabBtn,
-            isAll ? styles.tabBtnWide : styles.tabBtnCompact,
-            { backgroundColor: active ? UI.colors.primary : UI.colors.card },
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.tabBtnText,
-              { color: active ? "#fff" : UI.colors.text },
-            ]}
-          >
-            {label}
-          </Text>
-        </TouchableOpacity>
+      else if (isDisabled) actions = (
+        <View style={{ alignSelf: 'flex-start' }}>
+          <SmallBtn title="Attiva" onPress={() => doActivate(item.uid)} disabled={busy} />
+        </View>
       );
-    };
+    }
 
     return (
-      <View style={styles.tabContainer}>
-        <View style={styles.tabRow}>
-          <Tab k="all" label="Tutti" />
-        </View>
-        <View style={[styles.tabRow, styles.tabRowMulti]}>
-          <Tab k="active" label="Attivi" />
-          <Tab k="disabled" label="Disattivi" />
-          <Tab k="pending" label="In attesa" />
-        </View>
-      </View>
+      <Row
+        user={item}
+        onPress={openDetail}
+        actions={actions}
+        selected={selected.has(item.uid)}
+        onToggleSelect={toggleSelect}
+        showSelection={isCurrentOwner}
+        selectDisabled={!(!isSelf && !isOwner)}
+      />
     );
-  };
+  }, [openDetail, currentUid, actionUid, actionType, doApprove, doReject, doActivate, isCurrentOwner, selected, toggleSelect]);
 
-  const meRoleLabel =
-    meRole === "owner"
-      ? "Owner"
-      : meRole === "admin"
-      ? "Admin"
-      : meRole === "member"
-      ? "Member"
-      : "(sconosciuto)";
+  if (!meRoleLoaded || loading) return <Screen useNativeHeader={true}><View style={styles.center}><ActivityIndicator /></View></Screen>;
 
   return (
-    <Screen useNativeHeader={true} scroll={false}>
-      <View style={{ padding: UI.spacing.lg, flex: 1, gap: UI.spacing.md }}>
-        {meRoleLoaded && isCurrentOwner && <FilterTab />}
-        <Text style={{ color: UI.colors.muted }}>
-          Ruolo corrente: {meRoleLabel}
-        </Text>
-
-        {isCurrentOwner && (
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={18} color="#6b7280" />
-            <TextInput
-              style={styles.searchInput}
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholder="Cerca per nome o email"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {searchText.trim().length > 0 ? (
-              <TouchableOpacity onPress={() => setSearchText("")} accessibilityLabel="Pulisci ricerca">
-                <Ionicons name="close-circle" size={18} color="#9ca3af" />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
-
-        {selectedCount > 0 && (
-          <View style={styles.bulkRow}>
-            <Text style={styles.bulkLabel}>Selezionati: {selectedCount}</Text>
-            <View style={styles.bulkBtnRow}>
-              {bulkButtons.map((btn) => (
-                <TouchableOpacity
-                  key={btn.type}
-                  style={[styles.bulkBtn, { backgroundColor: btn.color }]}
-                  onPress={() => handleBulk(btn.type)}
-                  disabled={bulkLoading}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${btn.label} utenti selezionati`}
-                >
-                  <Text style={[styles.bulkBtnText, { color: btn.textColor }]}>
-                    {bulkLoading ? "…" : btn.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity onPress={clearSelection} disabled={bulkLoading}>
-                <Text style={styles.clearSelectionText}>Annulla</Text>
-              </TouchableOpacity>
-            </View>
-            {!hasBulkActions && (
-              <Text style={styles.bulkHelp}>
-                Nessuna azione disponibile per la selezione corrente.
-              </Text>
-            )}
-          </View>
-        )}
-
-        {!meRoleLoaded ? (
-          <View style={styles.center}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 8 }}>Verifico permessi…</Text>
-          </View>
-        ) : !isCurrentOwner ? (
-          <View style={styles.center}>
-            <Text style={{ textAlign: "center", color: "#666" }}>
-              Solo il ruolo Owner può accedere alla gestione utenti.
-            </Text>
-          </View>
-        ) : loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 8 }}>Carico utenti…</Text>
-          </View>
-        ) : items.length === 0 ? (
-          <View style={styles.center}>
-            <Text style={{ color: "#666" }}>Nessun utente trovato per questo filtro.</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={items}
-            keyExtractor={(item) => item.uid}
-            renderItem={renderItem}
-            ItemSeparatorComponent={() => <View style={{ height: UI.spacing.sm }} />}
-            contentContainerStyle={{ paddingTop: UI.spacing.sm, paddingBottom: UI.spacing.lg }}
-          />
-        )}
+    <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
+      {/* HEADER GRADIENT */}
+      <View style={styles.headerGradientContainer}>
+        <LinearGradient
+          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
       </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+      >
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.uid}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          ListHeaderComponent={
+            <View style={styles.headerBlock}>
+              {/* Back & Title */}
+              <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8, marginTop: 4 }}>
+                  <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                </TouchableOpacity>
+                <View>
+                  <Text style={styles.headerTitle}>GESTIONE UTENTI</Text>
+                  <Text style={styles.headerSubtitle}>Amministrazione Team</Text>
+                </View>
+              </View>
+
+              {/* Search Bar - Fixed Flex Layout */}
+              <View style={styles.searchRow}>
+                <Ionicons name="search" size={18} color="#94a3b8" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Cerca per nome o email"
+                  placeholderTextColor="#9ca3af"
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  autoCapitalize="none"
+                />
+                {searchText.length > 0 && (
+                  <Pressable onPress={() => { setSearchText(""); Keyboard.dismiss(); }} style={styles.searchClear} hitSlop={10}>
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Filters as Rectangular Tabs */}
+              {isCurrentOwner && (
+                <View style={styles.filterSection}>
+                  <View style={styles.tabContainer}>
+                    {(["active", "disabled", "pending"] as const).map((k) => {
+                      const isActive = filter === k;
+                      const label = k === "active" ? "Attivi" : k === "disabled" ? "Disattivi" : "In attesa";
+                      return (
+                        <Pressable
+                          key={k}
+                          onPress={() => setFilter(k)}
+                          style={[
+                            styles.tabBtn,
+                            isActive && styles.tabBtnActive,
+                          ]}
+                        >
+                          <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {/* Results Meta: Counter (Right) - Reset (Left) */}
+                  <View style={styles.resultsMeta}>
+                    {filter !== "all" ? (
+                      <TouchableOpacity onPress={() => setFilter("all")} hitSlop={10}>
+                        <Text style={styles.resetLink}>Mostra tutti</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View /> /* spacer */
+                    )}
+                    <Text style={styles.resultsCount}>
+                      {items.length} {items.length === 1 ? "utente trovato" : "utenti trovati"}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Bulk Actions Bar */}
+              {selectedCount > 0 && (
+                <View style={styles.bulkRow}>
+                  <Text style={styles.bulkLabel}>Selezionati: {selectedCount}</Text>
+                  <View style={styles.bulkBtnRow}>
+                    {bulkButtons.map((btn) => (
+                      <TouchableOpacity
+                        key={btn.type}
+                        style={[styles.bulkBtn, { backgroundColor: btn.color }]}
+                        onPress={() => handleBulk(btn.type as any)}
+                        disabled={bulkLoading}
+                      >
+                        <Text style={[styles.bulkBtnText, { color: btn.textColor }]}>{btn.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity onPress={clearSelection} disabled={bulkLoading}>
+                      <Text style={styles.clearSelectionText}>Annulla</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={{ fontWeight: "600", color: UI.colors.muted }}>Nessun utente trovato.</Text>
+            </View>
+          }
+        />
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerGradientContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: 200 },
 
-  row: {
-    width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: UI.spacing.md,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: UI.spacing.md,
-  },
-  selectDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: "#cbd5f5",
-    marginRight: UI.spacing.sm,
-    backgroundColor: "#fff",
-  },
-  selectDotActive: {
-    borderColor: ACTION_GREEN,
-    backgroundColor: ACTION_GREEN,
-  },
-  selectDotDisabled: {
-    opacity: 0.4,
-  },
-  rowTitle: { fontSize: 16, fontWeight: "800", color: UI.colors.text },
-  rowSub: { color: UI.colors.muted, marginTop: 2 },
-  rowEmail: {
-    color: UI.colors.muted,
-    marginTop: 2,
-    fontSize: 13,
-  },
-  badgeRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  headerBlock: { marginBottom: 16, marginTop: 8, gap: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: "#1E293B", letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 14, fontWeight: "500", color: "#64748B", marginTop: 2 },
 
-  smallBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  smallBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-
-  tabContainer: {
-    gap: UI.spacing.xs,
-  },
-  tabRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: UI.spacing.xs,
-  },
-  tabRowMulti: {
-    flexWrap: "nowrap",
-    justifyContent: "space-between",
-  },
-  tabBtn: {
-    minWidth: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  tabBtnWide: {
-    flexBasis: "100%",
-  },
-  tabBtnCompact: {
-    flexBasis: "32%",
-    maxWidth: "32%",
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  tabBtnText: {
-    fontWeight: "800",
-  },
+  // Search
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: UI.spacing.sm,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: UI.radius.lg,
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: 8,
     backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: UI.colors.text,
+    fontSize: 15,
+    color: "#0f172a",
+    padding: 0,
+    height: "100%",
   },
-  bulkRow: {
+  searchClear: {
+    padding: 4,
+  },
+
+  // Tabs
+  filterSection: { gap: 12 },
+  tabContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tabBtn: {
+    flex: 1,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    borderRadius: UI.radius.lg,
-    padding: UI.spacing.sm,
-    gap: UI.spacing.xs,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
   },
-  bulkLabel: { fontWeight: "700", color: UI.colors.text },
-  bulkBtnRow: {
+  tabBtnActive: {
+    backgroundColor: ACTION_GREEN,
+    borderColor: ACTION_GREEN,
+    borderWidth: 0,
+  },
+  tabText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  tabTextActive: { color: "#ffffff" },
+
+  // Results Meta
+  resultsMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  resultsCount: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  resetLink: { fontSize: 13, fontWeight: "600", color: ACTION_GREEN },
+
+  // User Card refined
+  row: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 0,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(241, 245, 249, 1)",
+  },
+  rowSelected: {
+    borderColor: ACTION_GREEN,
+    backgroundColor: "#f0fdf4",
+  },
+  rowMain: {
+    gap: 12,
+  },
+  rowTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: UI.spacing.sm,
-    flexWrap: "wrap",
+    gap: 12,
   },
-  bulkBtn: {
-    paddingHorizontal: UI.spacing.md,
-    paddingVertical: 8,
-    borderRadius: UI.radius.md,
+  rowFooter: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 12,
   },
-  bulkBtnText: { color: "#fff", fontWeight: "700" },
-  clearSelectionText: { color: ACTION_GREEN, fontWeight: "700" },
-  bulkHelp: {
-    marginTop: UI.spacing.xs,
-    color: UI.colors.muted,
-    fontSize: 12,
+
+  // Avatar
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  // Inner Typo
+  rowTitle: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  rowEmail: { fontSize: 13, color: "#64748b", marginTop: 2 },
+
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  miniBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  miniBadgeText: { fontSize: 10, fontWeight: "700" },
+
+  // Colors for badges
+  bgBlack: { backgroundColor: "#1c1917" },
+  bgGray: { backgroundColor: "#f3f4f6" },
+  bgGreen: { backgroundColor: "#dcfce7" },
+  bgOrange: { backgroundColor: "#ffedd5" },
+  bgRed: { backgroundColor: "#fee2e2" },
+  bgMuted: { backgroundColor: "#f1f5f9" },
+
+  textWhite: { color: "#ffffff" },
+  textGreen: { color: "#166534" },
+
+  // Selection
+  selectDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#cbd5e1",
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectDotActive: {
+    backgroundColor: ACTION_GREEN,
+    borderColor: ACTION_GREEN,
+  },
+  selectDotDisabled: { opacity: 0.5 },
+
+  // Bulk
+  bulkRow: {
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  bulkLabel: { fontWeight: "700", color: "#0f172a" },
+  bulkBtnRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", alignItems: 'center' },
+  bulkBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  bulkBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  clearSelectionText: { color: "#64748b", fontWeight: "600", fontSize: 13, marginLeft: 4 },
+
+  emptyBox: { marginTop: 40, alignItems: "center", paddingHorizontal: 32 },
+
+  // Legacy button used inside card
+  smallBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  smallBtnText: { fontSize: 12, fontWeight: "700" },
 });

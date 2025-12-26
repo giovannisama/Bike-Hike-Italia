@@ -978,7 +978,11 @@ export default function App() {
               options={{ title: "Amministrazione" }}
             />
             <Stack.Screen name="UserList" component={UserListScreen} options={{ title: "Gestione Utenti" }} />
-            <Stack.Screen name="UserDetail" component={UserDetailScreen} options={{ title: "Dettagli Utente" }} />
+            <Stack.Screen
+              name="UserDetail"
+              component={UserDetailScreen}
+              options={{ headerShown: false }}
+            />
             <Stack.Screen name="UsciteList" component={UsciteList} options={{ title: "Uscite" }} />
             {/* NOTE: legacy stack route. Prefer TabBacheca to keep bottom bar. */}
             <Stack.Screen name="Board" component={BoardScreen} options={{ title: "Bacheca" }} />

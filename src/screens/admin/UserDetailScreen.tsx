@@ -1,6 +1,7 @@
 // src/screens/admin/UserDetailScreen.tsx
-import React, { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, Switch, Pressable } from "react-native";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, Switch, Pressable, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth, db } from "../../firebase";
@@ -11,7 +12,7 @@ import {
   deleteDoc,
   deleteField,
 } from "firebase/firestore";
-import { Screen, Hero, UI } from "../../components/Screen";
+import { Screen, UI } from "../../components/Screen";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 import { getUserStatus } from "../../utils/userStatus";
 import {
@@ -43,17 +44,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   owner: "Owner",
 };
 
-const getRoleActionLabel = (current: UserRole, target: UserRole): string => {
-  if (target === "owner") {
-    return "Promuovi a Owner";
-  }
-  if (target === "admin") {
-    return current === "member" ? "Promuovi a Admin" : "Declassa a Admin";
-  }
-  return "Declassa a Member";
-};
-
-type Params = { uid: string; meRole?: string | null };
+type Params = { uid: string; meRole?: string | null; openEdit?: boolean };
 
 type UserDoc = {
   uid: string;
@@ -79,7 +70,7 @@ export default function UserDetailScreen() {
   // Safety guard: Handle missing/invalid UID
   useEffect(() => {
     if (!uid) {
-      try { (navigation as any)?.goBack?.(); } catch {}
+      try { (navigation as any)?.goBack?.(); } catch { }
     }
   }, [uid, navigation]);
 
@@ -119,14 +110,6 @@ export default function UserDetailScreen() {
       pendingUserRef.current = null;
     }
   }, [editMode, applySnapshot]);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerShown: true,
-      headerTitle: "Dettaglio Utente",
-      headerTitleAlign: "center",
-    });
-  }, [navigation]);
 
   useEffect(() => {
     const ref = doc(db, "users", uid);
@@ -169,7 +152,7 @@ export default function UserDetailScreen() {
         setLoading(false);
       }
     );
-    return () => { try { unsub(); } catch {} };
+    return () => { try { unsub(); } catch { } };
   }, [uid, editMode]);
 
   const currentUid = auth.currentUser?.uid || null;
@@ -192,12 +175,12 @@ export default function UserDetailScreen() {
       () => setMyRole(null)
     );
     return () => {
-      try { unsubSelf(); } catch {}
+      try { unsubSelf(); } catch { }
     };
   }, [currentUid]);
 
   const isOwner = user?.role === "owner";
-  const isSelf  = !!currentUid && user?.uid === currentUid;
+  const isSelf = !!currentUid && user?.uid === currentUid;
   const isCurrentOwner = myRole === "owner";
   const isSelfDeleted = user?.selfDeleted === true;
   const status = user ? getUserStatus(user) : null;
@@ -213,10 +196,11 @@ export default function UserDetailScreen() {
   }, [user?.uid, baseVisibility]);
 
   // Abilitazioni azioni
-  const canApprove   = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && !!status?.isPending;
-  const canActivate  = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isDisabled;
-  const canDeactivate= isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isActive;
-  const canDelete    = isCurrentOwner && !isOwner && !isSelf && (!!status?.isDisabled || isSelfDeleted);
+  const canApprove = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && user?.role === "member" && !!status?.isPending;
+  const canReject = canApprove;
+  const canActivate = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isDisabled;
+  const canDeactivate = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isActive;
+  const canDelete = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && status?.statusKey === "disabled";
   const canEditProfile = isCurrentOwner && !isOwner && !isSelf && !isSelfDeleted && !!status?.isActive;
   const currentRole: UserRole = (user?.role ?? "member") as UserRole;
   const canChangeRole =
@@ -225,6 +209,21 @@ export default function UserDetailScreen() {
     !isSelfDeleted &&
     !!status?.isActive;
   const availableRoleTargets: UserRole[] = canChangeRole ? ROLE_TRANSITIONS[currentRole] : [];
+
+  const startEdit = useCallback(() => {
+    setFFirstName(user?.firstName ?? "");
+    setFLastName(user?.lastName ?? "");
+    setFDisplayName(user?.displayName ?? "");
+    setFNickname(user?.nickname ?? "");
+    setEditMode(true);
+  }, [user]);
+  // Sync params for App.tsx header
+  // Hide native stack header manual check
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
 
   const state = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "owner";
@@ -266,28 +265,73 @@ export default function UserDetailScreen() {
   // ─────────────────────────────────────────
   const handleApprove = async () => {
     if (!user || !canApprove) return;
-    try {
-      setActionLoading("approve");
-      await updateDoc(doc(db, "users", user.uid), { approved: true });
-      await mergeUsersPublic(user.uid, { approved: true }, "UserDetail");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile approvare l'utente.");
-    } finally {
-      setActionLoading(null);
-    }
+    Alert.alert("Conferma", "Approvare questo utente?", [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: "Approva",
+        onPress: async () => {
+          try {
+            setActionLoading("approve");
+            await updateDoc(doc(db, "users", user.uid), { approved: true, disabled: false });
+            await mergeUsersPublic(user.uid, { approved: true, disabled: false }, "UserDetail");
+          } catch (e: any) {
+            console.error("[UserDetail] approve error:", { uid: user.uid, error: e });
+            Alert.alert("Errore", e?.message ?? "Impossibile approvare l'utente.");
+          } finally {
+            setActionLoading(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleReject = () => {
+    if (!user || !canReject) return;
+    Alert.alert(
+      "Conferma",
+      "Rifiutare questa richiesta di accesso? L'utente verrà spostato tra i disattivati.",
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Rifiuta",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setActionLoading("reject");
+              await updateDoc(doc(db, "users", user.uid), { approved: false, disabled: true });
+              await mergeUsersPublic(user.uid, { approved: false, disabled: true }, "UserDetail.reject");
+            } catch (e: any) {
+              console.error("[UserDetail] reject error:", { uid: user.uid, error: e });
+              Alert.alert("Errore", e?.message ?? "Impossibile rifiutare la richiesta.");
+            } finally {
+              setActionLoading(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleActivate = async () => {
     if (!user || !canActivate) return;
-    try {
-      setActionLoading("activate");
-      await updateDoc(doc(db, "users", user.uid), { disabled: false });
-      await mergeUsersPublic(user.uid, { disabled: false }, "UserDetail");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile attivare l'utente.");
-    } finally {
-      setActionLoading(null);
-    }
+    Alert.alert("Conferma", "Attivare questo utente?", [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: "Attiva",
+        onPress: async () => {
+          try {
+            setActionLoading("activate");
+            await updateDoc(doc(db, "users", user.uid), { disabled: false });
+            await mergeUsersPublic(user.uid, { disabled: false }, "UserDetail");
+          } catch (e: any) {
+            console.error("[UserDetail] activate error:", { uid: user.uid, error: e });
+            Alert.alert("Errore", e?.message ?? "Impossibile attivare l'utente.");
+          } finally {
+            setActionLoading(null);
+          }
+        },
+      },
+    ]);
   };
 
   const handleDeactivate = () => {
@@ -303,6 +347,7 @@ export default function UserDetailScreen() {
             await updateDoc(doc(db, "users", user.uid), { disabled: true });
             await mergeUsersPublic(user.uid, { disabled: true }, "UserDetail");
           } catch (e: any) {
+            console.error("[UserDetail] deactivate error:", { uid: user.uid, error: e });
             Alert.alert("Errore", e?.message ?? "Impossibile disattivare l'utente.");
           } finally {
             setActionLoading(null);
@@ -317,40 +362,33 @@ export default function UserDetailScreen() {
     const fromRole: UserRole = (user.role ?? "member") as UserRole;
     if (!ROLE_TRANSITIONS[fromRole].includes(targetRole)) return;
 
-    const performChange = async () => {
-      try {
-        setActionLoading(`role:${targetRole}`);
-        await updateDoc(doc(db, "users", user.uid), { role: targetRole });
-        await mergeUsersPublic(user.uid, { role: targetRole }, "UserDetail");
-      } catch (e: any) {
-        Alert.alert("Errore", e?.message ?? "Impossibile aggiornare il ruolo.");
-      } finally {
-        setActionLoading(null);
-      }
-    };
-
     const fromWeight = ROLE_WEIGHTS[fromRole];
     const toWeight = ROLE_WEIGHTS[targetRole];
+    const isDemotion = toWeight < fromWeight;
 
-    if (toWeight < fromWeight) {
-      Alert.alert(
-        "Conferma",
-        `Declassare questo utente da ${ROLE_LABELS[fromRole]} a ${ROLE_LABELS[targetRole]}?`,
-        [
-          { text: "Annulla", style: "cancel" },
-          {
-            text: "Conferma",
-            style: "destructive",
-            onPress: () => {
-              void performChange();
-            },
+    Alert.alert(
+      "Conferma",
+      `Impostare il ruolo ${ROLE_LABELS[targetRole]} per questo utente?`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Conferma",
+          style: isDemotion ? "destructive" : "default",
+          onPress: async () => {
+            try {
+              setActionLoading(`role:${targetRole}`);
+              await updateDoc(doc(db, "users", user.uid), { role: targetRole });
+              await mergeUsersPublic(user.uid, { role: targetRole }, "UserDetail");
+            } catch (e: any) {
+              console.error("[UserDetail] role error:", { uid: user.uid, role: targetRole, error: e });
+              Alert.alert("Errore", e?.message ?? "Impossibile aggiornare il ruolo.");
+            } finally {
+              setActionLoading(null);
+            }
           },
-        ]
-      );
-      return;
-    }
-
-    void performChange();
+        },
+      ]
+    );
   };
 
   const handleDelete = () => {
@@ -423,8 +461,9 @@ export default function UserDetailScreen() {
                 );
               }
 
-              try { (navigation as any)?.goBack?.(); } catch {}
+              try { (navigation as any)?.goBack?.(); } catch { }
             } catch (e: any) {
+              console.error("[UserDetail] delete error:", { uid: user.uid, error: e });
               Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'utente.");
             } finally {
               setActionLoading(null);
@@ -438,14 +477,6 @@ export default function UserDetailScreen() {
   // ─────────────────────────────────────────
   // SALVATAGGIO PROFILO (Modifica)
   // ─────────────────────────────────────────
-  const startEdit = () => {
-    setFFirstName(user?.firstName ?? "");
-    setFLastName(user?.lastName ?? "");
-    setFDisplayName(user?.displayName ?? "");
-    setFNickname(user?.nickname ?? "");
-    setEditMode(true);
-  };
-
   const cancelEdit = () => {
     setEditMode(false);
     setFFirstName(user?.firstName ?? "");
@@ -533,99 +564,128 @@ export default function UserDetailScreen() {
   const roleLabel = user?.role === "owner" ? "Owner" : state.isAdmin ? "Admin" : "Member";
   const statusKey = status?.statusKey ?? "pending";
   const statusLabel = isSelfDeleted ? "Eliminato" : status?.statusLabel ?? "In attesa";
-  const heroSubtitle = `${roleLabel} • ${statusLabel} • ${user?.email || "—"}`;
-
   return (
-    <Screen useNativeHeader={true} scroll={true} keyboardShouldPersistTaps="handled">
-      <Hero title={fullName()} subtitle={heroSubtitle} />
+    <Screen
+      useNativeHeader={true}
+      title={undefined}
+      scroll={true}
+      keyboardShouldPersistTaps="handled"
+      backgroundColor="#FDFCF8"
+    >
+      {/* MANUAL HEADER BLOCK */}
+      <View style={styles.headerBlock}>
+        <View style={styles.headerRow}>
+          {/* Back Btn - Icon Only */}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginRight: 8, padding: 4 }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={24} color="#1E293B" />
+          </TouchableOpacity>
 
-      <View style={styles.container}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Stato e ruolo</Text>
-          <View style={styles.badgeRow}>
-            <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
-              <Text style={styles.badgeText}>{roleLabel}</Text>
-            </View>
-            <View
-              style={[
-                styles.badge,
-                isSelfDeleted
-                  ? styles.badgeDanger
-                  : statusKey === "disabled"
+          <View style={{ flex: 1 }} />
+
+          {/* Edit Action (if allowed) */}
+          {canEditProfile && !editMode && (
+            <TouchableOpacity
+              onPress={startEdit}
+              style={{ padding: 4 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="pencil-sharp" size={22} color="#1E293B" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.profileHeader}>
+        <Text style={styles.profileName}>{fullName()}</Text>
+        <View style={styles.badgeRow}>
+          <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+            <Text style={styles.badgeText}>{roleLabel}</Text>
+          </View>
+          <View
+            style={[
+              styles.badge,
+              isSelfDeleted
+                ? styles.badgeDanger
+                : statusKey === "disabled"
                   ? styles.badgeMuted
                   : statusKey === "active"
-                  ? styles.badgeSuccess
-                  : styles.badgePending,
-              ]}
-            >
-              <Text style={styles.badgeText}>{statusLabel}</Text>
-            </View>
+                    ? styles.badgeSuccess
+                    : styles.badgePending,
+            ]}
+          >
+            <Text style={styles.badgeText}>{statusLabel}</Text>
           </View>
         </View>
+      </View>
+
+      <View style={styles.container}>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Dati profilo</Text>
           <View style={styles.card}>
-          {!editMode ? (
-            <>
-              <InfoRow
-                label="Nome completo"
-                value={
-                  isSelfDeleted
-                    ? "—"
-                    : `${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"
-                }
-              />
-              <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
-              <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
-              <InfoRow label="Email" value={user.email || "—"} />
-              <InfoRow label="Stato" value={statusLabel} />
-              {isSelfDeleted && (
+            {!editMode ? (
+              <>
                 <InfoRow
-                  label="Eliminato il"
-                  value={user.selfDeletedAt?.toDate?.() ? user.selfDeletedAt.toDate().toLocaleString() : "—"}
+                  label="Nome completo"
+                  value={
+                    isSelfDeleted
+                      ? "—"
+                      : `${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"
+                  }
                 />
-              )}
-            </>
-          ) : (
-            <>
-              <LabeledInput
-                ref={firstNameRef}
-                label="Nome"
-                value={fFirstName}
-                placeholder="Mario"
-                returnKeyType="next"
-                onSubmitEditing={() => lastNameRef.current?.focus()}
-                onChangeText={handleFirstNameChange}
-              />
-              <LabeledInput
-                ref={lastNameRef}
-                label="Cognome"
-                value={fLastName}
-                placeholder="Rossi"
-                returnKeyType="next"
-                onSubmitEditing={() => displayNameRef.current?.focus()}
-                onChangeText={handleLastNameChange}
-              />
-              <LabeledInput
-                ref={displayNameRef}
-                label="Display Name"
-                value={fDisplayName}
-                placeholder="Rossi, Mario"
-                returnKeyType="next"
-                onSubmitEditing={() => nicknameRef.current?.focus()}
-                onChangeText={handleDisplayNameChange}
-              />
-              <LabeledInput
-                ref={nicknameRef}
-                label="Nickname"
-                value={fNickname}
-                placeholder="SuperBiker"
-                returnKeyType="done"
-                onChangeText={handleNicknameChange}
-              />
-            </>
-          )}
+                <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
+                <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
+                <InfoRow label="Email" value={user.email || "—"} />
+                {isSelfDeleted && (
+                  <InfoRow
+                    label="Eliminato il"
+                    value={user.selfDeletedAt?.toDate?.() ? user.selfDeletedAt.toDate().toLocaleString() : "—"}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <LabeledInput
+                  ref={firstNameRef}
+                  label="Nome"
+                  value={fFirstName}
+                  placeholder="Mario"
+                  returnKeyType="next"
+                  onSubmitEditing={() => lastNameRef.current?.focus()}
+                  onChangeText={handleFirstNameChange}
+                />
+                <LabeledInput
+                  ref={lastNameRef}
+                  label="Cognome"
+                  value={fLastName}
+                  placeholder="Rossi"
+                  returnKeyType="next"
+                  onSubmitEditing={() => displayNameRef.current?.focus()}
+                  onChangeText={handleLastNameChange}
+                />
+                <LabeledInput
+                  ref={displayNameRef}
+                  label="Display Name"
+                  value={fDisplayName}
+                  placeholder="Rossi, Mario"
+                  returnKeyType="next"
+                  onSubmitEditing={() => nicknameRef.current?.focus()}
+                  onChangeText={handleDisplayNameChange}
+                />
+                <LabeledInput
+                  ref={nicknameRef}
+                  label="Nickname"
+                  value={fNickname}
+                  placeholder="SuperBiker"
+                  returnKeyType="done"
+                  onChangeText={handleNicknameChange}
+                />
+              </>
+            )}
           </View>
         </View>
 
@@ -643,30 +703,31 @@ export default function UserDetailScreen() {
                 const enabled = enabledSectionsDraft.includes(item.key);
                 const disabledToggle = !canEditVisibility || visibilitySaving;
                 return (
-                  <Pressable
-                    key={item.key}
-                    style={({ pressed }) => [
-                      styles.settingRow,
-                      pressed && styles.rowPressed,
-                    ]}
-                    onPress={() => toggleSection(item.key)}
-                    disabled={disabledToggle}
-                    hitSlop={{ top: 6, bottom: 6 }}
-                  >
-                    <View style={styles.rowText}>
+                  <View key={item.key} style={styles.settingRow}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.rowText,
+                        pressed && styles.rowPressed,
+                      ]}
+                      onPress={() => toggleSection(item.key)}
+                      disabled={disabledToggle}
+                      hitSlop={{ top: 6, bottom: 6 }}
+                    >
                       <Text style={styles.toggleLabel}>{item.label}</Text>
-                    </View>
-                    <View style={styles.switchWrapper} pointerEvents="none">
+                    </Pressable>
+                    <View style={styles.switchWrapper}>
                       <Switch
                         value={enabled}
+                        onValueChange={() => toggleSection(item.key)}
                         disabled={disabledToggle}
                         trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
                         thumbColor={enabled ? ACTION_GREEN : "#fff"}
                       />
                     </View>
-                  </Pressable>
+                  </View>
                 );
               })}
+              <View style={styles.visibilitySpacer} />
               <Button
                 title={visibilitySaving ? "Salvataggio…" : "Salva visibilità"}
                 onPress={saveVisibility}
@@ -678,12 +739,12 @@ export default function UserDetailScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Azioni</Text>
-          <View style={styles.actionGroup}>
+          <View style={styles.card}>
             {editMode ? (
-              <>
+              <View style={styles.actionGroup}>
                 <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
-                <Button title="Annulla" onPress={cancelEdit} />
-              </>
+                <Button title="Annulla" onPress={cancelEdit} variant="secondary" />
+              </View>
             ) : (
               <>
                 {isSelfDeleted ? (
@@ -692,47 +753,93 @@ export default function UserDetailScreen() {
                   </Text>
                 ) : isCurrentOwner ? (
                   <>
-                    {canEditProfile && (
-                      <Button title="Modifica" onPress={startEdit} disabled={!!actionLoading} />
-                    )}
-                    {availableRoleTargets.map((targetRole) => {
-                      const loadingKey = `role:${targetRole}`;
-                      const isDemotion = ROLE_WEIGHTS[targetRole] < ROLE_WEIGHTS[currentRole];
-                      const buttonTitle =
-                        actionLoading === loadingKey
-                          ? "Aggiornamento ruolo…"
-                          : getRoleActionLabel(currentRole, targetRole);
-                      return (
+                    <View style={styles.actionGroup}>
+                      {canApprove && (
                         <Button
-                          key={`role-${targetRole}`}
-                          title={buttonTitle}
-                          onPress={() => handleChangeRole(targetRole)}
+                          title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
+                          onPress={handleApprove}
                           disabled={!!actionLoading}
-                          danger={isDemotion}
                         />
-                      );
-                    })}
-                    {canDeactivate && (
-                      <Button
-                        title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
-                        onPress={handleDeactivate}
-                        disabled={!!actionLoading}
-                        danger
-                      />
+                      )}
+                      {canReject && (
+                        <Button
+                          title={actionLoading === "reject" ? "Rifiuto…" : "Rifiuta"}
+                          onPress={handleReject}
+                          disabled={!!actionLoading}
+                          variant="secondary"
+                          danger
+                        />
+                      )}
+                      {canActivate && (
+                        <Button
+                          title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
+                          onPress={handleActivate}
+                          disabled={!!actionLoading}
+                        />
+                      )}
+                      {canDeactivate && (
+                        <Button
+                          title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
+                          onPress={handleDeactivate}
+                          disabled={!!actionLoading}
+                          danger
+                        />
+                      )}
+                    </View>
+
+                    {canChangeRole && (
+                      <View style={styles.roleBlock}>
+                        <Text style={styles.subSectionTitle}>Ruolo</Text>
+                        <View style={styles.roleRow}>
+                          {(["owner", "admin", "member"] as UserRole[]).map((role) => {
+                            const isCurrent = role === currentRole;
+                            const allowed = availableRoleTargets.includes(role);
+                            const disabled = isCurrent || !allowed || !!actionLoading;
+                            return (
+                              <TouchableOpacity
+                                key={`role-pill-${role}`}
+                                onPress={() => handleChangeRole(role)}
+                                disabled={disabled}
+                                accessibilityRole="button"
+                                style={[
+                                  styles.rolePill,
+                                  isCurrent && styles.rolePillActive,
+                                  disabled && !isCurrent && styles.rolePillDisabled,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.rolePillText,
+                                    isCurrent && styles.rolePillTextActive,
+                                  ]}
+                                >
+                                  {ROLE_LABELS[role]}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
                     )}
-                    {canApprove && (
-                      <Button
-                        title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
-                        onPress={handleApprove}
-                        disabled={!!actionLoading}
-                      />
+
+                    {!canChangeRole && !canEditProfile && !canApprove && !canActivate && !canDeactivate && (
+                      <Text style={styles.ownerOnlyNote}>
+                        Nessuna azione disponibile per questo profilo.
+                      </Text>
                     )}
-                    {canActivate && (
-                      <Button
-                        title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
-                        onPress={handleActivate}
-                        disabled={!!actionLoading}
-                      />
+
+                    {!editMode && canDelete && (
+                      <>
+                        <View style={styles.actionDivider} />
+                        <Text style={styles.subSectionTitle}>Eliminazione</Text>
+                        <Text style={styles.dangerNote}>Azione irreversibile.</Text>
+                        <Button
+                          title={actionLoading === "delete" ? "Eliminazione…" : "Elimina definitivamente"}
+                          onPress={handleDelete}
+                          disabled={!!actionLoading}
+                          danger
+                        />
+                      </>
                     )}
                   </>
                 ) : (
@@ -745,22 +852,8 @@ export default function UserDetailScreen() {
           </View>
         </View>
 
-        {!editMode && canDelete && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Eliminazione</Text>
-            <View style={styles.dangerCard}>
-              <Text style={styles.dangerNote}>Azione irreversibile.</Text>
-              <Button
-                title={actionLoading === "delete" ? "Eliminazione…" : "Elimina"}
-                onPress={handleDelete}
-                disabled={!!actionLoading}
-                danger
-              />
-            </View>
-          </View>
-        )}
       </View>
-    </Screen>
+    </Screen >
   );
 }
 
@@ -769,29 +862,63 @@ function Button({
   onPress,
   disabled = false,
   danger = false,
+  variant = "primary",
 }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   danger?: boolean;
+  variant?: "primary" | "secondary";
 }) {
+  const isSecondary = variant === "secondary";
+  const resolvedBg = danger ? "#B91C1C" : isSecondary ? "#E2E8F0" : ACTION_GREEN;
+  const resolvedText = danger ? "#fff" : isSecondary ? "#0f172a" : "#fff";
   return (
     <TouchableOpacity
       style={[
         styles.btn,
-        { backgroundColor: danger ? "#B91C1C" : ACTION_GREEN, opacity: disabled ? 0.6 : 1 },
+        {
+          backgroundColor: resolvedBg,
+          borderColor: isSecondary ? "#cbd5e1" : "transparent",
+          borderWidth: isSecondary ? 1 : 0,
+          opacity: disabled ? 0.6 : 1,
+        },
       ]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
     >
-      <Text style={styles.btnText}>{title}</Text>
+      <Text style={[styles.btnText, { color: resolvedText }]}>{title}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  headerBlock: {
+    marginBottom: 0,
+    marginTop: Platform.OS === 'ios' ? 24 : 8,
+    gap: 16,
+    paddingHorizontal: 16,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  profileHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  profileName: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#0f172a",
+    letterSpacing: -0.3,
+    lineHeight: 30,
+    marginBottom: 10,
+  },
   container: {
     paddingHorizontal: 4,
     paddingBottom: 32,
@@ -805,12 +932,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  actionGroup: { gap: 8 },
+  actionGroup: { gap: 12 },
   btn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
     marginBottom: 8,
+    alignSelf: "stretch",
   },
   btnText: { color: "#fff", fontWeight: "700", textAlign: "center" },
 
@@ -846,7 +974,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 16,
   },
   badge: {
     paddingHorizontal: 12,
@@ -922,8 +1049,55 @@ const styles = StyleSheet.create({
     minWidth: 68,
     marginTop: -2,
   },
+  visibilitySpacer: {
+    height: UI.spacing.lg,
+  },
   selfDeletedNote: { color: "#b91c1c", fontWeight: "600" },
   ownerOnlyNote: { color: "#64748b", fontWeight: "600" },
+  subSectionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginTop: 10,
+  },
+  roleBlock: {
+    marginTop: 6,
+    gap: 10,
+  },
+  roleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  rolePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+  },
+  rolePillActive: {
+    backgroundColor: "#0f172a",
+    borderColor: "#0f172a",
+  },
+  rolePillDisabled: {
+    opacity: 0.5,
+  },
+  rolePillText: {
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  rolePillTextActive: {
+    color: "#fff",
+  },
+  actionDivider: {
+    height: 1,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 12,
+  },
   dangerCard: {
     borderWidth: 1,
     borderColor: "#fecaca",

@@ -703,28 +703,28 @@ export default function UserDetailScreen() {
                 const enabled = enabledSectionsDraft.includes(item.key);
                 const disabledToggle = !canEditVisibility || visibilitySaving;
                 return (
-                  <View key={item.key} style={styles.settingRow}>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.rowText,
-                        pressed && styles.rowPressed,
-                      ]}
-                      onPress={() => toggleSection(item.key)}
-                      disabled={disabledToggle}
-                      hitSlop={{ top: 6, bottom: 6 }}
-                    >
+                  <Pressable
+                    key={item.key}
+                    style={({ pressed }) => [
+                      styles.settingRow,
+                      pressed && styles.rowPressed,
+                    ]}
+                    onPress={() => toggleSection(item.key)}
+                    disabled={disabledToggle}
+                  >
+                    <View style={styles.rowText}>
                       <Text style={styles.toggleLabel}>{item.label}</Text>
-                    </Pressable>
-                    <View style={styles.switchWrapper}>
+                    </View>
+                    <View style={styles.switchWrapper} pointerEvents="none">
                       <Switch
                         value={enabled}
-                        onValueChange={() => toggleSection(item.key)}
+                        onValueChange={() => { }}
                         disabled={disabledToggle}
                         trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
                         thumbColor={enabled ? ACTION_GREEN : "#fff"}
                       />
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })}
               <View style={styles.visibilitySpacer} />

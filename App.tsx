@@ -1031,7 +1031,7 @@ export default function App() {
             <Stack.Screen
               name="NotificationSettings"
               component={NotificationSettingsScreen}
-              options={{ title: "Notifiche" }}
+              options={{ headerShown: false }}
             />
             {/* Info is now in Tabs as TabMore -> Info */}
           </Stack.Navigator>

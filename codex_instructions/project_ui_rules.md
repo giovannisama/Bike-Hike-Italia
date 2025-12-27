@@ -59,3 +59,43 @@ Indica i permessi utente.
 Indica lo stato dell'account.
 
 - **Dimension
+
+## 5. Tabs / Segmented (STANDARD UNICO)
+Usare **solo** il pattern standard "Segmented Tabs" del Profilo. Non esiste (al momento) un componente shared: lo standard è il **PATTERN** implementato inline in `ProfileScreen.tsx`. Vietato creare segmented custom o usare altre implementazioni se non strettamente necessario.
+
+### Riferimenti obbligatori
+- **Standard canonico**: `src/screens/ProfileScreen.tsx` (tabs "Dati Personali / Documenti / Sicurezza")
+- **Target adozione**: `src/screens/UsciteList.tsx` (Tabs "Attive/Archiviate")
+- **Target adozione**: `src/screens/admin/UserListScreen.tsx` (Tabs "Attivi/Disattivi/In attesa")
+
+### Regola vincolante
+Ogni tab di navigazione top-level (2–3 tab) deve usare questo pattern. È vietato creare segmented custom o usare componenti alternativi.
+
+### API / Parametri attesi (pattern)
+- **items/labels**: elenco di tab (2-3 voci).
+- **activeKey**: stato attivo (string union).
+- **onChange**: handler per cambio tab (set state).
+- **badge/count**: opzionale; se presente, renderizzato nel label senza cambiare layout base.
+
+### Styling vincolante (da pattern sorgente)
+- **Container**: row con background `UI.colors.card`, radius `999`, padding `4`, marginBottom `16`.
+- **Tab**: `flex: 1`, `borderRadius: 999`, `paddingVertical: 10`, align center.
+- **Active**: background `UI.colors.action`, testo `#fff`.
+- **Inactive**: background trasparente, testo `UI.colors.muted`, fontWeight `600`.
+
+### Do / Don't
+- **DO**: riusare il pattern esistente del Profilo copiando struttura + stili.
+- **DO**: usare solo i token e valori già presenti nel pattern.
+- **DON'T**: introdurre colori hardcoded, layout custom, tab con altezze diverse, o segmented nuovi non allineati.
+
+### Esempi conformi
+- Profilo (Dati Personali / Documenti / Sicurezza)
+- Ciclismo – Elenco Uscite
+- Amministrazione – Gestione Utenti
+
+### Casi esclusi
+- segmented usati come input di form (es. tipo certificato)
+- pill filters o multi-select
+
+### Non-regression
+Ogni sostituzione è **UI-only**: logica di stato/handler invariata.

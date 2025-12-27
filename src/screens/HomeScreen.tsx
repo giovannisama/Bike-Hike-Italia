@@ -257,6 +257,23 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         </View>
 
+        {showCertCard && (
+          <Pressable
+            onPress={() => rootNav.navigate("Profile")}
+            style={({ pressed }) => [styles.unifiedCard, styles.certCard, pressed && { opacity: 0.95 }]}
+          >
+            <View style={styles.eventRow}>
+              <View style={styles.certIconBox}>
+                <MaterialCommunityIcons name="alert-circle" size={22} color="#92400E" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.certText}>{certLabel}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#92400E" />
+            </View>
+          </Pressable>
+        )}
+
         {isOwner && (
           <Pressable
             onPress={() =>
@@ -301,19 +318,6 @@ export default function HomeScreen({ navigation }: any) {
           </View>
           <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
         </Pressable>
-
-        {showCertCard && (
-          <Pressable
-            onPress={() => rootNav.navigate("TabProfile")}
-            style={({ pressed }) => [styles.certCard, pressed && { opacity: 0.95 }]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <MaterialCommunityIcons name="alert-circle" size={22} color="#92400E" />
-              <Text style={styles.certText}>{certLabel}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#92400E" />
-          </Pressable>
-        )}
 
         {/* EVENTI SECTION - Unified container */}
         <View style={styles.sectionContainer}>
@@ -404,7 +408,7 @@ export default function HomeScreen({ navigation }: any) {
                         />
                       ) : (
                         <View style={styles.newsIconPlaceholder}>
-                          <MaterialCommunityIcons name="bullhorn-outline" size={20} color={UI.colors.primary} />
+                          <Ionicons name="newspaper-outline" size={20} color="#94A3B8" />
                         </View>
                       )}
 
@@ -526,18 +530,20 @@ const styles = StyleSheet.create({
 
   // CERT CARD
   certCard: {
-    backgroundColor: "#FEF9C3",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: "row",
+    borderLeftWidth: 4,
+    borderLeftColor: "#F59E0B",
+  },
+  certIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FEF3C7",
     alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
+    justifyContent: "center",
+    marginRight: 12,
   },
   certText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "700",
     color: "#92400E",
   },

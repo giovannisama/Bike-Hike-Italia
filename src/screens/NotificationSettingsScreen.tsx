@@ -4,6 +4,9 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../services/pushNotifications";
 import { Screen, UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
+
+const CARD_BORDER = "#e5e7eb";
 
 const NotificationSettingsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -232,7 +235,8 @@ const NotificationSettingsScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <Screen title="Notifiche">
+      <Screen useNativeHeader scroll backgroundColor="#FDFCF8">
+        <ScreenHeader title="Notifiche" showBack />
         <View style={styles.center}>
           <ActivityIndicator color={UI.colors.primary} />
         </View>
@@ -243,7 +247,8 @@ const NotificationSettingsScreen: React.FC = () => {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     return (
-      <Screen title="Notifiche">
+      <Screen useNativeHeader scroll backgroundColor="#FDFCF8">
+        <ScreenHeader title="Notifiche" showBack />
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
             Devi effettuare l'accesso per gestire le notifiche.
@@ -256,7 +261,8 @@ const NotificationSettingsScreen: React.FC = () => {
   const eventSwitchDisabled = saving || !globalEnabled;
 
   return (
-    <Screen title="Notifiche">
+    <Screen useNativeHeader scroll backgroundColor="#FDFCF8">
+      <ScreenHeader title="Notifiche" showBack />
       {/* Toggle globale */}
       <View style={styles.card}>
         <Pressable
@@ -278,6 +284,7 @@ const NotificationSettingsScreen: React.FC = () => {
               value={globalEnabled}
               onValueChange={handleGlobalToggle}
               disabled={saving}
+              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
             />
           </View>
         </Pressable>
@@ -307,6 +314,7 @@ const NotificationSettingsScreen: React.FC = () => {
               value={rideCreatedEnabled}
               onValueChange={handleRideCreatedToggle}
               disabled={eventSwitchDisabled}
+              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
             />
           </View>
         </Pressable>
@@ -329,6 +337,7 @@ const NotificationSettingsScreen: React.FC = () => {
               value={rideCancelledEnabled}
               onValueChange={handleRideCancelledToggle}
               disabled={eventSwitchDisabled}
+              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
             />
           </View>
         </Pressable>
@@ -351,6 +360,7 @@ const NotificationSettingsScreen: React.FC = () => {
               value={boardPostEnabled}
               onValueChange={handleBoardPostToggle}
               disabled={eventSwitchDisabled}
+              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
             />
           </View>
         </Pressable>
@@ -374,6 +384,7 @@ const NotificationSettingsScreen: React.FC = () => {
                 value={pendingUserEnabled}
                 onValueChange={handlePendingUserToggle}
                 disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
               />
             </View>
           </Pressable>
@@ -411,7 +422,7 @@ const styles = StyleSheet.create({
     backgroundColor: UI.colors.card,
     borderRadius: UI.radius.xl,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: CARD_BORDER,
     padding: UI.spacing.lg,
     ...UI.shadow.card,
     marginBottom: UI.spacing.lg,

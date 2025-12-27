@@ -377,12 +377,22 @@ export default function BoardScreen({ navigation, route }: any) {
               </View>
 
               <View style={styles.filterRow}>
-                <View style={styles.segmentedControl}>
-                  <Pressable onPress={() => setFilter("active")} style={[styles.segmentBtn, filter === "active" && styles.segmentBtnActive]}>
-                    <Text style={[styles.segmentText, filter === "active" && styles.segmentTextActive]}>Attive</Text>
+                <View style={styles.segmented}>
+                  <Pressable
+                    onPress={() => setFilter("active")}
+                    style={[styles.segmentedTab, filter === "active" && styles.segmentedTabActive]}
+                  >
+                    <Text style={[styles.segmentedText, filter === "active" && styles.segmentedTextActive]}>
+                      Attive
+                    </Text>
                   </Pressable>
-                  <Pressable onPress={() => setFilter("archived")} style={[styles.segmentBtn, filter === "archived" && styles.segmentBtnActive]}>
-                    <Text style={[styles.segmentText, filter === "archived" && styles.segmentTextActive]}>Archiviate</Text>
+                  <Pressable
+                    onPress={() => setFilter("archived")}
+                    style={[styles.segmentedTab, filter === "archived" && styles.segmentedTabActive]}
+                  >
+                    <Text style={[styles.segmentedText, filter === "archived" && styles.segmentedTextActive]}>
+                      Archiviate
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -488,11 +498,24 @@ const styles = StyleSheet.create({
   searchClear: { position: "absolute", right: 4, top: "50%", transform: [{ translateY: -9 }] },
   searchInput: { flex: 1, fontSize: 15, color: "#0F172A" },
   filterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  segmentedControl: { flexDirection: "row", backgroundColor: "#F1F5F9", padding: 4, borderRadius: 12, alignSelf: "flex-start" },
-  segmentBtn: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8 },
-  segmentBtnActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-  segmentText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
-  segmentTextActive: { color: "#0F172A", fontWeight: "700" },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: UI.colors.card,
+    borderRadius: 999,
+    padding: 4,
+    alignSelf: "flex-start",
+  },
+  segmentedTab: {
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  segmentedTabActive: {
+    backgroundColor: UI.colors.action,
+  },
+  segmentedText: { fontSize: 13, fontWeight: "600", color: UI.colors.muted },
+  segmentedTextActive: { color: "#fff" },
 
   // COMPOSE
   composeCard: { borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: UI.radius.lg, padding: UI.spacing.md, gap: UI.spacing.sm, marginTop: 16 },

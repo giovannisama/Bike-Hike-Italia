@@ -1,5 +1,5 @@
 // src/screens/ProfileScreen.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,10 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { auth, db } from "../firebase";
 import { doc, setDoc, serverTimestamp, onSnapshot, deleteField, deleteDoc, getDoc } from "firebase/firestore";
 import { updateProfile as fbUpdateProfile, deleteUser } from "firebase/auth";
-import { Screen } from "../components/Screen";
+import { Screen, UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { DocumentStatusBadge } from "../components/DocumentStatusBadge";
+import { RoleBadge } from "../components/RoleBadge";
 import { PrimaryButton } from "../components/Button";
 import { CardCropperModal } from "../components/CardCropperModal";
 import { ZoomableImageModal } from "../components/ZoomableImageModal";
@@ -38,8 +41,9 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 
-const logo = require("../../assets/images/logo.jpg");
 const SELF_DELETED_SENTINEL = "__self_deleted__";
+const CARD_BORDER = "#e5e7eb";
+const CARD_BORDER_SOFT = "rgba(241, 245, 249, 1)";
 
 type LocalCard = {
   uri: string;
@@ -559,17 +563,8 @@ export default function ProfileScreen() {
     [lastName, firstName].filter(Boolean).join(lastName && firstName ? ", " : "") ||
     user?.displayName ||
     "Utente";
+  const roleKey = (roleLabel || "member").toLowerCase();
   const roleDisplay = roleLabel ? roleLabel.charAt(0).toUpperCase() + roleLabel.slice(1) : "Membro";
-  const headerContent = (
-    <View style={styles.heroHeader}>
-      <Image source={logo} style={styles.heroLogo} />
-      <View style={styles.heroText}>
-        <Text style={styles.heroTitle}>Profilo Utente di</Text>
-        <Text style={styles.heroName}>{displayName}</Text>
-        <Text style={styles.heroRole}>{roleDisplay}</Text>
-      </View>
-    </View>
-  );
 
   useEffect(() => {
     if (!cardUri) {
@@ -583,8 +578,20 @@ export default function ProfileScreen() {
     return () => clearTimeout(fallback);
   }, [cardUri]);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   return (
-    <Screen headerContent={headerContent}>
+    <Screen useNativeHeader scroll backgroundColor="#FDFCF8">
+      <ScreenHeader title="PROFILO" showBack />
+
+      <View style={styles.profileSummaryCard}>
+        <View style={styles.profileSummaryRow}>
+          <Text style={styles.profileSummaryName}>{displayName}</Text>
+          <RoleBadge role={(["owner", "admin"].includes(roleKey) ? roleKey : "member") as "owner" | "admin" | "member"} />
+        </View>
+      </View>
 
       {/* TODO: tab bar + contenuti potrebbero essere estratti in sottocomponenti per le tre sezioni (personal/documents/security). */}
       <View style={styles.tabBar}>
@@ -604,7 +611,7 @@ export default function ProfileScreen() {
       </View>
 
       {activeTab === "personal" && (
-        <>
+        <View style={styles.formCard}>
           <Text style={styles.label}>Nome</Text>
           <TextInput
             style={styles.input}
@@ -628,7 +635,7 @@ export default function ProfileScreen() {
             onChangeText={setNickname}
             placeholder="SuperBiker"
           />
-        </>
+        </View>
       )}
 
       {activeTab === "documents" && (
@@ -653,9 +660,10 @@ export default function ProfileScreen() {
                     Visualizza e aggiorna la tessera associativa digitale.
                   </Text>
                 </View>
-                <View style={styles.documentBadge}>
-                  <Text style={styles.documentBadgeText}>{membershipActive ? "Attivo" : "Non caricato"}</Text>
-                </View>
+                <DocumentStatusBadge
+                  status={membershipActive ? "valid" : "missing"}
+                  label={membershipActive ? "Attivo" : "Non caricato"}
+                />
               </Pressable>
 
               {expandedDocument === "membership" && (
@@ -720,10 +728,10 @@ export default function ProfileScreen() {
                   <View style={styles.cardActions}>
                     <Pressable
                       onPress={handleCaptureCard}
-                      style={[styles.secondaryButton, { marginRight: 10 }]}
+                      style={[styles.primaryButton, { marginRight: 10 }]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.secondaryButtonText}>Scansiona tessera</Text>
+                      <Text style={styles.primaryButtonText}>Scansiona tessera</Text>
                     </Pressable>
                     <Pressable
                       onPress={handlePickCard}
@@ -772,18 +780,10 @@ export default function ProfileScreen() {
                   Carica, gestisci e tieni sotto controllo il certificato medico.
                 </Text>
               </View>
-              <View
-                style={[
-                  styles.documentBadge,
-                  certificateStatus.kind === "warning"
-                    ? styles.documentBadgeWarning
-                    : certificateStatus.kind === "expired"
-                    ? styles.documentBadgeDanger
-                    : styles.documentBadgeSuccess,
-                ]}
-              >
-                <Text style={styles.documentBadgeText}>{certificateBadgeText}</Text>
-              </View>
+              <DocumentStatusBadge
+                status={certificateStatus.kind as "missing" | "valid" | "warning" | "expired"}
+                label={certificateBadgeText}
+              />
             </Pressable>
           </View>
 
@@ -806,7 +806,16 @@ export default function ProfileScreen() {
               accessibilityLabel="Abilita accesso rapido con Face ID o Touch ID"
               hitSlop={{ top: 6, bottom: 6 }}
             >
-              <Text style={[styles.label, styles.securityLabel]}>Face ID / Touch ID</Text>
+              <View style={styles.securityRowText}>
+                <Text style={[styles.label, styles.securityLabel]}>Face ID / Touch ID</Text>
+                <Text style={styles.securityHelper}>
+                  {bioAvailable
+                    ? bioEnabled
+                      ? "Accederai più velocemente usando le credenziali salvate sul dispositivo."
+                      : "Salva le credenziali durante il prossimo login per attivare l'accesso rapido."
+                    : "Il dispositivo non supporta Face ID / Touch ID."}
+                </Text>
+              </View>
               <View style={styles.securitySwitchWrapper}>
                 <Switch
                   value={bioEnabled}
@@ -817,13 +826,6 @@ export default function ProfileScreen() {
                 />
               </View>
             </Pressable>
-            <Text style={styles.helperTextSmall}>
-              {bioAvailable
-                ? bioEnabled
-                  ? "Accederai più velocemente usando le credenziali salvate sul dispositivo."
-                  : "Salva le credenziali durante il prossimo login per attivare l'accesso rapido."
-                : "Il dispositivo non supporta Face ID / Touch ID."}
-            </Text>
           </View>
 
           <View style={styles.securityPanel}>
@@ -836,21 +838,23 @@ export default function ProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="Apri le impostazioni delle notifiche"
             >
-              <View style={{ flex: 1 }}>
+              <View style={styles.securityRowText}>
                 <Text style={[styles.label, styles.securityLabel]}>Notifiche</Text>
-                <Text style={styles.helperTextSmall}>
+                <Text style={styles.securityHelper}>
                   Gestisci le notifiche push per le nuove uscite.
                 </Text>
               </View>
-              <Ionicons name="notifications-outline" size={22} color="#0B3D2E" />
+              <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
             </Pressable>
           </View>
 
-          <View style={styles.securityPanel}>
-            <Text style={styles.label}>Cancellazione account</Text>
-            <Text style={styles.helperTextSmall}>
-              Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
-            </Text>
+          <View style={[styles.securityPanel, styles.securityPanelWarning]}>
+            <View style={styles.securityRowText}>
+              <Text style={styles.label}>Cancellazione account</Text>
+              <Text style={styles.securityHelper}>
+                Una volta eliminato, dovrai registrarti nuovamente per utilizzare l'app.
+              </Text>
+            </View>
             <Pressable
               onPress={handleDeleteAccount}
               style={[
@@ -874,7 +878,12 @@ export default function ProfileScreen() {
           onPress={handleSave}
           loading={saving}
           disabled={deleting}
-          style={{ marginTop: 24, marginBottom: 16 }}
+          style={{
+            marginTop: 24,
+            marginBottom: 16,
+            backgroundColor: saving || deleting ? undefined : UI.colors.action,
+            borderColor: saving || deleting ? undefined : UI.colors.action,
+          }}
         />
       )}
 
@@ -920,19 +929,31 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  heroHeader: {
+  profileSummaryCard: {
+    marginTop: 6,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: UI.colors.card,
+    borderWidth: 1,
+    borderColor: UI.colors.card,
+    ...UI.shadow.card,
+  },
+  profileSummaryRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
-  heroLogo: { width: 60, height: 60, borderRadius: 16 },
-  heroText: { flex: 1 },
-  heroTitle: { fontSize: 16, fontWeight: "700", color: "#fff", letterSpacing: 0.4 },
-  heroName: { fontSize: 22, fontWeight: "900", color: "#fff", marginTop: 2 },
-  heroRole: { fontSize: 16, fontWeight: "700", color: "#F7B32B", marginTop: 2 },
+  profileSummaryName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+    flex: 1,
+  },
   tabBar: {
     flexDirection: "row",
-    backgroundColor: "#E5F3EB",
+    backgroundColor: UI.colors.card,
     borderRadius: 999,
     padding: 4,
     marginBottom: 16,
@@ -944,24 +965,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tabButtonActive: {
-    backgroundColor: "#0B3D2E",
+    backgroundColor: UI.colors.action,
   },
-  tabButtonText: { color: "#0B3D2E", fontWeight: "600" },
+  tabButtonText: { color: UI.colors.muted, fontWeight: "600" },
   tabButtonTextActive: { color: "#fff" },
   label: { marginTop: 12, fontWeight: "600", color: "#374151" },
   input: {
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: CARD_BORDER,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: Platform.select({ ios: 12, android: 10 }),
     backgroundColor: "#fff",
   },
+  formCard: {
+    backgroundColor: UI.colors.card,
+    borderRadius: UI.radius.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: UI.spacing.lg,
+    gap: UI.spacing.sm,
+    ...UI.shadow.card,
+  },
   cardSection: { marginTop: 24 },
   cardPreviewWrapper: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: CARD_BORDER_SOFT,
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#f8fafc",
@@ -1008,6 +1038,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     gap: 12,
+    backgroundColor: "#fff",
+    borderColor: CARD_BORDER_SOFT,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
   documentInlineCard: {
     marginTop: 8,
@@ -1015,23 +1052,28 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: CARD_BORDER_SOFT,
     backgroundColor: "#fff",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
   documentHighlightActive: {
     borderWidth: 2,
-    shadowColor: "#0B3D2E",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
   },
   membershipHighlight: {
-    backgroundColor: "#DBEAFE",
-    borderColor: "#93C5FD",
+    backgroundColor: "#fff",
+    borderColor: CARD_BORDER_SOFT,
   },
   certificateHighlight: {
-    backgroundColor: "#DCFCE7",
-    borderColor: "#86EFAC",
+    backgroundColor: "#fff",
+    borderColor: CARD_BORDER_SOFT,
   },
   documentHighlightTitle: {
     fontSize: 16,
@@ -1043,17 +1085,6 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontSize: 13,
   },
-  documentBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#0B3D2E",
-    alignItems: "center",
-  },
-  documentBadgeText: { color: "#fff", fontWeight: "700", textAlign: "center" },
-  documentBadgeSuccess: { backgroundColor: "#16a34a" },
-  documentBadgeWarning: { backgroundColor: "#f59e0b" },
-  documentBadgeDanger: { backgroundColor: "#dc2626" },
   cardActions: {
     flexDirection: "row",
     marginTop: 12,
@@ -1061,20 +1092,31 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#0B3D2E",
+    borderColor: UI.colors.action,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
   },
+  primaryButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: UI.colors.action,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.action,
+  },
+  primaryButtonText: { color: "#fff", fontWeight: "700" },
   secondaryStandalone: {
     marginTop: 12,
     width: "100%",
     flex: undefined,
     alignSelf: "stretch",
   },
-  secondaryButtonText: { color: "#0B3D2E", fontWeight: "700" },
+  secondaryButtonText: { color: UI.colors.action, fontWeight: "700" },
   removeButton: {
     marginTop: 12,
     paddingVertical: 12,
@@ -1102,22 +1144,38 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   securityPanel: {
+    backgroundColor: UI.colors.card,
+    borderRadius: UI.radius.xl,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: "#fff",
+    borderColor: CARD_BORDER,
+    padding: UI.spacing.lg,
+    ...UI.shadow.card,
+  },
+  securityPanelWarning: {
+    backgroundColor: UI.colors.warningBg,
+    borderColor: UI.colors.warningBorder,
   },
   securityRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 6,
+    justifyContent: "space-between",
+    width: "100%",
+    paddingVertical: 12,
+    paddingHorizontal: UI.spacing.sm,
+    borderRadius: UI.radius.md,
   },
   securityRowPressed: {
     backgroundColor: "#F8FAFC",
-    borderRadius: 12,
+    borderRadius: UI.radius.md,
+  },
+  securityRowText: {
+    flex: 1,
+    paddingRight: UI.spacing.md,
+  },
+  securityHelper: {
+    marginTop: 4,
+    fontSize: 12,
+    color: UI.colors.muted,
   },
   securityLabel: {
     flex: 1,
@@ -1126,16 +1184,12 @@ const styles = StyleSheet.create({
   },
   securitySwitchWrapper: {
     flexShrink: 0,
-    paddingLeft: 12,
+    minWidth: 68,
+    marginTop: -2,
     paddingRight: 4,
     alignItems: "flex-end",
     justifyContent: "center",
-    alignSelf: "center",
-    marginTop: Platform.select({ ios: -20, android: 0 }), // alza leggermente lo switch della build iOS per allinearlo al testo
-    ...Platform.select({
-      ios: { minWidth: 68 },
-      default: { minWidth: 60 },
-    }),
+    paddingLeft: UI.spacing.md,
   },
   toastBase: {
     position: "absolute",

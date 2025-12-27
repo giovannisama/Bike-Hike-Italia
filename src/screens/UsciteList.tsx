@@ -428,18 +428,22 @@ export default function UsciteList() {
               </View>
 
               {/* Tabs (Active/Archived) */}
-              <View style={styles.tabContainer}>
+              <View style={styles.segmented}>
                 <Pressable
-                  style={[styles.tabBtn, filterType === "active" && styles.tabBtnActive]}
+                  style={[styles.segmentedTab, filterType === "active" && styles.segmentedTabActive]}
                   onPress={() => setFilterType("active")}
                 >
-                  <Text style={[styles.tabText, filterType === "active" && styles.tabTextActive]}>Attive</Text>
+                  <Text style={[styles.segmentedText, filterType === "active" && styles.segmentedTextActive]}>
+                    Attive
+                  </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tabBtn, filterType === "archived" && styles.tabBtnActive]}
+                  style={[styles.segmentedTab, filterType === "archived" && styles.segmentedTabActive]}
                   onPress={() => setFilterType("archived")}
                 >
-                  <Text style={[styles.tabText, filterType === "archived" && styles.tabTextActive]}>Archiviate</Text>
+                  <Text style={[styles.segmentedText, filterType === "archived" && styles.segmentedTextActive]}>
+                    Archiviate
+                  </Text>
                 </Pressable>
               </View>
 
@@ -575,28 +579,24 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
-  // Tabs
-  tabContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  // Segmented Tabs (Profile standard)
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: UI.colors.card,
+    borderRadius: 999,
+    padding: 4,
   },
-  tabBtn: {
+  segmentedTab: {
     flex: 1,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 8,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
   },
-  tabBtnActive: {
+  segmentedTabActive: {
     backgroundColor: UI.colors.action,
-    borderColor: UI.colors.action,
-    borderWidth: 0,
   },
-  tabText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
-  tabTextActive: { color: "#ffffff" },
+  segmentedText: { fontSize: 13, fontWeight: "600", color: UI.colors.muted },
+  segmentedTextActive: { color: "#fff" },
 
   // Results Meta
   resultsMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },

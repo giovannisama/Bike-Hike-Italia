@@ -591,7 +591,7 @@ export default function UserListScreen() {
               {/* Filters as Rectangular Tabs */}
               {isCurrentOwner && (
                 <View style={styles.filterSection}>
-                  <View style={styles.tabContainer}>
+                  <View style={styles.segmented}>
                     {(["active", "disabled", "pending"] as const).map((k) => {
                       const isActive = filter === k;
                       const label = k === "active" ? "Attivi" : k === "disabled" ? "Disattivi" : "In attesa";
@@ -600,11 +600,11 @@ export default function UserListScreen() {
                           key={k}
                           onPress={() => setFilter(k)}
                           style={[
-                            styles.tabBtn,
-                            isActive && styles.tabBtnActive,
+                            styles.segmentedTab,
+                            isActive && styles.segmentedTabActive,
                           ]}
                         >
-                          <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                          <Text style={[styles.segmentedText, isActive && styles.segmentedTextActive]}>
                             {label}
                           </Text>
                         </Pressable>
@@ -696,29 +696,25 @@ const styles = StyleSheet.create({
     padding: 4,
   },
 
-  // Tabs
+  // Segmented Tabs (Profile standard)
   filterSection: { gap: 12 },
-  tabContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: UI.colors.card,
+    borderRadius: 999,
+    padding: 4,
   },
-  tabBtn: {
+  segmentedTab: {
     flex: 1,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 8,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
   },
-  tabBtnActive: {
+  segmentedTabActive: {
     backgroundColor: UI.colors.action,
-    borderColor: UI.colors.action,
-    borderWidth: 0,
   },
-  tabText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
-  tabTextActive: { color: "#ffffff" },
+  segmentedText: { fontSize: 13, fontWeight: "600", color: UI.colors.muted },
+  segmentedTextActive: { color: "#fff" },
 
   // Results Meta
   resultsMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },

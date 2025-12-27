@@ -211,16 +211,26 @@ function Row({
             </Text>
 
             <View style={styles.badgeRow}>
-              <View style={[styles.miniBadge, ruolo === "Owner" ? styles.bgBlack : styles.bgGray]}>
-                <Text style={[styles.miniBadgeText, ruolo === "Owner" ? styles.textWhite : null]}>{ruolo}</Text>
+              <View style={[styles.miniBadge,
+              ruolo === "Owner" ? styles.bgBlack :
+                ruolo === "Admin" ? styles.bgSlate200 : styles.bgSlate50
+              ]}>
+                <Text style={[styles.miniBadgeText,
+                ruolo === "Owner" ? styles.textWhite :
+                  ruolo === "Admin" ? styles.textSlate800 : styles.textSlate500
+                ]}>{ruolo}</Text>
               </View>
               <View style={[
                 styles.miniBadge,
                 stato === "Attivo" ? styles.bgGreen :
                   stato === "Disattivo" ? styles.bgMuted :
-                    stato === "In attesa" ? styles.bgOrange : styles.bgRed
+                    styles.bgOrange
               ]}>
-                <Text style={[styles.miniBadgeText, stato === "Attivo" ? styles.textGreen : null]}>
+                <Text style={[styles.miniBadgeText,
+                stato === "Attivo" ? styles.textGreen :
+                  stato === "Disattivo" ? styles.textSlate600 :
+                    styles.textOrange
+                ]}>
                   {stato}
                 </Text>
               </View>
@@ -234,7 +244,7 @@ function Row({
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </TouchableOpacity >
   );
 }
 
@@ -777,11 +787,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "transparent",
   },
-  miniBadgeText: { fontSize: 10, fontWeight: "700" },
+  miniBadgeText: { fontSize: 12, fontWeight: "700" },
 
   // Colors for badges
   bgBlack: { backgroundColor: "#1c1917" },
-  bgGray: { backgroundColor: "#f3f4f6" },
+  bgGray: { backgroundColor: "#f3f4f6" }, // Keep for legacy or fallback
+
+  // Role Specific
+  bgSlate50: { backgroundColor: "#f8fafc" },
+  bgSlate200: { backgroundColor: "#e2e8f0" },
+
+  // Status Specific
   bgGreen: { backgroundColor: "#dcfce7" },
   bgOrange: { backgroundColor: "#ffedd5" },
   bgRed: { backgroundColor: "#fee2e2" },
@@ -789,6 +805,10 @@ const styles = StyleSheet.create({
 
   textWhite: { color: "#ffffff" },
   textGreen: { color: "#166534" },
+  textOrange: { color: "#c2410c" }, // Orange-700
+  textSlate800: { color: "#1e293b" },
+  textSlate600: { color: "#475569" },
+  textSlate500: { color: "#64748b" },
 
   // Selection
   selectDot: {

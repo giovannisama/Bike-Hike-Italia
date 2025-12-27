@@ -964,7 +964,7 @@ export default function RideDetails() {
                         const label = SERVICE_LABELS[key as RideServiceKey] || key;
                         return (
                           <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 10, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                            <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
                           </View>
                         );
                       })}

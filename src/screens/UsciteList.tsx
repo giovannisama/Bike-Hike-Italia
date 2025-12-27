@@ -33,6 +33,7 @@ import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader"; // Unified Header
 import { StatusBadge } from "./calendar/StatusBadge";
+import { DifficultyBadge } from "./calendar/DifficultyBadge"; // ADDED
 import { getBikeCategoryLabel } from "./calendar/bikeType";
 import { deriveGuideSummary } from "../utils/guideHelpers";
 import { getDifficultyMeta } from "../utils/rideDifficulty";
@@ -323,10 +324,7 @@ export default function UsciteList() {
               <StatusBadge status="cancelled" />
             ) : (
               item.difficulty && (
-                <View style={styles.difficultyBadge}>
-                  <View style={[styles.difficultyDot, { backgroundColor: getDifficultyMeta(item.difficulty).color }]} />
-                  <Text style={styles.difficultyText}>{item.difficulty}</Text>
-                </View>
+                <DifficultyBadge level={item.difficulty} />
               )
             )}
           </View>

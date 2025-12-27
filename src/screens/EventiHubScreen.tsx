@@ -58,6 +58,7 @@ function HeroCard({ item }: { item: EventSection }) {
       onPress={item.enabled ? item.onPress : undefined}
       style={({ pressed }) => [
         styles.heroCard,
+        { borderTopColor: item.enabled ? item.iconColor : "#E2E8F0", borderTopWidth: 4 },
         pressed && item.enabled && { opacity: 0.95, transform: [{ scale: 0.99 }] },
       ]}
     >
@@ -94,7 +95,7 @@ function GridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }
       onPress={item.enabled ? item.onPress : undefined}
       style={({ pressed }) => [
         styles.gridCard,
-        { width: cardWidth },
+        { width: cardWidth, borderTopColor: item.enabled ? item.iconColor : "#E2E8F0", borderTopWidth: 4 },
         !item.enabled && styles.gridCardDisabled,
         pressed && item.enabled && { opacity: 0.9, transform: [{ scale: 0.98 }] },
       ]}
@@ -148,10 +149,10 @@ export default function EventiHubScreen({ navigation }: any) {
       : undefined;
 
   const iconMap: Record<string, { name: string; color: string }> = {
-    bici: { name: "bike", color: "#15803D" },
-    trekking: { name: "hiking", color: "#0F766E" },
-    bikeaut: { name: "bike-fast", color: "#9CA3AF" },
-    viaggi: { name: "bag-checked", color: "#9CA3AF" },
+    bici: { name: "bike", color: "#16a34a" }, // Green Action
+    trekking: { name: "hiking", color: "#e11d48" }, // Rose
+    bikeaut: { name: "bike-fast", color: "#4f46e5" }, // Indigo
+    viaggi: { name: "bag-checked", color: "#d97706" }, // Amber
   };
 
   const hasOverrides = enabledSectionsNormalized !== null;
@@ -217,10 +218,10 @@ export default function EventiHubScreen({ navigation }: any) {
 
   const visibleSections = hasOverrides
     ? sections.filter((section) => {
-        const key = section.permissionKey as keyof typeof permissionMap | undefined;
-        if (!key) return true;
-        return permissionMap[key];
-      })
+      const key = section.permissionKey as keyof typeof permissionMap | undefined;
+      if (!key) return true;
+      return permissionMap[key];
+    })
     : sections;
 
   const enabledSections = visibleSections.filter(s => s.enabled);
@@ -254,49 +255,49 @@ export default function EventiHubScreen({ navigation }: any) {
 
         <View style={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}>
 
-        {/* 2. ADAPTIVE LAYOUT */}
-        {enabledSections.length === 1 ? (
-          // HERO LAYOUT
-          <View style={styles.heroContainer}>
-            {enabledSections.map(item => <HeroCard key={item.id} item={item} />)}
-          </View>
-        ) : (
-          // GRID LAYOUT
-          <View
-            style={styles.gridWrapper}
-            onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
-          >
-            <FlatList
-              data={enabledSections}
-              renderItem={renderGridItem}
-              keyExtractor={(item) => item.id}
-              numColumns={2}
-              columnWrapperStyle={styles.gridRow}
-              contentContainerStyle={styles.enabledGridContent}
-              scrollEnabled={false}
-              extraData={cardWidth}
-            />
-          </View>
-        )}
-
-        {/* 3. DISABLED SECTIONS (Always Grid style or List style? Grid looks better) */}
-        {disabledSections.length > 0 && (
-          <>
-            <View style={styles.divider} />
-            <Text style={styles.sectionLabel}>In arrivo</Text>
-            <View style={styles.gridWrapper}>
+          {/* 2. ADAPTIVE LAYOUT */}
+          {enabledSections.length === 1 ? (
+            // HERO LAYOUT
+            <View style={styles.heroContainer}>
+              {enabledSections.map(item => <HeroCard key={item.id} item={item} />)}
+            </View>
+          ) : (
+            // GRID LAYOUT
+            <View
+              style={styles.gridWrapper}
+              onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+            >
               <FlatList
-                data={disabledSections}
+                data={enabledSections}
                 renderItem={renderGridItem}
                 keyExtractor={(item) => item.id}
                 numColumns={2}
                 columnWrapperStyle={styles.gridRow}
+                contentContainerStyle={styles.enabledGridContent}
                 scrollEnabled={false}
                 extraData={cardWidth}
               />
             </View>
-          </>
-        )}
+          )}
+
+          {/* 3. DISABLED SECTIONS (Always Grid style or List style? Grid looks better) */}
+          {disabledSections.length > 0 && (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.sectionLabel}>In arrivo</Text>
+              <View style={styles.gridWrapper}>
+                <FlatList
+                  data={disabledSections}
+                  renderItem={renderGridItem}
+                  keyExtractor={(item) => item.id}
+                  numColumns={2}
+                  columnWrapperStyle={styles.gridRow}
+                  scrollEnabled={false}
+                  extraData={cardWidth}
+                />
+              </View>
+            </>
+          )}
 
         </View>
       </View>

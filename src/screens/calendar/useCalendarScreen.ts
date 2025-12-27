@@ -444,7 +444,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       byDay.get(key)!.push(r);
     }
 
-    const colorFor = (r: Ride) => (r.archived ? "#3B82F6" : r.status === "cancelled" ? "#DC2626" : "#10B981");
+    const colorFor = (r: Ride) => (r.archived ? "#3B82F6" : r.status === "cancelled" ? "#DC2626" : "#16a34a");
 
     byDay.forEach((list, day) => {
       const dots = list.slice(0, 3).map((r) => ({ color: colorFor(r) }));

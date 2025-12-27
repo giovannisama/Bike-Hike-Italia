@@ -91,11 +91,11 @@ export function KeywordResultsList({
               </Text>
             </View>
             {isArchived ? (
-              <StatusBadge text="Arch." icon="📦" bg="#E5E7EB" fg="#374151" />
+              <StatusBadge status="archived" />
             ) : isCancelled ? (
-              <StatusBadge text="No" icon="✖" bg="#FEE2E2" fg="#991B1B" />
+              <StatusBadge status="cancelled" />
             ) : (
-              <StatusBadge text="OK" icon="✓" bg="#111" fg="#fff" />
+              <StatusBadge status="active" />
             )}
           </TouchableOpacity>
         );

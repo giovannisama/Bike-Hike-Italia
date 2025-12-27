@@ -9,6 +9,7 @@ import {
   Pressable,
   StyleSheet,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons"; // ADDED
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Ride } from "./types";
@@ -17,6 +18,7 @@ import { getBikeCategoryLabel } from "./bikeType";
 import { getDifficultyMeta } from "../../utils/rideDifficulty";
 import { deriveGuideSummary } from "../../utils/guideHelpers";
 import { StatusBadge } from "./StatusBadge";
+import { DifficultyBadge } from "./DifficultyBadge"; // ADDED
 
 
 
@@ -86,12 +88,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: "rgba(34, 197, 94, 0.15)",
-    borderWidth: 1,
-    borderColor: UI.colors.action,
+    backgroundColor: "#F1F5F9",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   chipText: {
-    color: UI.colors.action,
+    color: "#0F172A",
     fontWeight: "600",
     fontSize: 12,
   },
@@ -137,9 +140,9 @@ export function RideList({
         const bikeCategoryRaw = getBikeCategoryLabel(item);
         const bikeCategory = bikeCategoryRaw === "Altro" ? "MTB/Gravel" : bikeCategoryRaw;
         const statusBadge = isArchived ? (
-          <StatusBadge text="Archiviata" icon="📦" bg="#E5E7EB" fg="#374151" />
+          <StatusBadge status="archived" />
         ) : (
-          <StatusBadge text="Attiva" icon="✓" bg="#111" fg="#fff" />
+          <StatusBadge status="active" />
         );
 
         let dateLabel = null;
@@ -156,6 +159,7 @@ export function RideList({
             <View style={{ flex: 1 }}>
               <View style={[styles.chipsRow, styles.chipsTop]}>
                 <View style={styles.chip}>
+                  <Ionicons name="bicycle" size={14} color="#0F172A" />
                   <Text style={styles.chipText}>{bikeCategory}</Text>
                 </View>
                 {statusBadge}
@@ -180,10 +184,7 @@ export function RideList({
               <View style={styles.metaBlock}>
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Difficoltà:</Text>
-                  {difficultyMeta.label !== "—" ? (
-                    <View style={[styles.difficultyDot, { backgroundColor: difficultyMeta.color }]} />
-                  ) : null}
-                  <Text style={styles.metaValue}>{difficultyMeta.label}</Text>
+                  <DifficultyBadge level={item.difficulty} />
                 </View>
               </View>
             </View>

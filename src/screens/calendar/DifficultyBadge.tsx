@@ -10,24 +10,27 @@ export function DifficultyBadge({ level }: DifficultyBadgeProps) {
     const { label, color } = getDifficultyMeta(level);
 
     return (
-        <View style={[styles.badge, { backgroundColor: color + "20", borderColor: color }]}>
-            <Text style={[styles.text, { color: color }]}>{label}</Text>
+        <View style={styles.container}>
+            <View style={[styles.dot, { backgroundColor: color }]} />
+            <Text style={styles.text}>{label}</Text>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    badge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
-        borderWidth: 1,
+    container: {
+        flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        gap: 6,
+    },
+    dot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
     },
     text: {
         fontSize: 12,
-        fontWeight: "700",
-        textTransform: "uppercase",
+        fontWeight: "600",
+        color: "#64748B",
     },
 });

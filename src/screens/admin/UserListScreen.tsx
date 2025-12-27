@@ -10,14 +10,13 @@ import {
   Alert,
   TextInput,
   Pressable,
-  useWindowDimensions,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, UI } from "../../components/Screen";
+import { ScreenHeader } from "../../components/ScreenHeader"; // Unified Header
 import { auth, db } from "../../firebase";
 import {
   collection,
@@ -26,15 +25,13 @@ import {
   updateDoc,
   doc,
   deleteDoc,
-  deleteField,
 } from "firebase/firestore";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 import { getUserStatus, normalizeBooleanFlag } from "../../utils/userStatus";
 import { Ionicons } from "@expo/vector-icons";
-import { StatusBadge } from "../calendar/StatusBadge";
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
-const ACTION_GREEN = "#22c55e"; // Consistent Green
+// Removed local ACTION_GREEN constant, using UI.colors.action
 
 type BooleanFirestoreValue =
   | boolean
@@ -104,11 +101,9 @@ function SmallBtn({
   kind?: "primary" | "warning";
 }) {
   const isPrimary = kind === "primary";
-  // Stronger colors for better legibility and aesthetics
-  const bg = isPrimary ? ACTION_GREEN : "#fee2e2";
+  const bg = isPrimary ? UI.colors.action : "#fee2e2";
   const text = isPrimary ? "#ffffff" : "#991b1b";
 
-  // If warning, use red bg
   const finalBg = kind === "warning" ? "#ef4444" : bg;
   const finalText = kind === "warning" ? "#ffffff" : text;
 
@@ -128,7 +123,6 @@ function SmallBtn({
   );
 }
 
-// Simple Avatar using initials
 function UserAvatar({ name }: { name: string }) {
   const initials = name
     .split(" ")
@@ -192,9 +186,7 @@ function Row({
       accessibilityRole="button"
     >
       <View style={styles.rowMain}>
-        {/* Top Section: Avatar + Info */}
         <View style={styles.rowTop}>
-          {/* Selection Dot (Left) */}
           {showSelection && (
             <Pressable
               onPress={handleToggleSelect}
@@ -209,10 +201,8 @@ function Row({
             </Pressable>
           )}
 
-          {/* Avatar */}
           <UserAvatar name={displayName} />
 
-          {/* Info */}
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={styles.rowTitle} numberOfLines={1}>{displayName}</Text>
 
@@ -220,13 +210,10 @@ function Row({
               {user.email || "Nessuna email"}
             </Text>
 
-            {/* Badges */}
             <View style={styles.badgeRow}>
-              {/* Role Badge */}
               <View style={[styles.miniBadge, ruolo === "Owner" ? styles.bgBlack : styles.bgGray]}>
                 <Text style={[styles.miniBadgeText, ruolo === "Owner" ? styles.textWhite : null]}>{ruolo}</Text>
               </View>
-              {/* Status Badge */}
               <View style={[
                 styles.miniBadge,
                 stato === "Attivo" ? styles.bgGreen :
@@ -241,8 +228,6 @@ function Row({
           </View>
         </View>
 
-        {/* Bottom Section: Actions (if any) */}
-        {/* Moving actions here solves the truncation issue by giving full width to buttons */}
         {actions && (
           <View style={styles.rowFooter}>
             {actions}
@@ -253,9 +238,6 @@ function Row({
   );
 }
 
-// ─────────────────────────────────────────
-// Schermata
-// ─────────────────────────────────────────
 export default function UserListScreen() {
   const navigation = useNavigation<any>();
 
@@ -263,17 +245,14 @@ export default function UserListScreen() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [items, setItems] = useState<UserRow[]>([]);
 
-  // Data State
   const [publicData, setPublicData] = useState<Record<string, DocumentData>>({});
   const [privateData, setPrivateData] = useState<Record<string, DocumentData>>({});
   const [publicLoaded, setPublicLoaded] = useState(false);
   const [privateLoaded, setPrivateLoaded] = useState(false);
 
-  // Actions State
   const [actionUid, setActionUid] = useState<string | null>(null);
   const [actionType, setActionType] = useState<QuickAction>(null);
 
-  // Role State
   const [meRole, setMeRole] = useState<string | null>(null);
   const [meRoleLoaded, setMeRoleLoaded] = useState(false);
 
@@ -284,7 +263,6 @@ export default function UserListScreen() {
   const searchNormalized = useMemo(() => normalize(searchText), [searchText]);
   const currentUid = auth.currentUser?.uid || null;
 
-  // --- EFFECT: Load MeRole ---
   useEffect(() => {
     if (!currentUid) {
       setMeRole(null);
@@ -303,12 +281,10 @@ export default function UserListScreen() {
     return () => { try { unsubMe(); } catch { } };
   }, [currentUid]);
 
-  // --- EFFECT: Hide Native Header ---
   React.useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // --- EFFECT: Load Data ---
   useEffect(() => {
     setLoading(true);
     const unsubPublic = onSnapshot(collection(db, "users_public"),
@@ -332,7 +308,6 @@ export default function UserListScreen() {
     return () => { try { unsubPublic(); } catch { } try { unsubPrivate(); } catch { } };
   }, []);
 
-  // --- EFFECT: Filter & Sort ---
   useEffect(() => {
     if (!publicLoaded || !privateLoaded) { setLoading(true); return; }
 
@@ -363,7 +338,6 @@ export default function UserListScreen() {
       });
     });
 
-    // Sort
     rows.sort((a, b) => {
       const roleDiff = getRoleWeight(a.role) - getRoleWeight(b.role);
       if (roleDiff !== 0) return roleDiff;
@@ -410,7 +384,6 @@ export default function UserListScreen() {
     setLoading(false);
   }, [filter, publicData, privateData, publicLoaded, privateLoaded, searchNormalized]);
 
-  // --- ACTIONS ---
   const openDetail = useCallback((uid: string) => {
     navigation.navigate("UserDetail", { uid, meRole });
   }, [navigation, meRole]);
@@ -460,7 +433,6 @@ export default function UserListScreen() {
     finally { setActionUid(null); setActionType(null); }
   }, [requireOwner]);
 
-  // --- SELECTION & BULK ---
   const toggleSelect = useCallback((uid: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -472,9 +444,7 @@ export default function UserListScreen() {
 
   const isCurrentOwner = meRole === "owner";
 
-  // Bulk Logic
   const selectedUsersDetailed = useMemo(() => items.filter((item) => selected.has(item.uid)), [items, selected]);
-  const selectedIds = useMemo(() => selectedUsersDetailed.map((user) => user.uid), [selectedUsersDetailed]);
   const selectedCount = selectedUsersDetailed.length;
 
   const bulkButtons = useMemo(() => {
@@ -491,8 +461,6 @@ export default function UserListScreen() {
       canDelete ? { type: "delete", label: "Elimina", color: "#111827", textColor: "#fff" } : null,
     ].filter(Boolean) as any[];
   }, [selectedUsersDetailed, selectedCount]);
-
-  const hasBulkActions = bulkButtons.length > 0;
 
   const runBulk = useCallback(async (users: UserRow[], exec: any, msg: string) => {
     setBulkLoading(true);
@@ -528,15 +496,13 @@ export default function UserListScreen() {
         }
       }
     ]);
-  }, [requireOwner, selectedCount, selectedIds, runBulk, selectedUsersDetailed]);
+  }, [requireOwner, selectedCount, runBulk, selectedUsersDetailed]);
 
-  // --- RENDER ROW ---
   const renderItem = useCallback(({ item }: { item: UserRow }) => {
     const isSelf = currentUid === item.uid;
     const isOwner = item.role === "owner";
     const statusKey = item.statusKey ?? getUserStatus(item).statusKey;
     const isPending = statusKey === "pending";
-    const isActive = statusKey === "active";
     const isDisabled = statusKey === "disabled";
     const busy = actionUid === item.uid && !!actionType;
 
@@ -572,15 +538,14 @@ export default function UserListScreen() {
 
   return (
     <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
-      {/* HEADER GRADIENT */}
-      <View style={styles.headerGradientContainer}>
-        <LinearGradient
-          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
+      {/* 
+        Unified Header
+        No need to set topPadding as it defaults to standard height
+      */}
+      <ScreenHeader
+        title="GESTIONE UTENTI"
+        subtitle="Amministrazione Team"
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -594,16 +559,6 @@ export default function UserListScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           ListHeaderComponent={
             <View style={styles.headerBlock}>
-              {/* Back & Title */}
-              <View style={styles.headerRow}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8, marginTop: 4 }}>
-                  <Ionicons name="arrow-back" size={24} color="#1E293B" />
-                </TouchableOpacity>
-                <View>
-                  <Text style={styles.headerTitle}>GESTIONE UTENTI</Text>
-                  <Text style={styles.headerSubtitle}>Amministrazione Team</Text>
-                </View>
-              </View>
 
               {/* Search Bar - Fixed Flex Layout */}
               <View style={styles.searchRow}>
@@ -647,14 +602,14 @@ export default function UserListScreen() {
                     })}
                   </View>
 
-                  {/* Results Meta: Counter (Right) - Reset (Left) */}
+                  {/* Results Meta */}
                   <View style={styles.resultsMeta}>
                     {filter !== "all" ? (
                       <TouchableOpacity onPress={() => setFilter("all")} hitSlop={10}>
                         <Text style={styles.resetLink}>Mostra tutti</Text>
                       </TouchableOpacity>
                     ) : (
-                      <View /> /* spacer */
+                      <View />
                     )}
                     <Text style={styles.resultsCount}>
                       {items.length} {items.length === 1 ? "utente trovato" : "utenti trovati"}
@@ -699,12 +654,9 @@ export default function UserListScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerGradientContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: 200 },
+  // Header styles removed as we use ScreenHeader
 
-  headerBlock: { marginBottom: 16, marginTop: 8, gap: 16 },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  headerTitle: { fontSize: 24, fontWeight: "800", color: "#1E293B", letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 14, fontWeight: "500", color: "#64748B", marginTop: 2 },
+  headerBlock: { marginBottom: 16, gap: 16 },
 
   // Search
   searchRow: {
@@ -751,8 +703,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   tabBtnActive: {
-    backgroundColor: ACTION_GREEN,
-    borderColor: ACTION_GREEN,
+    backgroundColor: UI.colors.action,
+    borderColor: UI.colors.action,
     borderWidth: 0,
   },
   tabText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
@@ -761,7 +713,7 @@ const styles = StyleSheet.create({
   // Results Meta
   resultsMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
   resultsCount: { fontSize: 13, fontWeight: "600", color: "#64748B" },
-  resetLink: { fontSize: 13, fontWeight: "600", color: ACTION_GREEN },
+  resetLink: { fontSize: 13, fontWeight: "600", color: UI.colors.action },
 
   // User Card refined
   row: {
@@ -778,7 +730,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(241, 245, 249, 1)",
   },
   rowSelected: {
-    borderColor: ACTION_GREEN,
+    borderColor: UI.colors.action,
     backgroundColor: "#f0fdf4",
   },
   rowMain: {
@@ -849,8 +801,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectDotActive: {
-    backgroundColor: ACTION_GREEN,
-    borderColor: ACTION_GREEN,
+    backgroundColor: UI.colors.action,
+    borderColor: UI.colors.action,
   },
   selectDotDisabled: { opacity: 0.5 },
 

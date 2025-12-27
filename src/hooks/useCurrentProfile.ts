@@ -70,6 +70,7 @@ export default function useCurrentProfile() {
     role,
     isAdmin,
     isOwner,
+    isGuide: role === "admin" || role === "owner" || (profile as any)?.role === "guide",
     enabledSectionsNormalized,
     canSeeCiclismo: canSeeSection("ciclismo"),
     canSeeTrekking: canSeeSection("trekking"),

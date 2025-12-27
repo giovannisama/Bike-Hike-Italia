@@ -22,7 +22,7 @@ import {
 } from "../../utils/enabledSections";
 
 const SELF_DELETED_SENTINEL = "__self_deleted__";
-const ACTION_GREEN = "#22c55e";
+
 
 type UserRole = "member" | "admin" | "owner";
 
@@ -721,7 +721,7 @@ export default function UserDetailScreen() {
                         onValueChange={() => { }}
                         disabled={disabledToggle}
                         trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
-                        thumbColor={enabled ? ACTION_GREEN : "#fff"}
+                        thumbColor={enabled ? UI.colors.action : "#fff"}
                       />
                     </View>
                   </Pressable>
@@ -871,7 +871,7 @@ function Button({
   variant?: "primary" | "secondary";
 }) {
   const isSecondary = variant === "secondary";
-  const resolvedBg = danger ? "#B91C1C" : isSecondary ? "#E2E8F0" : ACTION_GREEN;
+  const resolvedBg = danger ? "#B91C1C" : isSecondary ? "#E2E8F0" : UI.colors.action;
   const resolvedText = danger ? "#fff" : isSecondary ? "#0f172a" : "#fff";
   return (
     <TouchableOpacity
@@ -996,7 +996,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
   },
   badgeSuccess: {
-    backgroundColor: ACTION_GREEN,
+    backgroundColor: UI.colors.action,
   },
   badgeDanger: {
     backgroundColor: "#DC2626",

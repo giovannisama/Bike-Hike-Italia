@@ -40,7 +40,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "L'app ha bisogno di accedere al calendario per salvare gli eventi."
+        }
+      ]
     ],
     "extra": {
       "eas": {

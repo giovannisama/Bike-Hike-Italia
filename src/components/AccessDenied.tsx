@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, UI } from "./Screen";
 
-const ACTION_GREEN = "#22c55e";
+
 
 export default function AccessDenied({
   title = "Accesso non consentito",
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
   },
   btn: {
     marginTop: UI.spacing.sm,
-    backgroundColor: ACTION_GREEN,
+    backgroundColor: UI.colors.action,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,

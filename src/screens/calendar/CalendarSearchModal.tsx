@@ -24,9 +24,10 @@ import DateTimePicker, {
 import { pad2 } from "./helpers";
 import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
+import { UI } from "../../components/Screen";
 
 // Using standardized colors/styles from observation of new files
-const ACTION_GREEN = "#22c55e";
+
 
 type CalendarSearchModalProps = {
   visible: boolean;
@@ -452,7 +453,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
                 <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmIosPicker}>
-                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+                <Text style={{ color: UI.colors.action, fontWeight: '700' }}>Conferma</Text>
               </TouchableOpacity>
             </View>
             <DateTimePicker
@@ -479,7 +480,7 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
                 <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmYearMonth}>
-                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+                <Text style={{ color: UI.colors.action, fontWeight: '700' }}>Conferma</Text>
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', height: 200 }}>
@@ -518,21 +519,21 @@ export function CalendarSearchModal({ visible, onClose, state }: CalendarSearchM
                 <Text style={{ color: '#64748B', fontWeight: '600' }}>Annulla</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmYearMonth}>
-                <Text style={{ color: ACTION_GREEN, fontWeight: '700' }}>Conferma</Text>
+                <Text style={{ color: UI.colors.action, fontWeight: '700' }}>Conferma</Text>
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', flex: 1, padding: 16 }}>
               <ScrollView style={{ flex: 1, marginRight: 8 }} showsVerticalScrollIndicator={false}>
                 {yearOptions.map(y => (
                   <TouchableOpacity key={y} onPress={() => setSelectedYear(y)} style={{ padding: 12, alignItems: 'center', backgroundColor: selectedYear === y ? '#F0FDF4' : 'transparent', borderRadius: 8 }}>
-                    <Text style={{ fontWeight: selectedYear === y ? '700' : '400', color: selectedYear === y ? ACTION_GREEN : '#1E293B' }}>{y}</Text>
+                    <Text style={{ fontWeight: selectedYear === y ? '700' : '400', color: selectedYear === y ? UI.colors.action : '#1E293B' }}>{y}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                 {monthNames.map((m, i) => (
                   <TouchableOpacity key={m} onPress={() => setSelectedMonthIndex(i)} style={{ padding: 12, alignItems: 'center', backgroundColor: selectedMonthIndex === i ? '#F0FDF4' : 'transparent', borderRadius: 8 }}>
-                    <Text style={{ fontWeight: selectedMonthIndex === i ? '700' : '400', color: selectedMonthIndex === i ? ACTION_GREEN : '#1E293B' }}>{m}</Text>
+                    <Text style={{ fontWeight: selectedMonthIndex === i ? '700' : '400', color: selectedMonthIndex === i ? UI.colors.action : '#1E293B' }}>{m}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>

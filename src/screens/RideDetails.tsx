@@ -1,52 +1,53 @@
 // src/screens/RideDetails.tsx
-import React, { useEffect, useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
-  Modal,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  StyleSheet,
-  Alert,
-  Linking,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  ActionSheetIOS,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  TouchableOpacity,
+  Pressable,
+  Share,
+  Platform,
+  Linking, // ADDED
+  Modal, // ADDED
+  TextInput, // ADDED
 } from "react-native";
-import { RouteProp, useRoute, useNavigation } from "@react-navigation/native";
-import { auth, db } from "../firebase";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import {
   doc,
-  onSnapshot,
-  collection,
-  query,
-  orderBy,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-  Timestamp,
   getDoc,
   updateDoc,
-  arrayUnion,
-  arrayRemove,
+  deleteDoc,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  Timestamp,
+  serverTimestamp,
+  setDoc, // ADDED: per creare notifiche
 } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import { getApp } from "firebase/app";
+import useCurrentProfile from "../hooks/useCurrentProfile";
+import type { PublicUserDoc } from "../types/firestore";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
-import { PrimaryButton } from "../components/Button";
-import { Ionicons } from "@expo/vector-icons";
+import { ScreenHeader } from "../components/ScreenHeader"; // Unified Header
 import { StatusBadge } from "./calendar/StatusBadge";
-import { getDifficultyMeta } from "../utils/rideDifficulty";
-import { deriveGuideSummary } from "../utils/guideHelpers";
-import { renderLinkedText } from "../utils/renderLinkedText";
-import type { RootStackParamList } from "../navigation/types";
-import type { ParticipantDoc, RideDoc, UserDoc } from "../types/firestore";
-import useCurrentProfile from "../hooks/useCurrentProfile";
-import AccessDenied from "../components/AccessDenied";
+import { DifficultyBadge } from "./calendar/DifficultyBadge";
+import { getBikeCategoryLabel } from "./calendar/bikeType";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Calendar from "expo-calendar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+// ------------------------------------------------------------------
+// CONSTANTS & TYPES for SERVICES
+// ------------------------------------------------------------------
 type RideServiceKey = "lunch" | "dinner" | "overnight";
 type RideServiceChoice = "yes" | "no";
 type RideServiceConfig = {
@@ -66,92 +67,132 @@ const SERVICE_LABELS: Record<RideServiceKey, string> = {
 
 const emptySelection = (): RideServiceSelectionMap => ({ lunch: null, dinner: null, overnight: null });
 
-const ACTION_GREEN = "#22c55e";
+// ------------------------------------------------------------------
+// HELPERS
+// ------------------------------------------------------------------
+function getRideStatus(ride: any) {
+  if (ride.archived) return "archived";
+  if (ride.status === "cancelled") return "cancelled";
+  return "active";
+}
 
-type Ride = {
-  title: string;
-  meetingPoint: string;
-  link?: string | null;
-  description?: string | null;
-  bikes?: string[];
-  difficulty?: string | null;
-  date?: Timestamp | null;
-  dateTime?: Timestamp | null;
-  maxParticipants?: number | null;
-  participantsCount?: number;
-  participantsCountSelf?: number;
-  participantsCountTotal?: number;
-  guidaName?: string | null;
-  guidaNames?: string[] | null;
-  createdBy: string;
-  createdAt?: Timestamp | null;
+function safeText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") {
+    const obj = value as { name?: unknown; note?: unknown; id?: unknown };
+    if (typeof obj.name === "string" || typeof obj.name === "number") return String(obj.name);
+    if (typeof obj.note === "string" || typeof obj.note === "number") return String(obj.note);
+    if (typeof obj.id === "string" || typeof obj.id === "number") return String(obj.id);
+  }
+  return "";
+}
 
-  status?: "active" | "cancelled";
-  archived?: boolean;
-  archiveYear?: number | null;
-  archiveMonth?: number | null;
-  manualParticipants?: ManualParticipant[] | null;
-  extraServices?: RideExtraServices | null;
+function buildPublicName(profile?: PublicUserDoc | null): string {
+  if (!profile) return "";
+  if (profile.displayName) return profile.displayName;
+  const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim();
+  if (fullName) return fullName;
+  if ((profile as any).fullName) return String((profile as any).fullName);
+  return "";
+}
+
+// URL Regex for description links
+const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
+
+const renderLinkedText = (text: string, onPressLink: (url: string) => void) => {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  URL_REGEX_GLOBAL.lastIndex = 0;
+
+  while ((match = URL_REGEX_GLOBAL.exec(text)) !== null) {
+    const url = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      nodes.push(text.slice(lastIndex, start));
+    }
+
+    nodes.push(
+      <Text
+        key={`link-${nodes.length}`}
+        style={{ color: "#0284C7", textDecorationLine: "underline" }}
+        onPress={() => onPressLink(url)}
+        suppressHighlighting
+        selectable={false}
+      >
+        {url}
+      </Text>
+    );
+
+    lastIndex = start + url.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes.length === 0 ? text : nodes;
 };
 
-type ManualParticipant = {
-  id: string;
-  name: string;
-  note?: string | null;
-  addedBy?: string | null;
-  createdAt?: Timestamp | null;
-  manual?: boolean;
-  raw?: any;
-  services?: RideServiceResponseMap | null;
+const handlePressLink = (rawUrl: string) => {
+  let url = rawUrl.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+  Linking.openURL(url).catch((err) => {
+    console.warn("Impossibile aprire il link:", url, err);
+  });
 };
 
-type Participant = {
-  id: string;
-  uid?: string | null;
-  name: string;
-  note?: string | null;
-  createdAt?: Timestamp | null;
-  manual?: boolean;
-  manualRaw?: ManualParticipant;
-  addedBy?: string | null;
-  services?: RideServiceResponseMap | null;
+// ------------------------------------------------------------------
+// TYPES
+// ------------------------------------------------------------------
+type RootStackParamList = {
+  RideDetails: { rideId: string; title?: string };
+  CreateRide: { editMode: boolean; rideId: string };
+  UserDetail: { userId: string };
 };
 
-// Mini profilo pubblico per rendering elenco
-type PublicMini = {
-  firstName?: string | null;
-  lastName?: string | null;
-  displayName?: string | null;
-  nickname?: string | null;
-};
+type RideDetailsRouteProp = RouteProp<RootStackParamList, "RideDetails">;
 
+// Removed local ACTION_GREEN -> using UI.colors.action
+
+// ------------------------------------------------------------------
+// MAIN COMPONENT
+// ------------------------------------------------------------------
 export default function RideDetails() {
   const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<RootStackParamList, "RideDetails">>();
-  const rideId = route.params?.rideId;
-  const { canSeeCiclismo, loading: profileLoading } = useCurrentProfile();
+  const route = useRoute<RideDetailsRouteProp>();
+  const { rideId } = route.params;
+  const insets = useSafeAreaInsets();
 
-  // Hide native stack header
-  useLayoutEffect(() => {
+  // Track heald IDs to avoid loops
+  const healedParticipantsRef = useRef<Set<string>>(new Set());
+
+  const [publicIndex, setPublicIndex] = useState<Record<string, PublicUserDoc | null>>({}); // Local cache for names
+
+  // 1. Native Header Removal
+  React.useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: false,
     });
   }, [navigation]);
 
-  const [ride, setRide] = useState<Ride | null>(null);
-  const [loadingRide, setLoadingRide] = useState(true);
+  const { profile, isAdmin, isGuide, loading: profileLoading } = useCurrentProfile();
+  const userId = auth.currentUser?.uid;
 
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loadingParts, setLoadingParts] = useState(true);
-
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  // indice dei nomi pubblici per uid (da users_public)
-  const [publicIndex, setPublicIndex] = useState<Record<string, PublicMini>>({});
+  const [ride, setRide] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
-  const [showAllParticipants, setShowAllParticipants] = useState(false); // NEW: Toggle per lista partecipanti
+  const [showAllParticipants, setShowAllParticipants] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [joinSaving, setJoinSaving] = useState(false);
 
@@ -163,599 +204,222 @@ export default function RideDetails() {
   const [joinServices, setJoinServices] = useState<RideServiceSelectionMap>(() => emptySelection());
   const [manualServices, setManualServices] = useState<RideServiceSelectionMap>(() => emptySelection());
 
-  const currentUid = auth.currentUser?.uid || "";
-
-  // 👉 serve per non mostrare l'alert quando la cancellazione è volontaria
-  const isDeletingRef = useRef(false);
-
-  // ─────────────────────────────────────────
-  // Helpers: nome pubblico
-  // ─────────────────────────────────────────
-  const buildPublicName = useCallback((p: PublicMini): string => {
-    const fn = (p.firstName || "").trim();
-    const ln = (p.lastName || "").trim();
-    const dn = (p.displayName || "").trim();
-
-    // 1) Preferisci sempre Cognome, Nome se disponibili
-    if (ln || fn) return `${ln}${ln && fn ? ", " : ""}${fn}`.trim();
-
-    // 2) Se non abbiamo first/last, prova a ricavarli dal displayName
-    if (dn) {
-      const parts = dn.split(/\s+/);
-      if (parts.length >= 2) {
-        const last = parts.pop() as string;
-        const first = parts.join(" ");
-        return `${last}, ${first}`;
-      }
-      return dn; // una sola parola: mostrala così com'è
-    }
-
-    // 3) Fallback finale
-    return "Utente";
-  }, []);
-
-  const fetchPublicMini = useCallback(async (uid: string): Promise<PublicMini> => {
-    // 1) Prova dalla collezione principale users/{uid}
-    try {
-      const main = await getDoc(doc(db, "users", uid));
-      if (main.exists()) {
-        const d = main.data() as UserDoc;
-        return {
-          firstName: d?.name ?? d?.firstName ?? d?.nome ?? null,
-          lastName: d?.surname ?? d?.lastName ?? d?.cognome ?? null,
-          displayName: d?.displayName ?? null,
-          nickname: d?.nickname ?? null,
-        };
-      }
-    } catch { }
-
-    // 2) Fallback su users_public/{uid}
-    try {
-      const snap = await getDoc(doc(db, "users_public", uid));
-      if (snap.exists()) {
-        const d = snap.data() as any;
-        return {
-          firstName: d?.firstName ?? null,
-          lastName: d?.lastName ?? null,
-          displayName: d?.displayName ?? null,
-          nickname: d?.nickname ?? null,
-        };
-      }
-    } catch { }
-
-    // 3) Fallback finale: usa displayName di auth se presente
-    return { displayName: auth.currentUser?.displayName ?? null };
-  }, []);
-
-  // ─────────────────────────────────────────
-  // Carica ride
-  // ─────────────────────────────────────────
+  // ----------------------------------------------------------------
+  // 1. FETCH RIDE + REALTIME
+  // ----------------------------------------------------------------
   useEffect(() => {
     if (!rideId) return;
-
-    const ref = doc(db, "rides", rideId);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setRide(null);
-          setLoadingRide(false);
-
-          // Se il doc non esiste più:
-          if (isDeletingRef.current) {
-            isDeletingRef.current = false;
-          }
-
-          const nav: any = navigation;
-          if (nav?.canGoBack?.()) nav.goBack();
-          else nav?.replace?.("UsciteList");
-          return;
-        }
-
-        const d = snap.data() as RideDoc | undefined;
-        const rawManual = Array.isArray(d?.manualParticipants) ? d.manualParticipants : [];
-        const manualParticipants: ManualParticipant[] = rawManual
-          .map((mp: any): ManualParticipant | null => {
-            const name = (mp?.name ?? "").toString().trim();
-            if (!name) return null;
-            return {
-              id:
-                typeof mp?.id === "string" && mp.id
-                  ? mp.id
-                  : `manual_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
-              name,
-              note: mp?.note ?? null,
-              addedBy: mp?.addedBy ?? null,
-              createdAt: mp?.createdAt ?? null,
-              manual: true,
-              raw: mp,
-              services: (mp?.services as RideServiceResponseMap) ?? null,
-            };
-          })
-          .filter(Boolean) as ManualParticipant[];
-
-        const updatedCount =
-          typeof d?.participantsCountTotal === "number"
-            ? d.participantsCountTotal
-            : typeof d?.participantsCount === "number"
-              ? d.participantsCount
-              : participants.length + manualParticipants.length;
-
-        setRide({
-          title: d?.title ?? "",
-          meetingPoint: d?.meetingPoint ?? "",
-          link: d?.link ?? null,
-          description: d?.description ?? null,
-          bikes: d?.bikes ?? [],
-          difficulty: d?.difficulty ?? null,
-          date: d?.date ?? null,
-          dateTime: d?.dateTime ?? null,
-          maxParticipants: d?.maxParticipants ?? null,
-          participantsCount: updatedCount,
-          participantsCountSelf:
-            typeof d?.participantsCountSelf === "number" ? d.participantsCountSelf : null,
-          participantsCountTotal:
-            typeof d?.participantsCountTotal === "number" ? d.participantsCountTotal : null,
-          guidaName: d?.guidaName ?? null,
-          guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
-          createdBy: d?.createdBy,
-          createdAt: d?.createdAt ?? null,
-
-          status: (d?.status as Ride["status"]) ?? "active",
-          archived: !!d?.archived,
-          archiveYear: d?.archiveYear ?? null,
-          archiveMonth: d?.archiveMonth ?? null,
-          manualParticipants,
-          extraServices: (d?.extraServices as RideExtraServices) ?? null,
-        });
-        setLoadingRide(false);
-      },
-      (err) => {
-        console.error("Errore ride:", err);
-        setLoadingRide(false);
-        Alert.alert("Errore", "Impossibile caricare i dettagli dell’uscita.");
+    const unsub = onSnapshot(doc(db, "rides", rideId), (snap) => {
+      if (snap.exists()) {
+        setRide({ id: snap.id, ...snap.data() });
+      } else {
+        Alert.alert("Errore", "Uscita non trovata o eliminata.");
+        navigation.goBack();
       }
-    );
-
+      setLoading(false);
+    });
     return () => unsub();
   }, [rideId, navigation]);
 
-  // ─────────────────────────────────────────
-  // Carica partecipanti (ordinati per createdAt)
-  // ─────────────────────────────────────────
+  // ----------------------------------------------------------------
+  // 2. FETCH PARTICIPANTS + REALTIME
+  // ----------------------------------------------------------------
   useEffect(() => {
     if (!rideId) return;
-    const qy = query(
-      collection(db, "rides", rideId, "participants"),
-      orderBy("createdAt", "asc")
+    const q = query(
+      collection(db, "rides", rideId, "participants")
+      // orderBy("signedAt", "asc") // Removed to avoid missing index issues
     );
-    const unsub = onSnapshot(
-      qy,
-      (snap) => {
-        const rows: Participant[] = [];
-        snap.forEach((d) => {
-          const x = d.data() as ParticipantDoc;
-          rows.push({
-            id: d.id,
-            uid: x?.uid,
-            name: x?.name ?? "",
-            note: x?.note ?? null,
-            createdAt: x?.createdAt ?? null,
-            manual: x?.manual === true,
-            addedBy: x?.addedBy ?? null,
-            services: (x?.services as RideServiceResponseMap) ?? null,
-          });
-        });
-        setParticipants(rows);
-        setLoadingParts(false);
-      },
-      (err) => {
-        console.error("Errore participants:", err);
-        setLoadingParts(false);
-      }
-    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setParticipants(list);
+    });
     return () => unsub();
   }, [rideId]);
 
-  // ─────────────────────────────────────────
-  // Lookup nomi pubblici (users_public)
-  // ─────────────────────────────────────────
+  // ----------------------------------------------------------------
+  // 3. RESOLVE NAMES LOCALLY (Like older version)
+  // ----------------------------------------------------------------
   useEffect(() => {
     const missing = participants
-      .map((p) => p.uid)
-      .filter((uid): uid is string => typeof uid === "string" && !!uid && !publicIndex[uid]);
+      .filter((p) => p.id && !p.id.startsWith("manual_") && !Object.prototype.hasOwnProperty.call(publicIndex, p.id))
+      .map((p) => p.id);
 
     if (missing.length === 0) return;
 
-    (async () => {
-      try {
-        const entries = await Promise.all(
-          missing.map(async (uid) => {
-            const mini = await fetchPublicMini(uid);
-            return [uid, mini] as const;
-          })
-        );
+    const fetchProfiles = async () => {
+      const newEntries: Record<string, PublicUserDoc | null> = {};
 
-        setPublicIndex((prev) => {
-          const next = { ...prev };
-          for (const [uid, mini] of entries) next[uid] = mini;
-          return next;
-        });
-      } catch (e) {
-        console.warn("Lookup users_public fallita:", e);
-      }
-    })();
-  }, [participants, publicIndex, fetchPublicMini]);
+      await Promise.all(
+        missing.map(async (uid) => {
+          try {
+            const publicSnap = await getDoc(doc(db, "users_public", uid));
+            if (publicSnap.exists()) {
+              newEntries[uid] = publicSnap.data() as PublicUserDoc;
+              return;
+            }
+          } catch { }
 
-  // ─────────────────────────────────────────
-  // Formattazioni
-  // ─────────────────────────────────────────
-  const whenText = useMemo(() => {
-    if (!ride) return "—";
-    const ts = ride.dateTime || ride.date;
-    if (!ts) return "—";
-    try {
-      return format(ts.toDate(), "EEEE d MMMM yyyy 'alle' HH:mm", { locale: it });
-    } catch {
-      return "—";
-    }
-  }, [ride]);
+          try {
+            const userSnap = await getDoc(doc(db, "users", uid));
+            if (userSnap.exists()) {
+              newEntries[uid] = userSnap.data() as PublicUserDoc;
+              return;
+            }
+          } catch { }
 
-  const bikesText = useMemo(() => {
-    if (!ride?.bikes || ride.bikes.length === 0) return "—";
-    return ride.bikes.join(", ");
-  }, [ride]);
+          newEntries[uid] = null;
+        })
+      );
 
-  const guideSummary = useMemo(
-    () =>
-      deriveGuideSummary({
-        guidaName: ride?.guidaName,
-        guidaNames: ride?.guidaNames ?? undefined,
-      }),
-    [ride?.guidaName, ride?.guidaNames]
-  );
-  const guideFullText = guideSummary.all.length > 0 ? guideSummary.all.join("; ") : "—";
-
-  const manualParticipantsList = useMemo<Participant[]>(() => {
-    if (!ride?.manualParticipants || ride.manualParticipants.length === 0) return [];
-    return ride.manualParticipants.map((mp, idx) => ({
-      id: mp.id ?? `manual_${idx}`,
-      uid: null,
-      name: mp.name,
-      note: mp.note ?? null,
-      createdAt: mp.createdAt ?? null,
-      manual: true,
-      manualRaw: (mp.raw ?? mp) as ManualParticipant,
-      addedBy: mp.addedBy ?? null,
-      services: (mp.services as RideServiceResponseMap) ?? null,
-    }));
-  }, [ride?.manualParticipants]);
-
-  const combinedParticipants = useMemo(() => {
-    const merged = [...participants, ...manualParticipantsList];
-    return merged.sort((a, b) => {
-      const aTs = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
-      const bTs = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
-      if (aTs === bTs) return a.name.localeCompare(b.name);
-      return aTs - bTs;
-    });
-  }, [participants, manualParticipantsList]);
-
-  const serviceQuestions = useMemo<RideServiceKey[]>(
-    () => SERVICE_KEYS.filter((key) => ride?.extraServices?.[key]?.enabled),
-    [ride?.extraServices]
-  );
-  const serviceSummary = useMemo(() => {
-    const result: Record<RideServiceKey, { yes: number; no: number }> = {
-      lunch: { yes: 0, no: 0 },
-      dinner: { yes: 0, no: 0 },
-      overnight: { yes: 0, no: 0 },
+      setPublicIndex((prev) => ({ ...prev, ...newEntries }));
     };
 
-    if (!ride?.extraServices) return result;
+    fetchProfiles();
+  }, [participants, publicIndex]);
 
-    combinedParticipants.forEach((participant) => {
-      SERVICE_KEYS.forEach((key) => {
-        if (!ride.extraServices?.[key]?.enabled) return;
-        const answer = participant.services?.[key];
-        if (answer === "yes") result[key].yes += 1;
-        else if (answer === "no") result[key].no += 1;
-      });
+  // ----------------------------------------------------------------
+  // COMPUTED
+  // ----------------------------------------------------------------
+  // A. Combine manual + registered
+  const manualParticipants = useMemo(() => {
+    if (!ride?.manualParticipants) return [];
+    return Array.isArray(ride.manualParticipants) ? ride.manualParticipants : [];
+  }, [ride]);
+
+  // Merge lists for display
+  const allParticipants = useMemo(() => {
+    // 1. Registered users (from subcollection)
+    // 1. Registered users (from subcollection)
+    const registered = participants.map((p) => {
+      const resolved = publicIndex[p.id];
+      const resolvedName = buildPublicName(resolved);
+      const displayName = resolvedName || p.displayName || p.name || "Utente";
+      const photoURL = (resolved as any)?.photoURL || p.photoURL || null;
+
+      return {
+        type: "user",
+        id: p.id, // userId
+        displayName,
+        photoURL,
+        signedAt: p.signedAt ? p.signedAt.toDate() : (p.createdAt ? p.createdAt.toDate() : null),
+        isMe: p.id === userId,
+        role: p.role || "user",
+        note: p.note || null,
+        services: p.services || null, // ADDED
+      };
+    }).sort((a: any, b: any) => {
+      const timeA = a.signedAt ? a.signedAt.getTime() : 0;
+      const timeB = b.signedAt ? b.signedAt.getTime() : 0;
+      return timeA - timeB;
     });
 
-    return result;
-  }, [combinedParticipants, ride?.extraServices]);
+    // 2. Manual participants (array of strings OR objects)
+    const manual = manualParticipants.map((entry: any, index: number) => {
+      let displayName = "Sconosciuto";
+      let note = null;
+      let services = null;
 
-  const getServiceLabel = useCallback(
-    (key: RideServiceKey) => ride?.extraServices?.[key]?.label?.trim() || SERVICE_LABELS[key],
-    [ride?.extraServices]
-  );
-
-  const isServiceSelectionComplete = useMemo(
-    () => serviceQuestions.every((key) => {
-      const answer = joinServices[key];
-      return answer === "yes" || answer === "no";
-    }),
-    [serviceQuestions, joinServices]
-  );
-
-  const isManualServiceSelectionComplete = useMemo(
-    () => serviceQuestions.every((key) => {
-      const answer = manualServices[key];
-      return answer === "yes" || answer === "no";
-    }),
-    [serviceQuestions, manualServices]
-  );
-
-  const maxText =
-    ride?.maxParticipants == null ? "Nessun limite" : String(ride.maxParticipants);
-
-  const myParticipant = useMemo(
-    () => combinedParticipants.find((p) => p.uid === currentUid) || null,
-    [combinedParticipants, currentUid]
-  );
-
-
-  const formatCognomeNome = useCallback(
-    (uid?: string | null, fallback?: string) => {
-      if (!uid) {
-        return fallback?.trim() || "Ospite";
+      if (typeof entry === "string") {
+        displayName = entry;
+      } else if (entry && typeof entry === "object") {
+        displayName = entry.name || "Sconosciuto";
+        note = entry.note || null;
+        services = entry.services || null;
       }
-      const p = publicIndex[uid];
-      if (p) {
-        const ln = (p.lastName || "").trim();
-        const fn = (p.firstName || "").trim();
-        const dn = (p.displayName || "").trim();
 
-        // 1) Se abbiamo cognome/nome pubblici → usa sempre "Cognome, Nome"
-        if (ln || fn) return `${ln}${ln && fn ? ", " : ""}${fn}`;
-
-        // 2) In assenza, rispetta SEMPRE il fallback passato (participant.name)
-        if (fallback && fallback.trim()) return fallback.trim();
-
-        // 3) Prova a ricavare da displayName (mai preferire nickname)
-        if (dn) {
-          const parts = dn.split(/\s+/);
-          if (parts.length >= 2) {
-            const last = parts.pop() as string;
-            const first = parts.join(" ");
-            return `${last}, ${first}`;
-          }
-          return dn;
-        }
-      }
-      // 4) Fallback finale
-      return fallback?.trim() || "Utente";
-    },
-    [publicIndex]
-  );
-
-  // ─────────────────────────────────────────
-  // Ruolo admin
-  // ─────────────────────────────────────────
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      setIsAdmin(false);
-      return;
-    }
-    const userRef = doc(db, "users", uid);
-    const unsub = onSnapshot(
-      userRef,
-      (snap) => {
-        const role = snap.exists() ? (snap.data() as any)?.role : null;
-        setIsAdmin(role === "admin" || role === "owner");
-      },
-      () => setIsAdmin(false)
-    );
-    return () => unsub();
-  }, [rideId]);
-
-  // ─────────────────────────────────────────
-  // Apri mappa
-  // ─────────────────────────────────────────
-  const openMap = useCallback(async () => {
-    const raw = ride?.link?.trim();
-    if (!raw) return;
-    const isUrl = /^https?:\/\//i.test(raw) || /^geo:/i.test(raw);
-    const url = isUrl
-      ? raw
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(raw)}`;
-
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) {
-        Alert.alert("Impossibile aprire la mappa", "Il link sembra non valido.");
-        return;
-      }
-      Linking.openURL(url);
-    } catch {
-      Alert.alert("Errore", "Non sono riuscito ad aprire la mappa.");
-    }
-  }, [ride?.link]);
-
-  // ─────────────────────────────────────────
-  // Admin actions
-  // ─────────────────────────────────────────
-  const editRide = useCallback(() => {
-    navigation.navigate("CreateRide", { rideId });
-  }, [navigation, rideId]);
-
-  const cancelRide = useCallback(async () => {
-    if (!rideId) return;
-    try {
-      await updateDoc(doc(db, "rides", rideId), { status: "cancelled" });
-      Alert.alert("Ok", "Uscita annullata.");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile annullare l'uscita.");
-    }
-  }, [rideId]);
-
-  const reopenRide = useCallback(async () => {
-    if (!rideId) return;
-    try {
-      await updateDoc(doc(db, "rides", rideId), { status: "active" });
-      Alert.alert("Ok", "Uscita riaperta.");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile riaprire l'uscita.");
-    }
-  }, [rideId]);
-
-  const archiveNow = useCallback(async () => {
-    if (!rideId) return;
-    try {
-      const snap = await getDoc(doc(db, "rides", rideId));
-      const d = snap.data() as any;
-      const date = d?.dateTime?.toDate ? d.dateTime.toDate() : new Date();
-      const y = date.getFullYear();
-      const m = date.getMonth() + 1;
-      await updateDoc(doc(db, "rides", rideId), {
-        archived: true,
-        archiveYear: y,
-        archiveMonth: m,
+      return ({
+        type: "manual",
+        id: `manual_${index}`,
+        displayName,
+        note, // ADDED
+        services, // ADDED
+        photoURL: null,
+        signedAt: entry?.createdAt ? entry.createdAt.toDate() : null,
+        isMe: false,
+        role: "guest",
       });
-      Alert.alert("Ok", "Uscita archiviata.");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile archiviare l'uscita.");
-    }
-  }, [rideId]);
+    }).sort((a: any, b: any) => {
+      // Sort manual by creation time if available, otherwise keep index order (stable sort usually)
+      // If we want insertion order, we can rely on index, but sorting ensures correctness if data was messed up.
+      // However, if legacy strings don't have date, they go first?
+      // User says "In alto i primi inseriti". 
+      // If we trust array order, we don't need sort. But let's be safe.
+      const timeA = a.signedAt ? a.signedAt.getTime() : Infinity; // If no date, put at end? Or beginning?
+      // Actually, relying on array index is safer for "insertion order" if dates are missing.
+      // But user said "in base alla data".
+      // Let's stick to array order for manual as it's the definition of insertion order.
+      // So NO explicit sort for `manual` unless needed. 
+      // User: "Dopo gli inseriti manualmente sempre in base alla data di inserimento"
+      // Since we append, array order IS insertion order.
+      return 0;
+    });
 
-  const unarchive = useCallback(async () => {
-    if (!rideId) return;
-    try {
-      await updateDoc(doc(db, "rides", rideId), { archived: false });
-      Alert.alert("Ok", "Uscita ripristinata dall'archivio.");
-    } catch (e: any) {
-      Alert.alert("Errore", e?.message ?? "Impossibile ripristinare l'uscita.");
-    }
-  }, [rideId]);
+    return [...registered, ...manual];
+  }, [participants, manualParticipants, userId]);
 
-  const deleteRideForever = useCallback(async () => {
-    if (!rideId) return;
-    Alert.alert("Conferma", "Cancellare definitivamente l'uscita?", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Sì, elimina",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            // 👉 segna che la cancellazione è intenzionale
-            isDeletingRef.current = true;
-            await deleteDoc(doc(db, "rides", rideId));
-            // niente navigate: ci pensa il listener a tornare indietro
-          } catch (e: any) {
-            isDeletingRef.current = false;
-            Alert.alert("Errore", e?.message ?? "Impossibile eliminare l'uscita.");
-          }
-        },
-      },
-    ]);
-  }, [rideId]);
+  const userIsParticipant = participants.some((p) => p.id === userId);
+  const totalCount = allParticipants.length;
+  const isFull =
+    typeof ride?.maxParticipants === "number" &&
+    totalCount >= ride.maxParticipants;
 
-  // ─────────────────────────────────────────
-  // Derivazioni Stato (Moved up for scope access)
-  // ─────────────────────────────────────────
-  const isCancelled = ride?.status === "cancelled";
-  const isArchived = !!ride?.archived;
-  const isBookable = !isCancelled && !isArchived;
 
-  // ─────────────────────────────────────────
-  // Admin Menu Handler
-  // ─────────────────────────────────────────
-  const showAdminMenu = useCallback(() => {
-    if (!ride) return;
 
-    // Opzioni base
-    // const options = ["Annulla"]; // unused
-    // const destructiveButtonIndex = isArchived || isCancelled ? -1 : 2; // unused
-    // Let's build explicit lists based on state
+  // Service Stats Summary
+  const serviceStatsSummary = useMemo(() => {
+    if (!ride?.extraServices) return null;
+    const activeKeys = SERVICE_KEYS.filter(k => ride.extraServices?.[k]?.enabled);
+    if (activeKeys.length === 0) return null;
 
-    // ACTION SHEET OPTIONS
-    // 0: Cancel (Dismiss)
+    const stats: Record<string, { yes: number, no: number }> = {};
+    activeKeys.forEach(k => { stats[k] = { yes: 0, no: 0 }; });
 
-    if (Platform.OS === 'ios') {
-      const iosOptions = ["Chiudi"];
-      const iosActions: (() => void)[] = [() => { }];
-
-      if (isArchived) {
-        // Ripristina, Elimina
-        iosOptions.push("Ripristina da Archivio", "Elimina Definitivamente");
-        iosActions.push(unarchive, deleteRideForever);
-      } else if (isCancelled) {
-        // Riapri, Archivia, Elimina
-        iosOptions.push("Riapri Uscita", "Archivia", "Elimina Definitivamente");
-        iosActions.push(reopenRide, archiveNow, deleteRideForever);
-      } else {
-        // Modifica, Annulla, Archivia, Elimina (Requested)
-        iosOptions.push("Modifica Dettagli", "Annulla Uscita", "Archivia Uscita", "Elimina Definitivamente");
-        iosActions.push(editRide, cancelRide, archiveNow, deleteRideForever);
-      }
-
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: iosOptions,
-          cancelButtonIndex: 0,
-          destructiveButtonIndex: iosOptions.indexOf("Elimina Definitivamente") > -1 ? iosOptions.indexOf("Elimina Definitivamente") : iosOptions.indexOf("Annulla Uscita"),
-          title: "Gestione Uscita",
-        },
-        (buttonIndex) => {
-          if (buttonIndex > 0) {
-            iosActions[buttonIndex]();
-          }
-        }
-      );
-    } else {
-      // Android: Simple Alert with buttons doesn't support many options well.
-      // Using Alert with 3 buttons max or multiple alerts is bad.
-      // Better to keep a simple "Edit" button visible maybe, or just use a basic Alert menu.
-      // For now, let's use a chain of alerts or a simple 3-btn Alert for key actions.
-      // "Modifica" is key. "Altro" -> menu.
-
-      // FALLBACK: Simplified Android Menu via Alert is clunky. 
-      // User asked for "Menu ...". 
-      // Let's render a simple native Alert with options if possible, but React Native Alert only supports 3 buttons.
-      // We will show the most relevant actions.
-
-      const buttons: any[] = [{ text: "Chiudi", style: "cancel" }];
-
-      if (isArchived) {
-        buttons.push({ text: "Ripristina", onPress: unarchive });
-        buttons.push({ text: "Elimina", onPress: deleteRideForever, style: "destructive" });
-      } else if (isCancelled) {
-        buttons.push({ text: "Riapri", onPress: reopenRide });
-        buttons.push({ text: "Elimina", onPress: deleteRideForever, style: "destructive" });
-        // Archivia missing in 3-btn limit?
-      } else {
-        buttons.push({ text: "Modifica", onPress: editRide });
-        buttons.push({
-          text: "Gestisci...", onPress: () => {
-            Alert.alert("Altre Azioni", "Scegli azione", [
-              { text: "Annulla Uscita", onPress: cancelRide, style: "destructive" },
-              { text: "Archivia", onPress: archiveNow },
-              { text: "Elimina", onPress: deleteRideForever, style: "destructive" },
-              { text: "Chiudi", style: "cancel" }
-            ]);
-          }
+    allParticipants.forEach(p => {
+      if (p.services) {
+        activeKeys.forEach(k => {
+          const val = p.services[k];
+          if (val === 'yes') stats[k].yes++;
+          if (val === 'no') stats[k].no++;
         });
       }
-
-      Alert.alert("Gestione Uscita", undefined, buttons);
-    }
-  }, [ride, isArchived, isCancelled, editRide, cancelRide, archiveNow, unarchive, deleteRideForever, reopenRide]);
-
-  // ─────────────────────────────────────────
-  // Prenotazione
-  // ─────────────────────────────────────────
-  const openNoteModal = useCallback(() => {
-    setNoteText(myParticipant?.note ?? "");
-    const next = emptySelection();
-    serviceQuestions.forEach((key) => {
-      const prevChoice = myParticipant?.services?.[key];
-      next[key] = prevChoice === "yes" || prevChoice === "no" ? prevChoice : null;
     });
-    setJoinServices(next);
-    setNoteModalVisible(true);
-  }, [myParticipant, serviceQuestions]);
+
+    return { keys: activeKeys, stats };
+  }, [ride, allParticipants]);
+  const isCancelled = ride?.status === "cancelled";
+  const isArchived = !!ride?.archived;
+
+  // Can Join?
+  // User must approve disclaimer? We assume yes or implicit.
+  // Logic: Not cancelled, not archived, not full (unless admin?), not already joined.
+  const canJoin =
+    !loading &&
+    !isArchived &&
+    !isCancelled &&
+    (!isFull || isAdmin) &&
+    !userIsParticipant &&
+    profile?.approved;
+
+  // ----------------------------------------------------------------
+  // HELPERS FOR JOIN
+  // ----------------------------------------------------------------
+  const fetchPublicMini = useCallback(async (uid: string) => {
+    try {
+      const publicSnap = await getDoc(doc(db, "users_public", uid));
+      if (publicSnap.exists()) return publicSnap.data() as PublicUserDoc;
+    } catch { }
+
+    try {
+      const userSnap = await getDoc(doc(db, "users", uid));
+      if (userSnap.exists()) return userSnap.data() as PublicUserDoc;
+    } catch { }
+
+    return { displayName: "Utente" } as PublicUserDoc;
+  }, []);
 
   const closeNoteModal = useCallback(() => {
     if (joinSaving) return;
@@ -763,1417 +427,840 @@ export default function RideDetails() {
     setJoinServices(emptySelection());
   }, [joinSaving]);
 
-  const openManualModal = useCallback(() => {
-    if (!isAdmin) return;
-    if (ride?.archived) {
-      Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
+  // ----------------------------------------------------------------
+  // ACTIONS
+  // ----------------------------------------------------------------
+  const handleJoin = async () => {
+    if (!profile?.approved) {
+      Alert.alert("Attenzione", "Il tuo profilo deve essere approvato per partecipare.");
       return;
     }
+    setJoining(true);
+    try {
+      const userRef = doc(db, "rides", rideId, "participants", userId!);
+
+      // Prepare payload strictly according to firestore.rules
+      // allowed keys: ['uid','name','displayName','nickname','note','createdAt','services']
+
+      // 1. Check if doc exists (to distinguish CREATE vs UPDATE)
+      const userSnap = await getDoc(userRef);
+      const isUpdate = userSnap.exists();
+
+      // 2. Resolve Names
+      const publicMini = publicIndex[userId!] || await fetchPublicMini(userId!) || {};
+      const name = buildPublicName(publicMini) || profile?.displayName || "Utente";
+      const safeName = name.slice(0, 120);
+
+      // NOTE: The security rule validParticipantCreate accesses 'note' without checking has('note').
+      // Therefore we MUST allow 'note' in the payload, even if null.
+      const safeNote = noteText ? noteText.trim().slice(0, 500) : null;
+
+      // VALIDATION: Mandatory Service Selection
+      if (ride.extraServices) {
+        const missingServices = SERVICE_KEYS.filter(key => {
+          const cfg = ride.extraServices?.[key];
+          if (!cfg?.enabled) return false;
+          // Must have a selection (yes or no)
+          return !joinServices[key];
+        });
+
+        if (missingServices.length > 0) {
+          // Get labels for clearer error
+          const labels = missingServices.map(k => ride.extraServices?.[k]?.label || SERVICE_LABELS[k]).join(", ");
+          Alert.alert("Scelta obbligatoria", `Devi indicare SI o NO per i seguenti servizi: ${labels}`);
+          setJoining(false);
+          return;
+        }
+      }
+
+      // 3. Prepare Payloads strictly according to Active Rules
+      // Allowed: ['uid','name','displayName','nickname','note','createdAt','services']
+      // Forbidden: 'email','photoURL','role','signedAt'
+
+      if (isUpdate) {
+        // --- UPDATE ---
+        const updatePayload: any = {};
+        if (safeName) updatePayload.name = safeName;
+        if (profile?.displayName) updatePayload.displayName = profile.displayName.slice(0, 120);
+        if ((profile as any)?.nickname) updatePayload.nickname = (profile as any).nickname.slice(0, 120);
+
+        // Always send note if we have it, or explicit null? 
+        // For update, implicit is fine, but let's be safe if user added a note.
+        if (safeNote !== null) updatePayload.note = safeNote;
+
+        // services (filter nulls to be clean, though rules allow null)
+        if (joinServices && Object.values(joinServices).some(v => v !== null)) {
+          // Ensure only valid keys are sent
+          const cleanServices: any = {};
+          if (joinServices.lunch) cleanServices.lunch = joinServices.lunch;
+          if (joinServices.dinner) cleanServices.dinner = joinServices.dinner;
+          if (joinServices.overnight) cleanServices.overnight = joinServices.overnight;
+          if (Object.keys(cleanServices).length > 0) {
+            updatePayload.services = cleanServices;
+          }
+        }
+
+        console.warn("[RideDetails] Update Payload", JSON.stringify(updatePayload));
+        await updateDoc(userRef, updatePayload);
+      } else {
+        // --- CREATE ---
+        const createPayload: any = {
+          uid: userId,
+          createdAt: serverTimestamp(),
+          note: safeNote, // REQUIRED to prevent rule crash
+        };
+        // Optionals
+        if (safeName) createPayload.name = safeName;
+        if (profile?.displayName) createPayload.displayName = profile.displayName.slice(0, 120);
+        if ((profile as any)?.nickname) createPayload.nickname = (profile as any).nickname.slice(0, 120);
+
+        // services
+        if (joinServices && Object.values(joinServices).some(v => v !== null)) {
+          const cleanServices: any = {};
+          if (joinServices.lunch) cleanServices.lunch = joinServices.lunch;
+          if (joinServices.dinner) cleanServices.dinner = joinServices.dinner;
+          if (joinServices.overnight) cleanServices.overnight = joinServices.overnight;
+          if (Object.keys(cleanServices).length > 0) {
+            createPayload.services = cleanServices;
+          }
+        }
+
+        console.warn("[RideDetails] Create Payload", JSON.stringify(createPayload));
+        await setDoc(userRef, createPayload);
+      }
+
+      // Update denormalized counts on ride doc (optional but good for list headers)
+      // We rely on cloud function usually, but let's do optimistic check if needed?
+
+      Alert.alert("Partecipazione confermata", "Ti sei iscritto all'uscita!");
+    } catch (e) {
+      console.error("[RideDetails] Join failed", e);
+      Alert.alert("Errore", "Impossibile iscriversi al momento. Verifica la tua connessione.");
+    } finally {
+      setJoining(false);
+      closeNoteModal();
+    }
+  }; // Explicitly close handleJoin
+
+  const handleLeave = async () => {
+    Alert.alert(
+      "Annulla iscrizione",
+      "Vuoi davvero ritirare la tua partecipazione?", // Added missing message arg
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sì, ritirati",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (userId) {
+                await deleteDoc(doc(db, "rides", rideId, "participants", userId));
+                Alert.alert("Fatto", "Non sei più tra i partecipanti.");
+              }
+            } catch (e) {
+              Alert.alert("Errore", "Impossibile annullare iscrizione.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Admin/Guide actions on participants
+  const handleRemoveParticipant = async (p: any) => {
+    // RESTRICTION: Only Admin or Owner (isAdmin includes Owner permissions)
+    if (!isAdmin) return;
+    if (p.type === "manual") {
+      // Remove from manual array
+      const newManual = manualParticipants.filter((n: string) => n !== p.displayName);
+      await updateDoc(doc(db, "rides", rideId), {
+        manualParticipants: newManual,
+      });
+    } else {
+      // Remove doc
+      await deleteDoc(doc(db, "rides", rideId, "participants", p.id));
+    }
+  };
+
+  const handleAddManual = () => {
     setManualName("");
     setManualNote("");
     setManualServices(emptySelection());
     setManualModalVisible(true);
-  }, [isAdmin, ride?.archived]);
+  };
 
-  const closeManualModal = useCallback(() => {
-    if (manualSaving) return;
-    setManualModalVisible(false);
-    setManualName("");
-    setManualNote("");
-    setManualServices(emptySelection());
-  }, [manualSaving]);
-
-  const adjustParticipantsCount = useCallback(
-    async (delta: number) => {
-      if (!rideId || delta === 0) return;
-      // Count is server-managed via Cloud Functions (participantsCountSelf/Total).
-      return;
-    },
-    [rideId]
-  );
-
-  // TODO: handler di join/nota lungo; valutare estrazione in helper dedicato per leggibilità/test.
-  const confirmJoin = useCallback(async () => {
-    if (joinSaving) return;
-    const u = auth.currentUser;
-    if (!u) {
-      Alert.alert("Attendi", "Autenticazione in corso…");
-      return;
-    }
-    if (!rideId) return;
-
-    if (ride?.archived) {
-      Alert.alert("Non prenotabile", "Uscita archiviata: sola visualizzazione.");
-      return;
-    }
-    if (ride?.status === "cancelled") {
-      Alert.alert("Non prenotabile", "Uscita annullata dall'amministratore.");
-      return;
-    }
-    if (
-      typeof ride?.maxParticipants === "number" &&
-      combinedParticipants.length >= (ride?.maxParticipants ?? 0)
-    ) {
-      Alert.alert("Posti esauriti", "Non è più possibile iscriversi a questa uscita.");
+  const handleConfirmManual = async () => {
+    if (!manualName.trim()) {
+      Alert.alert("Errore", "Inserisci almeno il nome.");
       return;
     }
 
-    const missingService = serviceQuestions.find((key) => {
-      if (!ride?.extraServices?.[key]?.enabled) return false;
-      const answer = joinServices[key];
-      return answer !== "yes" && answer !== "no";
-    });
+    // VALIDATION: Mandatory Service Selection
+    if (ride.extraServices) {
+      const missingServices = SERVICE_KEYS.filter(key => {
+        const cfg = ride.extraServices?.[key];
+        if (!cfg?.enabled) return false;
+        return !manualServices[key];
+      });
 
-    if (missingService) {
-      Alert.alert("Attenzione", `Indica se aderirai a ${getServiceLabel(missingService)}.`);
-      return;
-    }
-
-    const servicesPayload: RideServiceResponseMap = {};
-    serviceQuestions.forEach((key) => {
-      const answer = joinServices[key];
-      if (answer === "yes" || answer === "no") {
-        servicesPayload[key] = answer;
+      if (missingServices.length > 0) {
+        const labels = missingServices.map(k => ride.extraServices?.[k]?.label || SERVICE_LABELS[k]).join(", ");
+        Alert.alert("Scelta obbligatoria", `Devi indicare SI o NO per i servizi: ${labels}`);
+        return;
       }
-    });
+    }
 
     try {
-      setJoinSaving(true);
+      // Clean manual services
+      const cleanServices: any = {};
+      if (manualServices.lunch) cleanServices.lunch = manualServices.lunch;
+      if (manualServices.dinner) cleanServices.dinner = manualServices.dinner;
+      if (manualServices.overnight) cleanServices.overnight = manualServices.overnight;
 
-      // 🔎 prendi il nome pubblico da users_public/{uid} (fallback displayName)
-      let publicMini = publicIndex[u.uid];
-      if (!publicMini) {
-        publicMini = await fetchPublicMini(u.uid);
-        setPublicIndex((prev) => ({ ...prev, [u.uid]: publicMini! }));
-      }
-      const publicName = buildPublicName(publicMini).trim();
-      const safeName = publicName.slice(0, 80);
-
-      const participantRef = doc(db, "rides", rideId, "participants", u.uid);
-      const prev = await getDoc(participantRef);
-
-      // ✍️ Scrivi SEMPRE il documento completo (compatibile con le regole di update)
-      const participantData: Record<string, any> = {
-        uid: u.uid,
-        name: safeName,
-        note: noteText.trim() || null,
-        createdAt: prev.exists() ? prev.data()?.createdAt ?? serverTimestamp() : serverTimestamp(),
+      const newEntry = {
+        name: manualName.trim(),
+        note: manualNote.trim() || null,
+        services: Object.keys(cleanServices).length > 0 ? cleanServices : null,
+        addedBy: profile?.displayName || "Admin",
+        createdAt: Timestamp.now(),
+        type: "manual",
       };
 
-      if (serviceQuestions.length > 0) {
-        participantData.services = Object.keys(servicesPayload).length > 0 ? servicesPayload : null;
-      }
-
-      await setDoc(participantRef, participantData);
-
-      if (!prev.exists()) {
-        await adjustParticipantsCount(1);
-      }
-
-      setNoteModalVisible(false);
-      setNoteText("");
-      setJoinServices(emptySelection());
-    } catch (e: any) {
-      console.error("join error:", e);
-      Alert.alert("Errore", e?.message ?? "Impossibile prenotarsi.");
-    } finally {
-      setJoinSaving(false);
-    }
-  }, [
-    rideId,
-    noteText,
-    joinSaving,
-    ride,
-    combinedParticipants.length,
-    publicIndex,
-    fetchPublicMini,
-    buildPublicName,
-    adjustParticipantsCount,
-    joinServices,
-    serviceQuestions,
-    getServiceLabel,
-  ]);
-
-  useEffect(() => {
-    setShowFullDescription(false);
-  }, [rideId]);
-
-  // TODO: gestione aggiunta manuale partecipanti corposa; valutare estrazione in helper/hook specifico.
-  const confirmManualAdd = useCallback(async () => {
-    if (!isAdmin || manualSaving) return;
-    if (ride?.archived) {
-      Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
-      return;
-    }
-    const label = manualName.trim().replace(/\s+/g, " ");
-    if (!label) {
-      Alert.alert("Attenzione", "Inserisci un nome valido.");
-      return;
-    }
-    if (!rideId) return;
-
-    const missingService = serviceQuestions.find((key) => {
-      if (!ride?.extraServices?.[key]?.enabled) return false;
-      const answer = manualServices[key];
-      return answer !== "yes" && answer !== "no";
-    });
-
-    if (missingService) {
-      Alert.alert("Attenzione", `Indica se il partecipante aderisce a ${getServiceLabel(missingService)}.`);
-      return;
-    }
-
-    const servicesPayload: RideServiceResponseMap = {};
-    serviceQuestions.forEach((key) => {
-      const answer = manualServices[key];
-      if (answer === "yes" || answer === "no") {
-        servicesPayload[key] = answer;
-      }
-    });
-
-    try {
-      setManualSaving(true);
-      const entryId = `manual_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-      const entry = {
-        id: entryId,
-        name: label.slice(0, 80),
-        note: manualNote.trim() ? manualNote.trim() : null,
-        manual: true,
-        addedBy: currentUid || null,
-        createdAt: Timestamp.now(),
-        services: serviceQuestions.length > 0 && Object.keys(servicesPayload).length > 0 ? servicesPayload : null,
-      } as ManualParticipant;
-
+      const currentManual = ride.manualParticipants || [];
       await updateDoc(doc(db, "rides", rideId), {
-        manualParticipants: arrayUnion(entry),
+        manualParticipants: [...currentManual, newEntry],
       });
-      await adjustParticipantsCount(1);
       setManualModalVisible(false);
-      setManualName("");
-      setManualNote("");
-      setManualServices(emptySelection());
-    } catch (e: any) {
-      console.error("manual add error:", e);
-      Alert.alert("Errore", e?.message ?? "Impossibile aggiungere il partecipante.");
-    } finally {
-      setManualSaving(false);
+    } catch (e) {
+      Alert.alert("Errore", "Impossibile aggiungere manuale.");
     }
-  }, [
-    isAdmin,
-    manualSaving,
-    manualName,
-    manualNote,
-    rideId,
-    currentUid,
-    adjustParticipantsCount,
-    ride?.archived,
-    serviceQuestions,
-    manualServices,
-    getServiceLabel,
-  ]);
+  };
 
-  const leave = useCallback(async () => {
-    const u = auth.currentUser;
-    if (!u || !rideId) return;
+  const handleCancelRide = async () => {
+    Alert.alert(
+      "Annulla Uscita",
+      "Sei sicuro di voler ANNULLARE questa uscita? I partecipanti saranno avvisati.",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sì, Annulla",
+          style: "destructive",
+          onPress: async () => {
+            await updateDoc(doc(db, "rides", rideId), { status: "cancelled" });
+            Alert.alert("Uscita Annullata");
+            // Here you might trigger a notification function
+            await sendCancellationNotification();
+          },
+        },
+      ]
+    );
+  };
 
-    if (ride?.archived) {
-      Alert.alert("Non disponibile", "Uscita archiviata: non puoi modificare la prenotazione.");
-      return;
-    }
+  const handleRestoreRide = async () => {
+    await updateDoc(doc(db, "rides", rideId), { status: "active" });
+    Alert.alert("Uscita Ripristinata");
+  };
 
-    Alert.alert("Conferma", "Vuoi cancellare la prenotazione?", [
+  const handleDeleteRide = async () => {
+    Alert.alert("Elimina Definitive", "Questa azione è irreversibile!", [
       { text: "Annulla", style: "cancel" },
       {
-        text: "Sì, cancella",
+        text: "Elimina",
         style: "destructive",
         onPress: async () => {
-          try {
-            await deleteDoc(doc(db, "rides", rideId, "participants", u.uid));
-            await adjustParticipantsCount(-1);
-          } catch (e: any) {
-            console.error("leave error:", e);
-            Alert.alert("Errore", e?.message ?? "Impossibile cancellare la prenotazione.");
-          }
+          await deleteDoc(doc(db, "rides", rideId));
+          navigation.goBack();
         },
       },
     ]);
-  }, [rideId, adjustParticipantsCount, ride?.archived]);
+  };
 
+  // Notification helper
+  const sendCancellationNotification = async () => {
+    try {
+      // Create verify notification doc
+      const newNotifRef = doc(collection(db, "notifications"));
+      await setDoc(newNotifRef, {
+        type: "ride_cancelled",
+        rideId,
+        title: ride.title,
+        createdAt: serverTimestamp(),
+        read: false,
+        target: "all_participants", // Backend handles logic
+      });
+    } catch (e) {
+      console.log("Notification trigger failed", e);
+    }
+  };
 
+  const handleShare = async () => {
+    try {
+      const dateStr = ride.date ? format(ride.date.toDate(), "dd/MM/yyyy") : "";
+      const msg = `🚴 Uscita BHI: ${ride.title}\n📅 ${dateStr}\n📍 ${ride.meetingPoint}\n\nPartecipa sull'app!`;
+      await Share.share({ message: msg });
+    } catch (error) {
+      // ignore
+    }
+  };
 
-  const statusBadge = isArchived
-    ? (
-      <View style={[styles.chipBase, { backgroundColor: "#E5E7EB" }]}>
-        <Text style={[styles.chipText, { color: "#374151" }]}>📦 Archiviata</Text>
-      </View>
-    )
-    : isCancelled
-      ? (
-        <View style={[styles.chipBase, { backgroundColor: "#FEE2E2" }]}>
-          <Text style={[styles.chipText, { color: "#991B1B" }]}>✖ Annullata</Text>
-        </View>
-      )
-      : (
-        <View style={[styles.chipBase, { backgroundColor: "#111" }]}>
-          <Text style={[styles.chipText, { color: "#fff" }]}>✓ Attiva</Text>
-        </View>
-      );
-
-  const participantsLabel = ride?.maxParticipants != null
-    ? `${combinedParticipants.length}/${ride.maxParticipants}`
-    : `${combinedParticipants.length}`;
-
-  const handleAdminRemove = useCallback(
-    (participant: Participant) => {
-      if (!isAdmin || !rideId) return;
-      if (ride?.archived) {
-        Alert.alert("Non disponibile", "Uscita archiviata: sola visualizzazione.");
-        return;
+  const handleAddToCalendar = async () => {
+    try {
+      const { status } = await Calendar.requestCalendarPermissionsAsync();
+      if (status === "granted") {
+        const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+        const defaultCalendar =
+          calendars.find((cal) => cal.isPrimary) || calendars[0];
+        if (defaultCalendar) {
+          const startDate = ride.dateTime ? ride.dateTime.toDate() : ride.date.toDate();
+          const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h
+          await Calendar.createEventAsync(defaultCalendar.id, {
+            title: `🚴 ${ride.title}`,
+            startDate,
+            endDate,
+            location: ride.meetingPoint,
+            notes: ride.description || "",
+          });
+          Alert.alert("Successo", "Evento aggiunto al calendario!");
+        } else {
+          Alert.alert("Errore", "Nessun calendario trovato.");
+        }
+      } else {
+        Alert.alert("Permesso negato", "Impossibile accedere al calendario.");
       }
-      if (isCancelled) {
-        Alert.alert("Non disponibile", "Uscita annullata: non puoi modificare la lista partecipanti.");
-        return;
-      }
-      const label = formatCognomeNome(participant.uid ?? "", participant.name);
+    } catch (e) {
+      Alert.alert("Errore", "Impossibile aggiungere evento.");
+    }
+  };
 
-      Alert.alert(
-        "Rimuovere partecipante?",
-        label,
-        [
-          { text: "Annulla", style: "cancel" },
-          {
-            text: "Rimuovi",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                if (participant.manual) {
-                  if (!participant.manualRaw) return;
-                  await updateDoc(doc(db, "rides", rideId), {
-                    manualParticipants: arrayRemove(participant.manualRaw),
-                  });
-                  await adjustParticipantsCount(-1);
-                } else {
-                  await deleteDoc(doc(db, "rides", rideId, "participants", participant.id));
-                  await adjustParticipantsCount(-1);
-                }
-              } catch (e: any) {
-                console.error("admin remove participant", e);
-                Alert.alert("Errore", e?.message ?? "Impossibile rimuovere il partecipante.");
-              }
-            },
-          },
-        ]
-      );
-    },
-    [isAdmin, rideId, formatCognomeNome, adjustParticipantsCount, ride?.archived, isCancelled]
-  );
-
-  const canSubmitManual = manualName.trim().length > 0 && isManualServiceSelectionComplete;
-
-  // ─────────────────────────────────────────
-  // Rendering
-  // ─────────────────────────────────────────
-  if (profileLoading) {
+  // ----------------------------------------------------------------
+  // RENDER
+  // ----------------------------------------------------------------
+  if (loading || !ride) {
     return (
-      <Screen useNativeHeader={true} scroll={false}>
-        <View style={styles.center}>
-          <ActivityIndicator />
-          <Text style={{ marginTop: 8 }}>Caricamento…</Text>
-        </View>
-      </Screen>
-    );
-  }
-  if (!canSeeCiclismo) {
-    return (
-      <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
-    );
-  }
-  if (loadingRide) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 8 }}>Carico dettagli uscita…</Text>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={UI.colors.primary} />
       </View>
     );
   }
 
-  if (!ride) {
-    return (
-      <View style={styles.center}>
-        <Text>Uscita non trovata.</Text>
-      </View>
-    );
-  }
+  const dateLabel = ride.date
+    ? format(ride.date.toDate(), "EEEE d MMMM yyyy", { locale: it })
+    : "Data da definire";
+  const timeLabel = ride.dateTime
+    ? format(ride.dateTime.toDate(), "HH:mm")
+    : "--:--";
 
+  const guideLabel =
+    ride.guidaNames && ride.guidaNames.length > 0
+      ? ride.guidaNames.join(", ")
+      : ride.guidaName || "Da assegnare";
 
+  const bikeCategory = getBikeCategoryLabel(ride);
+  const status = getRideStatus(ride); // active, cancelled, archived
 
   return (
-    <>
-      <Screen
-        // Title/Subtitle props ignored by useNativeHeader={true}, handled manually below
-        title={undefined}
-        subtitle={undefined}
-        scroll={true}
-        useNativeHeader={true}
-        backgroundColor="#FDFCF8"
-      >
-
-        {/* STITCH HEADER + CHIPS + ACTIONS */}
-        {/* STITCH HEADER BLOCK (Top Bar) */}
-        <View style={styles.headerBlock}>
-          <View style={styles.headerRow}>
-            {/* Back Btn - Icon Only (Consistent with UsciteList) */}
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={{ marginRight: 8, padding: 4 }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="arrow-back" size={24} color="#1E293B" />
+    <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
+      {/* 
+        Unified Header
+        Back Button: Show
+        Right Action: IF Admin -> Edit Icon 
+      */}
+      <ScreenHeader
+        title={ride.title}
+        disableUppercase={true}
+        subtitle={
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+            <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 14, fontWeight: "500", color: "#64748B" }}>
+              {dateLabel} • {timeLabel}
+            </Text>
+          </View>
+        }
+        showBack={true}
+        rightAction={
+          (isAdmin || isGuide) && (
+            <TouchableOpacity onPress={() => navigation.navigate("CreateRide", { editMode: true, rideId })}>
+              <Ionicons name="pencil" size={20} color="#1E293B" />
             </TouchableOpacity>
+          )
+        }
+      />
 
-            <View style={{ flex: 1 }} />
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        {/* TOP CARD: Title, Badges, Main Info */}
+        <View style={styles.topCard}>
+          {/* Status Badge */}
+          <View style={styles.banner}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <StatusBadge status={status} />
+              <DifficultyBadge level={ride.difficulty} />
+            </View>
+          </View>
 
-            {/* Admin Actions */}
-            {isAdmin && (
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                {/* Show Edit Pencil only if active */}
-                {!isArchived && !isCancelled && (
+          <View style={{ padding: 16 }}>
+            {/* Title & Date removed from here, moved to Header */}
+
+            <View style={styles.infoGrid}>
+              {/* Type */}
+              <View style={styles.infoRow}>
+                <Ionicons name="bicycle-outline" size={18} color={UI.colors.action} />
+                <Text style={styles.infoText}>{bikeCategory}</Text>
+              </View>
+              {/* Location */}
+              <View style={styles.infoRow}>
+                <Ionicons name="location-outline" size={18} color={UI.colors.action} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.infoText}>{ride.meetingPoint}</Text>
                   <TouchableOpacity
-                    onPress={editRide}
-                    style={{ padding: 4 }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={() => {
+                      const query = encodeURIComponent(ride.meetingPoint);
+                      const url = Platform.select({
+                        ios: `maps:0,0?q=${query}`,
+                        android: `geo:0,0?q=${query}`,
+                      });
+                      if (url) Linking.openURL(url);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
                   >
-                    <Ionicons name="pencil-sharp" size={22} color="#1E293B" />
+                    <Text style={{ color: UI.colors.action, fontWeight: '700', fontSize: 13 }}>Apri mappa</Text>
+                    <Ionicons name="open-outline" size={14} color={UI.colors.action} style={{ marginLeft: 2 }} />
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={showAdminMenu}
-                  style={{ padding: 4 }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="ellipsis-horizontal-circle" size={30} color="#1E293B" />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* STITCH HEADER INFO SECTION (Below Top Bar) */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 4 }}>
-          <Text style={styles.headerTitle}>{ride.title || "Uscita"}</Text>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
-            <Ionicons name="calendar-outline" size={18} color="#64748B" style={{ marginRight: 6 }} />
-            <Text style={styles.headerSubtitle}>{whenText}</Text>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            {statusBadge}
-            <View style={[styles.chipBase, { backgroundColor: "#0F172A" }]}>
-              <Text style={[styles.chipText, { color: "#FFF" }]}>👥 {participantsLabel}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Removed Legacy Toolbar Block */}
-
-
-
-
-        {/* CARD HIGHLIGHT "LA TUA PRENOTAZIONE" */}
-        <View style={[styles.card, styles.highlightCard, { marginHorizontal: 16, marginTop: 8 }]}>
-          {/* Header della card prenotazione */}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-            <View style={[styles.checkCircle, myParticipant ? { backgroundColor: ACTION_GREEN } : { backgroundColor: "#cbd5e1" }]}>
-              <Ionicons name="checkmark" size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.highlightTitle}>
-                {myParticipant ? "La tua prenotazione" : "Non sei prenotato"}
-              </Text>
-              {myParticipant && (
-                <Text style={{ color: "#1e293b", marginTop: 2 }}>
-                  Sei prenotato come: <Text style={{ fontWeight: '700' }}>{formatCognomeNome(myParticipant.uid, myParticipant.name)}</Text>
-                </Text>
-              )}
-              <Text style={{ color: "#475569", marginTop: 2, fontStyle: myParticipant?.note ? 'normal' : 'italic' }}>
-                Nota: {myParticipant?.note || "Nessuna nota"}
-              </Text>
-
-              {/* Riepilogo Servizi (Sub-box) */}
-              {myParticipant && serviceQuestions.length > 0 && (
-                <View style={styles.myServicesBox}>
-                  {serviceQuestions.map((key) => {
-                    const answer = myParticipant.services?.[key];
-                    return (
-                      <Text key={key} style={styles.myServicesText}>
-                        • {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : answer === "no" ? "No" : "—"}
-                      </Text>
-                    );
-                  })}
                 </View>
-              )}
+              </View>
+              {/* Guide */}
+              <View style={styles.infoRow}>
+                <Ionicons name="person-outline" size={18} color={UI.colors.action} />
+                <Text style={styles.infoText}>Guida: <Text style={{ fontWeight: '600' }}>{guideLabel}</Text></Text>
+              </View>
             </View>
           </View>
+        </View>
 
-          {/* Warnings: Archived/Cancelled/Full */}
-          {isArchived && <Text style={{ color: "#6b7280", marginBottom: 8 }}>Uscita archiviata: sola visualizzazione.</Text>}
-          {isCancelled && <Text style={{ color: "#DC2626", fontWeight: "600", marginBottom: 8 }}>Uscita annullata.</Text>}
-          {!isBookable && !isArchived && !isCancelled && typeof ride.maxParticipants === "number" && (
-            <Text style={{ color: "#DC2626", marginBottom: 8 }}>Posti esauriti.</Text>
-          )}
-
-          {/* Actions */}
-          <View style={{ gap: 8 }}>
-            {myParticipant ? (
-              <>
-                <PrimaryButton
-                  label="Modifica nota"
-                  onPress={openNoteModal}
-                  disabled={!isBookable}
-                />
-                <TouchableOpacity
-                  onPress={leave}
-                  disabled={isArchived || isCancelled}
-                  style={{
-                    backgroundColor: "#F1F5F9",
-                    borderRadius: 12,
-                    paddingVertical: 12,
-                    alignItems: 'center',
-                    marginTop: 4
-                  }}
-                >
-                  <Text style={{ color: "#475569", fontWeight: '700' }}>Non Partecipo</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <PrimaryButton
-                label="Partecipa all'uscita"
-                onPress={openNoteModal}
-                disabled={!isBookable}
-                style={{ backgroundColor: ACTION_GREEN }} // Green join button
+        {/* DESCRIPTION */}
+        {ride.description && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Descrizione</Text>
+            {Platform.OS === "ios" ? (
+              <TextInput
+                value={ride.description}
+                editable={false}
+                multiline
+                scrollEnabled={false}
+                dataDetectorTypes={["link"]}
+                style={[styles.descriptionText, { padding: 0, color: "#475569" }]}
               />
+            ) : (
+              <Text style={styles.descriptionText} selectable>
+                {renderLinkedText(ride.description, handlePressLink)}
+              </Text>
             )}
           </View>
-        </View>
+        )}
 
-        {/* CARD DETTAGLI (Stitch Uniformed Layout) */}
-        <View style={[styles.card, { marginHorizontal: 16 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 8 }}>
-            <Ionicons name="information-circle" size={24} color={ACTION_GREEN} />
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Dettagli Uscita</Text>
-          </View>
-
-          {/* Ritrovo */}
-          <View style={{ marginBottom: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="location-outline" size={14} color="#94a3b8" />
-                <Text style={styles.gridLabel}>RITROVO</Text>
-              </View>
-              {ride.link && (
-                <TouchableOpacity onPress={openMap} style={{ flexDirection: 'row', alignItems: 'center' }} hitSlop={10}>
-                  <Text style={{ color: ACTION_GREEN, fontWeight: '600', fontSize: 13, marginRight: 4, textDecorationLine: 'underline' }}>Apri mappa</Text>
-                  <Ionicons name="open-outline" size={14} color={ACTION_GREEN} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={styles.gridValue}>{ride.meetingPoint || "—"}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Row: Guida | Bici */}
-          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="person-outline" size={14} color="#94a3b8" />
-                <Text style={styles.gridLabel}>GUIDA</Text>
-              </View>
-              <Text style={styles.gridValue}>{guideFullText}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="bicycle-outline" size={14} color="#94a3b8" />
-                <Text style={styles.gridLabel}>BICI</Text>
-              </View>
-              <Text style={styles.gridValue}>{bikesText}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Row: Difficoltà | Max */}
-          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="bar-chart-outline" size={14} color="#94a3b8" />
-                <Text style={styles.gridLabel}>DIFFICOLTÀ</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: getDifficultyMeta(ride.difficulty).color,
-                }} />
-                <Text style={styles.gridValue}>{getDifficultyMeta(ride.difficulty).label}</Text>
-              </View>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="people-outline" size={14} color="#94a3b8" />
-                <Text style={styles.gridLabel}>MAX PART.</Text>
-              </View>
-              <Text style={styles.gridValue}>{maxText}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Row: Quando */}
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <Ionicons name="calendar-clear-outline" size={14} color="#94a3b8" />
-              <Text style={styles.gridLabel}>QUANDO</Text>
-            </View>
-            <Text style={styles.gridValue}>{whenText}</Text>
-          </View>
-        </View>
-
-        {/* CARD DESCRIZIONE (Separata) */}
-        <View style={[styles.card, { marginHorizontal: 16, padding: 16 }]}>
-          <Text style={styles.sectionTitle}>Descrizione</Text>
-          <Row
-            label=""
-            value={ride.description?.trim() ? ride.description : "—"}
-            multiline
-            renderValue={() => {
-              const descriptionText = ride.description?.trim();
-              if (!descriptionText) return <Text style={{ color: "#666" }}>—</Text>;
-
-              const approxLines = descriptionText.split(/\r?\n/).length;
-              /* Removed Toggle Logic per request "Nessuna troncatura" */
-
-              return (
-                <View>
-                  {Platform.OS === "ios" ? (
-                    <TextInput
-                      value={descriptionText}
-                      editable={false}
-                      multiline
-                      scrollEnabled={false}
-                      contextMenuHidden={false}
-                      dataDetectorTypes={["link"]}
-                      style={{ color: "#222", padding: 0, fontSize: 15, lineHeight: 24 }}
-                    />
-                  ) : (
-                    <Text
-                      style={{ color: "#222", fontSize: 15, lineHeight: 24 }}
-                      selectable
-                    >
-                      {renderLinkedText(descriptionText)}
-                    </Text>
-                  )}
-
-                </View>
-              );
-            }}
-          />
-        </View>
-
-        {/* Elenco partecipanti */}
-        {/* TODO: blocco elenco partecipanti (lista + azioni admin) candidabile a sottocomponente riusabile. */}
-        {serviceQuestions.length > 0 && (
-          <View style={[styles.card, { marginHorizontal: 16, marginBottom: 16, padding: 16 }]}>
-            <Text style={styles.sectionTitle}>Servizi extra</Text>
-            <View style={{ gap: 10, marginTop: 8 }}>
-              {serviceQuestions.map((key) => (
-                <View
-                  key={key}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: "#111827", fontWeight: "600" }}>
-                    {getServiceLabel(key)}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor: ACTION_GREEN,
-                        }}
-                      />
-                      <Text style={{ color: "#111827", fontWeight: "600" }}>
-                        {serviceSummary[key].yes} Sì
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor: "#94A3B8",
-                        }}
-                      />
-                      <Text style={{ color: "#64748B", fontWeight: "600" }}>
-                        {serviceSummary[key].no} No
-                      </Text>
+        {/* EXTRA SERVICES SUMMARY */}
+        {serviceStatsSummary && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Riepilogo Servizi</Text>
+            <View style={styles.summaryCard}>
+              {serviceStatsSummary.keys.map(key => {
+                const label = ride.extraServices?.[key]?.label || SERVICE_LABELS[key as RideServiceKey];
+                const counts = serviceStatsSummary.stats[key];
+                return (
+                  <View key={key} style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>{label}</Text>
+                    <View style={styles.summaryBadges}>
+                      <View style={[styles.summaryBadge, { backgroundColor: "#dcfce7" }]}>
+                        <Text style={[styles.summaryBadgeText, { color: "#166534" }]}>SI: {counts.yes}</Text>
+                      </View>
+                      <View style={[styles.summaryBadge, { backgroundColor: "#f1f5f9" }]}>
+                        <Text style={[styles.summaryBadgeText, { color: "#64748b" }]}>NO: {counts.no}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
         )}
 
-        {/* CARD PARTECIPANTI (Stitch Preview + Expanded) */}
-        <View style={[styles.card, { marginHorizontal: 16, marginBottom: 32 }]}>
-          <View style={{ marginBottom: 16 }}>
-            {/* ROW 1: Title + Toggle */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
-                Partecipanti ({combinedParticipants.length})
-              </Text>
-
-              {/* Show All Toggle */}
-              {combinedParticipants.length > 5 && (
-                <TouchableOpacity onPress={() => setShowAllParticipants(!showAllParticipants)} hitSlop={10}>
-                  <Text style={{ color: ACTION_GREEN, fontWeight: '700', fontSize: 13 }}>
-                    {showAllParticipants ? "Nascondi" : "Mostra tutti"}
-                  </Text>
-                </TouchableOpacity>
+        {/* PARTICIPANTS */}
+        <View style={styles.section}>
+          {/* Join/Leave Actions moved here */}
+          {!isArchived && !isCancelled && (
+            <View style={{ marginBottom: 16 }}>
+              {userIsParticipant ? (
+                <Pressable
+                  style={[styles.bigButton, { backgroundColor: "#fee2e2", borderColor: "#fecaca" }]}
+                  onPress={handleLeave}
+                >
+                  <Text style={[styles.bigButtonText, { color: "#991b1b" }]}>Annulla iscrizione</Text>
+                </Pressable>
+              ) : (
+                canJoin ? (
+                  <Pressable
+                    style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
+                    onPress={() => setNoteModalVisible(true)}
+                    disabled={joining}
+                  >
+                    {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'uscita</Text>}
+                  </Pressable>
+                ) : (
+                  <View style={[styles.bigButton, { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" }]}>
+                    <Text style={[styles.bigButtonText, { color: "#94a3b8" }]}>
+                      {isFull ? "Lista Piena" : "Iscrizioni Chiuse"}
+                    </Text>
+                  </View>
+                )
               )}
             </View>
+          )}
 
-            {/* ROW 2: Admin Add CTA (Below title) */}
-            {isAdmin && (
-              <TouchableOpacity
-                onPress={openManualModal}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginTop: 8,
-                  alignSelf: 'flex-start'
-                }}
-                hitSlop={10}
-              >
-                <View style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  backgroundColor: ACTION_GREEN,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Ionicons name="add" size={16} color="#ffffff" />
-                </View>
-                <Text style={{ color: ACTION_GREEN, fontWeight: '600', fontSize: 14 }}>
-                  Aggiungi
-                </Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>
+              Partecipanti ({totalCount}{ride.maxParticipants ? `/${ride.maxParticipants}` : ""})
+            </Text>
+            {/* ONLY ADMIN/OWNER can add manual participants */}
+            {(isAdmin) && !isArchived && !isCancelled && (
+              <TouchableOpacity onPress={handleAddManual} style={styles.addManualBtn}>
+                <Ionicons name="add-circle" size={20} color={UI.colors.action} />
+                <Text style={styles.addManualText}>Aggiungi</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          {loadingParts ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <ActivityIndicator color={UI.colors.primary} />
-              <Text style={styles.participantPlaceholder}>Carico partecipanti…</Text>
-            </View>
-          ) : combinedParticipants.length === 0 ? (
-            <Text style={styles.participantPlaceholder}>Ancora nessun partecipante.</Text>
+          {allParticipants.length === 0 ? (
+            <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
           ) : (
-            <>
-              <FlatList
-                data={showAllParticipants ? combinedParticipants : combinedParticipants.slice(0, 5)}
-                keyExtractor={(item) => item.id}
-                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-                renderItem={({ item, index }) => (
-                  <View style={styles.participantRow}>
-                    {/* Avatar Placeholder */}
-                    <View style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      backgroundColor: '#f8fafc',
-                      borderWidth: 1,
-                      borderColor: '#e2e8f0',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginTop: 2
-                    }}>
-                      <Ionicons name="person" size={16} color="#64748b" />
+            allParticipants.map((p, idx) => (
+              <View key={p.id} style={styles.participantRow}>
+                <View style={styles.participantAvatar}>
+                  {p.photoURL ? (
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ddd', overflow: 'hidden' }}>
+                      {/* Image component would go here */}
+                      <Text style={{ textAlign: 'center', lineHeight: 32 }}>Img</Text>
                     </View>
-
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.participantName}>
-                        {formatCognomeNome(item.uid, item.name)}
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                        {item.manual && (
-                          <Text style={styles.participantManualTag}>MANUALE</Text>
-                        )}
-                        {/* Guide Badge (se combacia con guidaName) */}
-                        {(ride?.guidaName && item.name.includes(ride.guidaName)) || (ride?.guidaNames?.some(g => item.name.includes(g))) ? (
-                          <View style={{ backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 10, color: ACTION_GREEN, fontWeight: '700' }}>GUIDA</Text>
-                          </View>
-                        ) : null}
-
-                        {item.note && (
-                          <Text style={styles.participantNote}>
-                            {item.note}
-                          </Text>
-                        )}
-                      </View>
-
-
-                      {serviceQuestions.length > 0 && (
-                        (() => {
-                          const answered = serviceQuestions.filter((key) => {
-                            const answer = item.services?.[key];
-                            return answer === "yes" || answer === "no";
-                          });
-                          if (answered.length === 0) return null;
-                          return (
-                            <View style={styles.serviceChipRow}>
-                              {answered.map((key) => {
-                                const answer = item.services?.[key];
-                                if (answer !== "yes" && answer !== "no") return null;
-                                return (
-                                  <View
-                                    key={key}
-                                    style={[
-                                      styles.serviceChip,
-                                      answer === "yes" ? styles.serviceChipYes : styles.serviceChipNo,
-                                    ]}
-                                  >
-                                    <Text style={styles.serviceChipText}>
-                                      {SERVICE_LABELS[key]}: {answer === "yes" ? "Sì" : "No"}
-                                    </Text>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          );
-                        })()
-                      )}
+                  ) : (
+                    <View style={[styles.avatarPlaceholder, p.type === "manual" && { backgroundColor: "#f1f5f9" }]}>
+                      <Ionicons name={p.type === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
                     </View>
-
-                    {/* Trash Action */}
-                    {isAdmin && !isArchived && (
-                      <TouchableOpacity
-                        onPress={() => handleAdminRemove(item)}
-                        style={styles.participantAdminBtn}
-                        accessibilityLabel="Rimuovi partecipante"
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Ionicons name="trash" size={16} color={UI.colors.danger} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-                scrollEnabled={false}
-              />
-
-              {/* Footer in collapsed state */}
-              {!showAllParticipants && combinedParticipants.length > 5 && (
-                <TouchableOpacity
-                  onPress={() => setShowAllParticipants(true)}
-                  style={{ marginTop: 12, paddingVertical: 8, alignItems: 'center' }}
-                  hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
-                >
-                  <Text style={{ color: '#22c55e', fontWeight: '700', fontSize: 13 }}>
-                    + altri {combinedParticipants.length - 5} partecipanti
+                  )}
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.participantName}>
+                    {p.displayName} {p.isMe && "(Tu)"}
                   </Text>
-                </TouchableOpacity>
-              )}
-            </>
+                  {/* Show Note if present */}
+                  {p.note && (
+                    <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
+                      "{p.note}"
+                    </Text>
+                  )}
+                  {/* Show Services if present */}
+                  {p.services && (
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                      {Object.keys(p.services).map(key => {
+                        const val = p.services[key]; // "yes" or "no"
+                        if (val !== "yes") return null;
+                        const label = SERVICE_LABELS[key as RideServiceKey] || key;
+                        return (
+                          <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 10, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {/* Show generic label if manual and nothing else */}
+                  {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
+                </View>
+                {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
+                {(isAdmin || p.isMe) && (
+                  <TouchableOpacity onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))} style={{ padding: 4 }}>
+                    <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))
           )}
         </View>
 
-        <View style={{ height: 24 }} />
-      </Screen>
 
-      <Modal
-        visible={noteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeNoteModal}
-      >
-        <KeyboardAvoidingView
-          enabled={Platform.OS === "ios"}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
-          style={styles.modalWrap}
+
+        {/* MODALS */}
+        <Modal
+          visible={noteModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNoteModalVisible(false)}
         >
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={[
-              styles.modalScrollContent,
-              Platform.OS === "android" && styles.modalScrollContentAndroid,
-            ]}
-            keyboardShouldPersistTaps="handled"
-            bounces={false}
-          >
-            <View style={[styles.modalCard, { gap: 12 }]}>
-              <Text style={styles.modalTitle}>Conferma partecipazione</Text>
-              <Text style={{ color: "#475569" }}>
-                Puoi aggiungere una nota per l'organizzatore (opzionale).
-              </Text>
-              {serviceQuestions.length > 0 && (
-                <View style={styles.serviceModalBlock}>
-                  <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
-                  <Text style={styles.serviceHelperText}>Rispondi per ciascun servizio abilitato.</Text>
-                  {serviceQuestions.map((key) => {
-                    const current = joinServices[key];
-                    return (
-                      <View key={key} style={styles.serviceQuestionRow}>
-                        <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
-                        <View style={styles.serviceQuestionButtons}>
-                          {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
-                            <TouchableOpacity
-                              key={choice}
-                              onPress={() =>
-                                setJoinServices((prev) => ({ ...prev, [key]: choice }))
-                              }
-                              style={[
-                                styles.serviceOptionBtn,
-                                current === choice && styles.serviceOptionBtnActive,
-                              ]}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${getServiceLabel(key)}: ${choice === "yes" ? "Sì" : "No"
-                                }`}
-                            >
-                              <Text
-                                style={[
-                                  styles.serviceOptionText,
-                                  current === choice && styles.serviceOptionTextActive,
-                                ]}
-                              >
-                                {choice === "yes" ? "Sì" : "No"}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    );
-                  })}
-                  {!isServiceSelectionComplete && (
-                    <Text style={styles.serviceHelper}>Rispondi a tutte le domande per proseguire.</Text>
-                  )}
-                </View>
-              )}
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Partecipa all'Uscita</Text>
+              <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
+
               <TextInput
+                style={styles.modalInput}
+                placeholder="Es. Arrivo in ritardo, sono vegano..."
                 value={noteText}
                 onChangeText={setNoteText}
-                style={styles.modalInput}
-                placeholder="Nota (opzionale)"
                 multiline
+                numberOfLines={3}
               />
-              <View style={styles.modalActions}>
+
+              {/* SERVICE SELECTION */}
+              {SERVICE_KEYS.map((key) => {
+                const cfg = ride.extraServices?.[key];
+                if (!cfg?.enabled) return null;
+                const label = cfg.label || SERVICE_LABELS[key];
+                const currentVal = joinServices[key];
+
+                return (
+                  <View key={key} style={styles.serviceRow}>
+                    <Text style={styles.serviceLabel}>{label}</Text>
+                    <View style={styles.serviceToggles}>
+                      <TouchableOpacity
+                        onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
+                        style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
+                      >
+                        <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
+                        style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
+                      >
+                        <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <View style={styles.modalButtons}>
                 <TouchableOpacity
-                  onPress={closeNoteModal}
-                  style={styles.modalActionSecondary}
-                  disabled={joinSaving}
+                  style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                  onPress={() => setNoteModalVisible(false)}
                 >
-                  <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+                  <Text style={styles.modalBtnTextCancel}>Annulla</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={confirmJoin}
-                  style={[
-                    styles.modalActionPrimary,
-                    (joinSaving || !isServiceSelectionComplete) && { opacity: 0.6 },
-                  ]}
-                  disabled={joinSaving || !isServiceSelectionComplete}
+                  style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                  onPress={handleJoin}
                 >
-                  <Text style={styles.modalActionPrimaryText}>
-                    {joinSaving ? "Salvo…" : "Conferma"}
-                  </Text>
+                  <Text style={styles.modalBtnTextConfirm}>Conferma</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+          </View>
+        </Modal>
 
-      <Modal
-        visible={manualModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeManualModal}
-      >
-        <KeyboardAvoidingView
-          enabled={Platform.OS === "ios"}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
-          style={styles.modalWrap}
+        <Modal
+          visible={manualModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setManualModalVisible(false)}
         >
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalScrollContent}
-            keyboardShouldPersistTaps="handled"
-            bounces={false}
-          >
-            <View style={[styles.modalCard, { gap: 12 }]}>
-              <Text style={styles.modalTitle}>Aggiungi partecipante manuale</Text>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Aggiungi Partecipante</Text>
+
+              <Text style={styles.label}>Nome e Cognome *</Text>
               <TextInput
+                style={styles.input}
+                placeholder="Mario Rossi"
                 value={manualName}
                 onChangeText={setManualName}
-                style={styles.modalField}
-                placeholder="Nome e cognome"
-                autoCapitalize="words"
               />
+
+              <Text style={[styles.label, { marginTop: 12 }]}>Note (Opzionale)</Text>
               <TextInput
+                style={styles.input}
+                placeholder="Note..."
                 value={manualNote}
                 onChangeText={setManualNote}
-                style={styles.modalInput}
-                placeholder="Nota (opzionale)"
-                multiline
               />
-              {serviceQuestions.length > 0 && (
-                <View style={styles.serviceModalBlock}>
-                  <Text style={styles.serviceBlockTitle}>Servizi extra</Text>
-                  <Text style={styles.serviceHelperText}>Segnala le scelte del partecipante.</Text>
-                  {serviceQuestions.map((key) => {
-                    const current = manualServices[key];
-                    return (
-                      <View key={key} style={styles.serviceQuestionRow}>
-                        <Text style={styles.serviceQuestionLabel}>{getServiceLabel(key)}</Text>
-                        <View style={styles.serviceQuestionButtons}>
-                          {(["yes", "no"] as RideServiceChoice[]).map((choice) => (
-                            <TouchableOpacity
-                              key={choice}
-                              onPress={() =>
-                                setManualServices((prev) => ({ ...prev, [key]: choice }))
-                              }
-                              style={[
-                                styles.serviceOptionBtn,
-                                current === choice && styles.serviceOptionBtnActive,
-                              ]}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${getServiceLabel(key)}: ${choice === "yes" ? "Sì" : "No"
-                                }`}
-                            >
-                              <Text
-                                style={[
-                                  styles.serviceOptionText,
-                                  current === choice && styles.serviceOptionTextActive,
-                                ]}
-                              >
-                                {choice === "yes" ? "Sì" : "No"}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    );
-                  })}
-                  {!isManualServiceSelectionComplete && (
-                    <Text style={styles.serviceHelper}>Compila tutte le risposte per procedere.</Text>
-                  )}
-                </View>
-              )}
-              <View style={styles.modalActions}>
+
+              {/* SERVICE SELECTION MANUAL */}
+              {SERVICE_KEYS.map((key) => {
+                const cfg = ride.extraServices?.[key];
+                if (!cfg?.enabled) return null;
+                const label = cfg.label || SERVICE_LABELS[key];
+                const currentVal = manualServices[key];
+
+                return (
+                  <View key={key} style={styles.serviceRow}>
+                    <Text style={styles.serviceLabel}>{label}</Text>
+                    <View style={styles.serviceToggles}>
+                      <TouchableOpacity
+                        onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
+                        style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
+                      >
+                        <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
+                        style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
+                      >
+                        <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <View style={styles.modalButtons}>
                 <TouchableOpacity
-                  onPress={closeManualModal}
-                  style={styles.modalActionSecondary}
-                  disabled={manualSaving}
+                  style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                  onPress={() => {
+                    setManualModalVisible(false);
+                    setManualName("");
+                    setManualNote("");
+                  }}
                 >
-                  <Text style={styles.modalActionSecondaryText}>Annulla</Text>
+                  <Text style={styles.modalBtnTextCancel}>Annulla</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={confirmManualAdd}
-                  style={[
-                    styles.modalActionPrimary,
-                    (!canSubmitManual || manualSaving) && { opacity: 0.6 },
-                  ]}
-                  disabled={!canSubmitManual || manualSaving}
+                  style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                  onPress={handleConfirmManual}
                 >
-                  <Text style={styles.modalActionPrimaryText}>
-                    {manualSaving ? "Salvo…" : "Aggiungi"}
-                  </Text>
+                  <Text style={styles.modalBtnTextConfirm}>Aggiungi</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-    </>
-  );
-}
+          </View>
+        </Modal>
 
-// Riga standard della scheda
-function Row({
-  label,
-  value,
-  multiline,
-  renderValue,
-}: {
-  label: string;
-  value: string;
-  multiline?: boolean;
-  renderValue?: () => React.ReactNode;
-}) {
-  return (
-    <View style={{ marginBottom: 10 }}>
-      <Text style={{ fontWeight: "700", marginBottom: 4 }}>{label}</Text>
-      {renderValue ? (
-        renderValue()
-      ) : (
-        <Text style={{ color: "#222" }}>{multiline ? value : value}</Text>
-      )}
-    </View>
+        {/* SHARE & CALENDAR */}
+        <View style={styles.actionGrid}>
+          <TouchableOpacity style={styles.actionTile} onPress={handleShare}>
+            <Ionicons name="share-social-outline" size={22} color={UI.colors.primary} />
+            <Text style={styles.actionTileText}>Condividi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionTile} onPress={handleAddToCalendar}>
+            <Ionicons name="calendar-outline" size={22} color={UI.colors.primary} />
+            <Text style={styles.actionTileText}>Salva in Calendario</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ADMIN DANGER ZONE */}
+        {(isAdmin || isGuide) && (
+          <View style={styles.adminZone}>
+            <Text style={styles.adminTitle}>Gestione Amministratore</Text>
+            {status === "active" && (
+              <TouchableOpacity style={styles.adminRow} onPress={handleCancelRide}>
+                <Ionicons name="close-circle" size={20} color="#ef4444" />
+                <Text style={[styles.adminRowText, { color: "#ef4444" }]}>Annulla Uscita</Text>
+              </TouchableOpacity>
+            )}
+            {status === "cancelled" && (
+              <TouchableOpacity style={styles.adminRow} onPress={handleRestoreRide}>
+                <Ionicons name="refresh-circle" size={20} color="#f59e0b" />
+                <Text style={[styles.adminRowText, { color: "#f59e0b" }]}>Ripristina Uscita</Text>
+              </TouchableOpacity>
+            )}
+            {isAdmin && (
+              <TouchableOpacity style={styles.adminRow} onPress={handleDeleteRide}>
+                <Ionicons name="trash" size={20} color="#991b1b" />
+                <Text style={[styles.adminRowText, { color: "#991b1b" }]}>Elimina Definitivamente</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+      </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  // HEADER CUSTOM
-  headerBlock: {
-    marginBottom: 0, // removed bottom margin to glue with content if needed, but 16 is fine
-    marginTop: Platform.OS === 'ios' ? 24 : 8,
-    gap: 16,
-    paddingHorizontal: 16, // Added padding since removed from Screen? Screen has padding usually.
-    // Screen component has padding: UI.spacing.lg (20/16). 
-    // If wrapping View has marginHorizontal, double check.
-    // Let's assume Screen wrapper padding exists. 
-    // Actually, Screen implementation: padding: UI.spacing.lg.
-    // So internal elements don't need marginHorizontal 16 if they want to be aligned.
-    // BUT the cards have marginHorizontal 16 in original code.
-    // Let's keep consistency.
-  },
-  chipBase: {
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  participantChip: {
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    backgroundColor: "#0F172A",
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  highlightCard: {
-    borderColor: ACTION_GREEN,
-    backgroundColor: "#f0fdf4", // Light green tint
-    borderWidth: 1,
-  },
-  showAllBtn: {
-    paddingVertical: 12,
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-    marginTop: 8,
-  },
-  showAllBtnText: {
-    color: UI.colors.primary,
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#f1f5f9",
-    marginVertical: 12,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "flex-start", // Ensure top alignment
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#1E293B",
-    letterSpacing: -0.5,
-    lineHeight: 28,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#64748B",
-    marginTop: 2,
-  },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 20, fontWeight: "800", flexShrink: 1, paddingRight: 12 },
-  card: {
-    borderRadius: 24, // Rounder Stitch cards
-    padding: 20,
+  // Top Card
+  topCard: {
+    margin: 16,
     backgroundColor: "#fff",
-    marginTop: 16,
-    // Stitch soft shadow
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+    overflow: "hidden",
+  },
+  banner: { paddingVertical: 8, alignItems: "center", justifyContent: "center" },
+  bannerText: { fontWeight: "800", fontSize: 13, letterSpacing: 1 },
+  topCardContent: { padding: 20 },
+  badgesRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: "800", color: "#0F172A", marginBottom: 16, lineHeight: 30 },
+  infoGrid: { gap: 12 },
+  infoRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  infoText: { fontSize: 16, color: "#334155", fontWeight: "500", flex: 1 },
+
+  // Sections
+  section: { paddingHorizontal: 20, marginTop: 24 },
+  sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1E293B" },
+  descriptionText: { fontSize: 16, lineHeight: 24, color: "#475569" },
+
+  // Participants
+  addManualBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
+  addManualText: { color: UI.colors.action, fontWeight: "700", fontSize: 13 },
+  participantRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  participantAvatar: {},
+  avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center" },
+  participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
+  participantSub: { fontSize: 12, color: "#94a3b8" },
+  emptyText: { color: "#94a3b8", fontStyle: "italic", marginTop: 4 },
+
+  // Buttons
+  bigButton: {
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+    shadowColor: UI.colors.action,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     elevation: 3,
   },
+  bigButtonText: { color: "#ffffff", fontWeight: "800", fontSize: 16 },
 
-  // NEW STITCH STYLES
-  highlightTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  checkCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  gridLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 0, // removed bottom margin to allow container control
-  },
-  gridValue: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1e293b",
-    lineHeight: 20,
-  },
-  participantManualTag: {
-    color: UI.colors.accentWarm,
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  // END NEW STYLES
+  // Action Grid
+  actionGrid: { flexDirection: "row", gap: 12, paddingHorizontal: 16, marginTop: 24 },
+  actionTile: { flex: 1, backgroundColor: "#f8fafc", padding: 16, borderRadius: 12, alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "#e2e8f0" },
+  actionTileText: { fontWeight: "600", color: "#475569", fontSize: 13 },
 
-  sectionTitle: { fontSize: 18, fontWeight: "800", marginBottom: 16, color: "#0f172a" },
-  participantRow: {
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  participantName: {
-    fontWeight: "700",
-    color: "#334155",
-    fontSize: 15,
-  },
-  participantNote: {
-    color: "#64748b",
-    fontSize: 13.5,
-    fontStyle: "italic",
-    lineHeight: 20,
-    marginTop: 4,
-    width: '100%',
-  },
-  participantPlaceholder: {
-    color: "#94a3b8",
-    fontStyle: "italic",
-  },
-  participantAdminBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: 'rgba(220, 38, 38, 0.1)', // Light danger red
-    borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.2)',
-    marginTop: 2,
-  },
-  serviceSummaryBox: {
-    marginTop: 4,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#f1f5f9",
-    gap: 4,
-  },
-  serviceSummaryText: {
-    color: "#1f2937",
-    fontWeight: "600",
-  },
-  serviceBlockTitle: {
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  // ... other styles preserved
-  serviceModalBlock: {
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: "#f8fafc",
-  },
-  serviceHelperText: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  serviceQuestionRow: {
-    gap: 8,
-  },
-  serviceQuestionLabel: {
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-  serviceQuestionButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  serviceOptionBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  serviceOptionBtnActive: {
-    borderColor: UI.colors.primary,
-    backgroundColor: UI.colors.primary,
-  },
-  serviceOptionText: {
-    fontWeight: "600",
-    color: "#1f2937",
-  },
-  serviceOptionTextActive: {
-    color: "#fff",
-  },
-  serviceHelper: {
-    color: "#b91c1c",
-    fontSize: 12,
-  },
-  myServicesBox: {
-    marginTop: 8,
-    gap: 4,
-  },
-  myServicesText: {
-    color: "#1f2937",
-  },
-  serviceChipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  serviceChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  serviceChipYes: {
-    backgroundColor: "#dcfce7",
-  },
-  serviceChipNo: {
-    backgroundColor: "#fee2e2",
-  },
-  serviceChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-  modalWrap: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalCard: {
-    width: "100%",
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    padding: 16,
-  },
-  modalScroll: { flex: 1, width: "100%" },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 16,
-  },
-  modalScrollContentAndroid: {
-    justifyContent: "flex-start",
-    paddingBottom: 24,
-  },
-  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
-  modalField: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
-    fontSize: 16,
-    color: UI.colors.text,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    minHeight: 80,
-    textAlignVertical: "top",
-    backgroundColor: "#fff",
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 4,
-  },
-  modalActionSecondary: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: "#e2e8f0",
-  },
-  modalActionSecondaryText: { color: "#1f2937", fontWeight: "700" },
-  modalActionPrimary: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: UI.colors.primary,
-  },
-  modalActionPrimaryText: { color: "#fff", fontWeight: "800" },
-  mapLinkBtn: {
-    backgroundColor: "#0F172A",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 4,
-  },
-  mapLinkText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  linkRow: {
-    marginBottom: 0,
-  },
-  linkLabel: { display: 'none' }, // hidden in Stitch
-});
+  // Admin
+  adminZone: { marginTop: 40, padding: 20, backgroundColor: "#fef2f2", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  adminTitle: { fontSize: 14, fontWeight: "800", color: "#991b1b", marginBottom: 16, textTransform: "uppercase" },
+  adminRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(153, 27, 27, 0.1)" },
+  adminRowText: { fontSize: 15, fontWeight: "700" },
 
-const adminStyles = StyleSheet.create({
-  toolbar: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
+  modalContent: { backgroundColor: "#fff", borderRadius: 20, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 10 },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#1E293B", marginBottom: 8, textAlign: "center" },
+  modalSubtitle: { fontSize: 15, color: "#64748b", marginBottom: 20, textAlign: "center" },
+  modalInput: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 12, fontSize: 16, color: "#334155", textAlignVertical: "top", minHeight: 80 },
+  label: { fontSize: 14, fontWeight: "700", color: "#475569", marginBottom: 6 },
+  input: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 12, fontSize: 16, color: "#334155" },
+  modalButtons: { flexDirection: "row", gap: 12, marginTop: 24 },
+  modalBtn: { flex: 1, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  modalBtnTextCancel: { color: "#64748b", fontWeight: "700", fontSize: 16 },
+  modalBtnTextConfirm: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
+  // Services
+  serviceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, backgroundColor: "#f8fafc", padding: 10, borderRadius: 12 },
+  serviceLabel: { fontSize: 14, fontWeight: "600", color: "#334155", flex: 1 },
+  serviceToggles: { flexDirection: "row", gap: 8 },
+  choiceBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
+  choiceBtnSelected: { backgroundColor: UI.colors.primary, borderColor: UI.colors.primary },
+  choiceText: { fontSize: 13, fontWeight: "700", color: "#64748b" },
+  choiceTextSelected: { color: "#fff" },
+
+  // Summary
+  summaryCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginTop: 12, borderWidth: 1, borderColor: "#e2e8f0" },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  summaryLabel: { fontSize: 15, fontWeight: "600", color: "#334155" },
+  summaryBadges: { flexDirection: "row", gap: 8 },
+  summaryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  summaryBadgeText: { fontSize: 12, fontWeight: "700" },
 });

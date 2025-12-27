@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "bike-hike-italia"
-  }
+    "default": "bike-hike-italia",
+    "bike-hike-italia": "bike-hike-italia"
+  },
+  "targets": {},
+  "etags": {}
 }

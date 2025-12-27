@@ -46,7 +46,7 @@ import type { RootStackParamList } from "../navigation/types";
 import { Ionicons } from "@expo/vector-icons";
 
 // --- CONSTANTS ---
-const ACTION_GREEN = "#22c55e"; // Main action color
+
 
 
 type FieldErrors = {
@@ -643,7 +643,7 @@ export default function CreateRideScreen() {
   // TODO: sezione UI principale molto ampia; valutare estrazione in sottocomponenti (es. form principale, feedback, warning).
   const getDifficultyColor = (diff: string) => {
     switch (diff) {
-      case "Facile": return "#22c55e";
+      case "Facile": return UI.colors.action;
       case "Medio/Moderato": return "#f97316";
       case "Difficile/Impegnativo": return "#ef4444";
       case "Estremo": return "#000000";
@@ -747,7 +747,7 @@ export default function CreateRideScreen() {
             {/* CARD 1: INFO GENERALI */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="information-circle-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="information-circle-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Informazioni</Text>
               </View>
 
@@ -784,7 +784,7 @@ export default function CreateRideScreen() {
             {/* CARD 2: TIPO & DIFFICOLTÀ */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="bicycle-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="bicycle-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Tipologia</Text>
               </View>
 
@@ -799,7 +799,7 @@ export default function CreateRideScreen() {
                         onPress={() => toggleBike(b)}
                         style={[styles.chip, active && styles.chipActive]}
                       >
-                        {active && <Ionicons name="checkmark" size={16} color={ACTION_GREEN} />}
+                        {active && <Ionicons name="checkmark" size={16} color={UI.colors.action} />}
                         <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
                       </Pressable>
                     );
@@ -832,7 +832,7 @@ export default function CreateRideScreen() {
             {/* CARD 3: DATA & DOVE */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="calendar-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="calendar-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Quando e Dove</Text>
               </View>
 
@@ -899,7 +899,7 @@ export default function CreateRideScreen() {
             {/* CARD 4: DESCRIZIONE */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="document-text-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="document-text-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Descrizione</Text>
               </View>
               <TextInput
@@ -915,7 +915,7 @@ export default function CreateRideScreen() {
             {/* CARD 5: PARTECIPAZIONE */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="people-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="people-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Partecipazione</Text>
               </View>
               <View style={styles.formBlock}>
@@ -938,7 +938,7 @@ export default function CreateRideScreen() {
             {/* CARD 6: SERVIZI EXTRA */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="fast-food-outline" size={22} color={ACTION_GREEN} />
+                <Ionicons name="fast-food-outline" size={22} color={UI.colors.action} />
                 <Text style={styles.cardTitle}>Servizi Extra</Text>
               </View>
               <Text style={styles.helperText}>
@@ -975,7 +975,7 @@ export default function CreateRideScreen() {
                       >
                         <View style={styles.serviceRowLeft}>
                           <View style={styles.serviceIconWrap}>
-                            <Ionicons name={EXTRA_SERVICE_ICONS[key]} size={18} color={ACTION_GREEN} />
+                            <Ionicons name={EXTRA_SERVICE_ICONS[key]} size={18} color={UI.colors.action} />
                           </View>
                           <View style={styles.serviceToggleText}>
                             <Text style={styles.serviceToggleLabel}>{label}</Text>
@@ -987,7 +987,7 @@ export default function CreateRideScreen() {
                             value={state.enabled}
                             onValueChange={(value) => toggleExtraService(key, value)}
                             disabled={isToggleLocked}
-                            trackColor={{ false: "#cbd5f5", true: ACTION_GREEN }}
+                            trackColor={{ false: "#cbd5f5", true: UI.colors.action }}
                             ios_backgroundColor="#cbd5f5"
                             thumbColor={Platform.OS === "android" ? "#fff" : undefined}
                           />
@@ -1199,7 +1199,7 @@ const styles = StyleSheet.create({
     borderColor: "#EF4444",
   },
   inputFocus: {
-    borderColor: ACTION_GREEN, // We manually apply this if we can track focus, or just rely on default
+    borderColor: UI.colors.action, // We manually apply this if we can track focus, or just rely on default
   },
   textArea: {
     minHeight: 120,
@@ -1245,8 +1245,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chipActive: {
-    backgroundColor: "rgba(34, 197, 94, 0.08)", // ACTION_GREEN with opacity
-    borderColor: ACTION_GREEN,
+    backgroundColor: "rgba(34, 197, 94, 0.08)", // UI.colors.action with opacity
+    borderColor: UI.colors.action,
   },
   chipText: {
     fontSize: 14,
@@ -1254,7 +1254,7 @@ const styles = StyleSheet.create({
     color: "#475569",
   },
   chipTextActive: {
-    color: ACTION_GREEN,
+    color: UI.colors.action,
   },
 
   // DIFFICULTY DOTS
@@ -1390,12 +1390,12 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === "ios" ? 32 : 16,
   },
   saveBtn: {
-    backgroundColor: ACTION_GREEN,
+    backgroundColor: UI.colors.action,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: ACTION_GREEN,
+    shadowColor: UI.colors.action,
     shadowOpacity: 0.25,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -1440,7 +1440,7 @@ const styles = StyleSheet.create({
   },
   pickerHeaderBtn: { padding: 8 },
   pickerHeaderText: { fontSize: 16, color: "#475569" },
-  pickerHeaderTextPrimary: { color: ACTION_GREEN, fontWeight: "700" },
+  pickerHeaderTextPrimary: { color: UI.colors.action, fontWeight: "700" },
   pickerPreviewRow: { alignItems: "center", paddingBottom: 16 },
   pickerPreviewLabel: { fontSize: 20, fontWeight: "700", color: "#1E293B" },
   iosPicker: { width: "100%", height: 200 },

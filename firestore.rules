@@ -31,12 +31,20 @@ service cloud.firestore {
 
     function approvedIsTrue() {
       return currentUserData().keys().hasAny(['approved'])
-        && currentUserData().approved == true;
+        && (
+          currentUserData().approved == true
+          || currentUserData().approved == 'true'
+          || currentUserData().approved == 1
+        );
     }
 
     function notDisabledTrue() {
       return !currentUserData().keys().hasAny(['disabled'])
-        || currentUserData().disabled != true;
+        || (
+          currentUserData().disabled != true
+          && currentUserData().disabled != 'true'
+          && currentUserData().disabled != 1
+        );
     }
 
     function canReadRides() {
@@ -600,11 +608,19 @@ service cloud.firestore {
           let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
           return request.resource.data.keys().hasOnly(allowed)
             && request.resource.data.uid == uid
-            && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120
+            && (
+              !has('name')
+              || request.resource.data.name == null
+              || (
+                request.resource.data.name is string
+                && request.resource.data.name.size() > 0
+                && request.resource.data.name.size() <= 120
+              )
+            )
             && (!has('displayName') || request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120))
             && (!has('nickname') || request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120))
             && (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500))
-            && request.resource.data.createdAt is timestamp
+            && (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time)
             && (!has('services') || validServiceResponses(request.resource.data.services));
         }
 
@@ -622,7 +638,7 @@ service cloud.firestore {
             && (!(changed.hasAny(['displayName']) || added.hasAny(['displayName'])) || (request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120)))
             && (!(changed.hasAny(['nickname']) || added.hasAny(['nickname'])) || (request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120)))
             && (!(changed.hasAny(['note']) || added.hasAny(['note'])) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
-            && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || request.resource.data.createdAt is timestamp)
+            && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time))
             && (!(changed.hasAny(['services']) || added.hasAny(['services'])) || validServiceResponses(request.resource.data.services));
         }
       }

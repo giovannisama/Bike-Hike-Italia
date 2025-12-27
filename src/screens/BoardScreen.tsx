@@ -1,8 +1,8 @@
+// src/screens/BoardScreen.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -13,7 +13,6 @@ import {
   Text,
   TextInput,
   View,
-  Linking,
   TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,18 +29,19 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { Screen, UI } from "../components/Screen";
-import { PrimaryButton, PillButton } from "../components/Button";
+import { ScreenHeader } from "../components/ScreenHeader"; // Unified Header
+import { PrimaryButton } from "../components/Button";
 import { auth, db, storage } from "../firebase";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import * as ImageManipulator from "expo-image-manipulator";
 import { useFocusEffect } from "@react-navigation/native";
 import { saveBoardLastSeen } from "../utils/boardStorage";
-import { renderLinkedText } from "../utils/renderLinkedText";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
+// Types
 type BoardItem = {
   id: string;
   title: string | null;
@@ -67,7 +67,6 @@ type EditorState = {
   title: string;
   description: string;
   image: LocalImage | null;
-  // Toggles
   includeTitle: boolean;
   includeImage: boolean;
   includeDescription: boolean;
@@ -95,7 +94,7 @@ const normalize = (value: string) =>
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
 
-const ACTION_GREEN = "#22c55e";
+// Removed local ACTION_GREEN -> using UI.colors.action
 
 export default function BoardScreen({ navigation, route }: any) {
   const { isAdmin, isOwner, loading: profileLoading } = useCurrentProfile();
@@ -147,13 +146,9 @@ export default function BoardScreen({ navigation, route }: any) {
   // Filter Logic
   const filteredItems = useMemo(() => {
     let result = items;
-    // Filter by tab
-    if (filter === "active") {
-      result = result.filter(i => !i.archived);
-    } else {
-      result = result.filter(i => i.archived);
-    }
-    // Filter by search
+    if (filter === "active") result = result.filter(i => !i.archived);
+    else result = result.filter(i => i.archived);
+
     if (search.trim()) {
       const q = normalize(search);
       result = result.filter(i =>
@@ -164,14 +159,12 @@ export default function BoardScreen({ navigation, route }: any) {
     return result;
   }, [items, filter, search]);
 
-  // Mark as seen on navigation
   useFocusEffect(
     useCallback(() => {
       saveBoardLastSeen();
     }, [])
   );
 
-  // Helper: Open Editor
   const handleEdit = useCallback((item: BoardItem) => {
     setEditor({
       id: item.id,
@@ -196,13 +189,11 @@ export default function BoardScreen({ navigation, route }: any) {
     }
   }, [route.params?.editPostId, items, handleEdit, navigation]);
 
-  // Helper: Reset Editor
   const resetCompose = () => {
     setEditor(createEmptyEditorState());
     setComposeOpen(false);
   };
 
-  // Image Picker
   const handlePickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -226,53 +217,26 @@ export default function BoardScreen({ navigation, route }: any) {
 
   const editorPreviewUri = editor.image ? editor.image.uri : null;
 
-  // Save Logic
   const handleSave = async () => {
     if (!userId) return;
-
-    // Validate
-    if (editor.includeTitle && !editor.title.trim()) {
-      Alert.alert("Titolo mancante", "Inserisci un titolo o disabilitalo.");
-      return;
-    }
-    if (editor.includeDescription && !editor.description.trim()) {
-      Alert.alert("Descrizione mancante", "Inserisci una descrizione o disabilitala.");
-      return;
-    }
-    if (editor.includeImage && !editor.image) {
-      Alert.alert("Immagine mancante", "Seleziona un'immagine o disabilitala.");
-      return;
-    }
-    if (!editor.includeTitle && !editor.includeDescription && !editor.includeImage) {
-      Alert.alert("Vuoto", "La news deve contenere almeno un elemento.");
-      return;
-    }
+    if (editor.includeTitle && !editor.title.trim()) { Alert.alert("Titolo mancante", "Inserisci un titolo o disabilitalo."); return; }
+    if (editor.includeDescription && !editor.description.trim()) { Alert.alert("Descrizione mancante", "Inserisci una descrizione o disabilitala."); return; }
+    if (editor.includeImage && !editor.image) { Alert.alert("Immagine mancante", "Seleziona un'immagine o disabilitala."); return; }
+    if (!editor.includeTitle && !editor.includeDescription && !editor.includeImage) { Alert.alert("Vuoto", "La news deve contenere almeno un elemento."); return; }
 
     setSaving(true);
     try {
-      const docData: any = {
-        updatedAt: serverTimestamp(),
-      };
+      const docData: any = { updatedAt: serverTimestamp() };
+      if (editor.includeTitle) docData.title = editor.title.trim(); else docData.title = deleteField();
+      if (editor.includeDescription) docData.description = editor.description.trim(); else docData.description = deleteField();
 
-      // Handle Title
-      if (editor.includeTitle) docData.title = editor.title.trim();
-      else docData.title = deleteField();
-
-      // Handle Description
-      if (editor.includeDescription) docData.description = editor.description.trim();
-      else docData.description = deleteField();
-
-      // Handle Image
       if (editor.includeImage && editor.image) {
         const isNewImage = !editor.image.uri.startsWith("http");
-
         if (isNewImage) {
           const manipResult = await ImageManipulator.manipulateAsync(
-            editor.image.uri,
-            [{ resize: { width: 1080 } }],
+            editor.image.uri, [{ resize: { width: 1080 } }],
             { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
           );
-
           const response = await fetch(manipResult.uri);
           const blob = await response.blob();
           const filename = `board/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
@@ -282,7 +246,7 @@ export default function BoardScreen({ navigation, route }: any) {
 
           docData.imageUrl = downloadUrl;
           docData.imageStoragePath = filename;
-          docData.imageBase64 = deleteField();
+          docData.imageBase64 = deleteField(); // Clean up old base64
         }
       } else {
         docData.imageUrl = deleteField();
@@ -301,7 +265,6 @@ export default function BoardScreen({ navigation, route }: any) {
         Alert.alert("Successo", "News pubblicata.");
       }
       resetCompose();
-
     } catch (err) {
       console.error(err);
       Alert.alert("Errore", "Impossibile salvare la news.");
@@ -310,21 +273,15 @@ export default function BoardScreen({ navigation, route }: any) {
     }
   };
 
-
   const renderItem = useCallback(
     ({ item }: { item: BoardItem }) => {
       const dateObj = item.createdAt;
-      // Date components
       const day = dateObj ? dateObj.toLocaleDateString("it-IT", { day: "2-digit" }) : "--";
       const monthShort = dateObj ? dateObj.toLocaleDateString("it-IT", { month: "short" }).toUpperCase().replace(".", "") : "";
       const year = dateObj ? dateObj.getFullYear() : "----";
 
-      const descriptionText =
-        item.hasDescription && item.description ? item.description.trim() : "";
-
-      const imageUri = item.imageBase64
-        ? `data:image/jpeg;base64,${item.imageBase64}`
-        : item.imageUrl || PLACEHOLDER;
+      const descriptionText = item.hasDescription && item.description ? item.description.trim() : "";
+      const imageUri = item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl || PLACEHOLDER;
 
       return (
         <View style={styles.card}>
@@ -332,31 +289,12 @@ export default function BoardScreen({ navigation, route }: any) {
             onPress={() => navigation.navigate("BoardPostDetail", { postId: item.id, title: item.title })}
             style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.7 }]}
           >
-            {/* Left Column: Date + Thumbnail */}
             <View style={styles.dateColumn}>
-              {/* Fixed Single Line Day+Month */}
-              <Text
-                style={styles.dateTopLine}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}
-              >
-                {`${day} ${monthShort}`}
-              </Text>
-
-              {/* Fixed Year */}
-              <Text style={styles.dateYear} numberOfLines={1}>
-                {year}
-              </Text>
-
+              <Text style={styles.dateTopLine} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{`${day} ${monthShort}`}</Text>
+              <Text style={styles.dateYear} numberOfLines={1}>{year}</Text>
               <View style={{ height: 8 }} />
-
               {item.hasImage ? (
-                <Image
-                  source={{ uri: imageUri }}
-                  style={styles.cardThumb}
-                  resizeMode="cover"
-                />
+                <Image source={{ uri: imageUri }} style={styles.cardThumb} resizeMode="cover" />
               ) : (
                 <View style={styles.cardThumbPlaceholder}>
                   <Ionicons name="newspaper-outline" size={20} color="#94A3B8" />
@@ -364,7 +302,6 @@ export default function BoardScreen({ navigation, route }: any) {
               )}
             </View>
 
-            {/* Right Column: Content */}
             <View style={{ flex: 1, paddingLeft: 4 }}>
               <View style={styles.cardHeader}>
                 {item.hasTitle && item.title ? (
@@ -374,12 +311,8 @@ export default function BoardScreen({ navigation, route }: any) {
                 )}
                 <Ionicons name="chevron-forward" size={18} color="#CBD5E1" style={{ marginTop: 2 }} />
               </View>
-
-              <Text numberOfLines={3} style={styles.cardSnippet}>
-                {descriptionText}
-              </Text>
+              <Text numberOfLines={3} style={styles.cardSnippet}>{descriptionText}</Text>
             </View>
-
           </Pressable>
         </View>
       );
@@ -388,22 +321,28 @@ export default function BoardScreen({ navigation, route }: any) {
   );
 
   return (
-    <Screen
-      useNativeHeader
-      scroll={false}
-      keyboardShouldPersistTaps="handled"
-      avoidKeyboard={false}
-      backgroundColor="#FDFCF8"
-    >
-      {/* Decorative Header Gradient */}
-      <View style={styles.headerGradientContainer}>
-        <LinearGradient
-          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
+    <Screen useNativeHeader={true} scroll={false} keyboardShouldPersistTaps="handled" avoidKeyboard={false} backgroundColor="#FDFCF8">
+      {/* 
+        Unified Header
+        Note: We hide the Back button by default in root tabs, or show it?
+        Usually Board is a tab. So no back button.
+      */}
+      <ScreenHeader
+        title="BACHECA"
+        subtitle="Novità e comunicazioni"
+        showBack={false}
+        rightAction={
+          canEdit && (
+            <TouchableOpacity
+              style={styles.headerAddBtn}
+              onPress={() => { setEditor(createEmptyEditorState()); setComposeOpen(true); }}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={24} color="#fff" />
+            </TouchableOpacity>
+          )
+        }
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -418,27 +357,6 @@ export default function BoardScreen({ navigation, route }: any) {
           contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
           ListHeaderComponent={
             <View style={styles.headerBlock}>
-              {/* Custom Header Title */}
-              <View style={styles.headerRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.headerTitle}>BACHECA</Text>
-                  <Text style={styles.headerSubtitle}>Novità e comunicazioni</Text>
-                </View>
-                {canEdit && (
-                  <TouchableOpacity
-                    style={styles.headerAddBtn}
-                    onPress={() => {
-                      setEditor(createEmptyEditorState());
-                      setComposeOpen(true);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Crea nuova news"
-                  >
-                    <Ionicons name="add" size={24} color="#fff" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
               <View style={styles.searchRow}>
                 <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
                 <View style={{ flex: 1, position: "relative" }}>
@@ -451,14 +369,7 @@ export default function BoardScreen({ navigation, route }: any) {
                     returnKeyType="search"
                   />
                   {search.trim().length > 0 && (
-                    <Pressable
-                      onPress={() => {
-                        setSearch("");
-                        Keyboard.dismiss();
-                      }}
-                      hitSlop={10}
-                      style={styles.searchClear}
-                    >
+                    <Pressable onPress={() => { setSearch(""); Keyboard.dismiss(); }} hitSlop={10} style={styles.searchClear}>
                       <Ionicons name="close-circle" size={18} color="#94a3b8" />
                     </Pressable>
                   )}
@@ -467,132 +378,45 @@ export default function BoardScreen({ navigation, route }: any) {
 
               <View style={styles.filterRow}>
                 <View style={styles.segmentedControl}>
-                  <Pressable
-                    onPress={() => setFilter("active")}
-                    style={[styles.segmentBtn, filter === "active" && styles.segmentBtnActive]}
-                  >
+                  <Pressable onPress={() => setFilter("active")} style={[styles.segmentBtn, filter === "active" && styles.segmentBtnActive]}>
                     <Text style={[styles.segmentText, filter === "active" && styles.segmentTextActive]}>Attive</Text>
                   </Pressable>
-                  <Pressable
-                    onPress={() => setFilter("archived")}
-                    style={[styles.segmentBtn, filter === "archived" && styles.segmentBtnActive]}
-                  >
+                  <Pressable onPress={() => setFilter("archived")} style={[styles.segmentBtn, filter === "archived" && styles.segmentBtnActive]}>
                     <Text style={[styles.segmentText, filter === "archived" && styles.segmentTextActive]}>Archiviate</Text>
                   </Pressable>
                 </View>
-                {/* No inline add button */}
               </View>
 
               {composeOpen && canEdit && (
                 <View style={styles.composeCard}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={styles.composeTitle}>{editor.id ? "Modifica news" : "Crea nuova news"}</Text>
-                    <Pressable onPress={resetCompose} hitSlop={10}>
-                      <Ionicons name="close-circle" size={24} color="#94A3B8" />
-                    </Pressable>
+                    <Pressable onPress={resetCompose} hitSlop={10}><Ionicons name="close-circle" size={24} color="#94A3B8" /></Pressable>
                   </View>
-
                   <View style={styles.composeOptions}>
                     <Text style={styles.composeSubtitle}>Come vuoi comporre la news?</Text>
                     <View style={styles.composeToggleRow}>
-                      <Pressable
-                        onPress={() =>
-                          setEditor((prev) => ({ ...prev, includeTitle: !prev.includeTitle }))
-                        }
-                        style={({ pressed }) => [
-                          styles.composeToggle,
-                          editor.includeTitle ? styles.composeToggleActive : styles.composeToggleInactive,
-                          pressed && { opacity: 0.85 },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.composeToggleText,
-                            editor.includeTitle && styles.composeToggleTextActive,
-                          ]}
-                        >
-                          Titolo
-                        </Text>
+                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeTitle: !prev.includeTitle }))} style={[styles.composeToggle, editor.includeTitle ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                        <Text style={[styles.composeToggleText, editor.includeTitle && styles.composeToggleTextActive]}>Titolo</Text>
                       </Pressable>
-                      <Pressable
-                        onPress={() =>
-                          setEditor((prev) => ({ ...prev, includeImage: !prev.includeImage }))
-                        }
-                        style={({ pressed }) => [
-                          styles.composeToggle,
-                          editor.includeImage ? styles.composeToggleActive : styles.composeToggleInactive,
-                          pressed && { opacity: 0.85 },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.composeToggleText,
-                            editor.includeImage && styles.composeToggleTextActive,
-                          ]}
-                        >
-                          Immagine
-                        </Text>
+                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeImage: !prev.includeImage }))} style={[styles.composeToggle, editor.includeImage ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                        <Text style={[styles.composeToggleText, editor.includeImage && styles.composeToggleTextActive]}>Immagine</Text>
                       </Pressable>
-                      <Pressable
-                        onPress={() =>
-                          setEditor((prev) => ({ ...prev, includeDescription: !prev.includeDescription }))
-                        }
-                        style={({ pressed }) => [
-                          styles.composeToggle,
-                          editor.includeDescription
-                            ? styles.composeToggleActive
-                            : styles.composeToggleInactive,
-                          pressed && { opacity: 0.85 },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.composeToggleText,
-                            editor.includeDescription && styles.composeToggleTextActive,
-                          ]}
-                        >
-                          Descrizione
-                        </Text>
+                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeDescription: !prev.includeDescription }))} style={[styles.composeToggle, editor.includeDescription ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                        <Text style={[styles.composeToggleText, editor.includeDescription && styles.composeToggleTextActive]}>Descrizione</Text>
                       </Pressable>
                     </View>
-                    <Text style={styles.composeHint}>Seleziona almeno un elemento.</Text>
                   </View>
 
                   {editor.includeTitle && (
-                    <TextInput
-                      style={styles.composeInput}
-                      placeholder="Titolo"
-                      value={editor.title}
-                      onChangeText={(value) => setEditor((prev) => ({ ...prev, title: value }))}
-                      placeholderTextColor="#9ca3af"
-                    />
+                    <TextInput style={styles.composeInput} placeholder="Titolo" value={editor.title} onChangeText={(v) => setEditor((p) => ({ ...p, title: v }))} placeholderTextColor="#9ca3af" />
                   )}
-
                   {editor.includeDescription && (
-                    <TextInput
-                      style={styles.composeDescriptionInput}
-                      placeholder="Descrizione"
-                      value={editor.description}
-                      onChangeText={(value) => setEditor((prev) => ({ ...prev, description: value }))}
-                      placeholderTextColor="#9ca3af"
-                      multiline
-                      numberOfLines={10}
-                      textAlignVertical="top"
-                      scrollEnabled
-                    />
+                    <TextInput style={styles.composeDescriptionInput} placeholder="Descrizione" value={editor.description} onChangeText={(v) => setEditor((p) => ({ ...p, description: v }))} placeholderTextColor="#9ca3af" multiline numberOfLines={10} textAlignVertical="top" scrollEnabled />
                   )}
-
                   {editor.includeImage && (
-                    <Pressable
-                      onPress={handlePickImage}
-                      style={({ pressed }) => [
-                        styles.imagePicker,
-                        pressed && { opacity: 0.85 },
-                      ]}
-                    >
-                      {editorPreviewUri ? (
-                        <Image source={{ uri: editorPreviewUri }} style={styles.imagePreview} resizeMode="cover" />
-                      ) : (
+                    <Pressable onPress={handlePickImage} style={styles.imagePicker}>
+                      {editorPreviewUri ? <Image source={{ uri: editorPreviewUri }} style={styles.imagePreview} resizeMode="cover" /> : (
                         <View style={{ alignItems: "center", justifyContent: "center", gap: 6 }}>
                           <Text style={{ fontWeight: "700", color: UI.colors.primary }}>Seleziona immagine</Text>
                           <Text style={{ color: "#64748b", fontSize: 12 }}>Dalla libreria del dispositivo</Text>
@@ -600,29 +424,18 @@ export default function BoardScreen({ navigation, route }: any) {
                       )}
                     </Pressable>
                   )}
-
-                  <PrimaryButton
-                    label={editor.id ? "Salva modifiche" : "Pubblica"}
-                    onPress={handleSave}
-                    loading={saving}
-                    disabled={saving}
-                  />
+                  <PrimaryButton label={editor.id ? "Salva modifiche" : "Pubblica"} onPress={handleSave} loading={saving} disabled={saving} />
                 </View>
               )}
             </View>
           }
           ListEmptyComponent={
             profileLoading || loading ? (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator />
-                <Text style={{ marginTop: 8 }}>Carico la bacheca…</Text>
-              </View>
+              <View style={styles.loadingBox}><ActivityIndicator /><Text style={{ marginTop: 8 }}>Carico la bacheca…</Text></View>
             ) : (
               <View style={styles.emptyBox}>
                 <Text style={{ fontWeight: "700", color: UI.colors.muted }}>Nessuna news da mostrare.</Text>
-                {filter === "archived" && (
-                  <Text style={{ marginTop: 4, color: "#6b7280" }}>Le news archiviate compariranno qui.</Text>
-                )}
+                {filter === "archived" && <Text style={{ marginTop: 4, color: "#6b7280" }}>Le news archiviate compariranno qui.</Text>}
               </View>
             )
           }
@@ -630,47 +443,24 @@ export default function BoardScreen({ navigation, route }: any) {
           keyboardDismissMode="interactive"
         />
       </KeyboardAvoidingView>
-
-
-
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerGradientContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-  },
+  // Removed custom header styles
+
   headerBlock: {
     gap: 16,
     marginBottom: 16,
     marginTop: 8,
   },
-  headerRow: {
-    flexDirection: "row",
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#1E293B",
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#64748B",
-    marginTop: 2,
-  },
+
   headerAddBtn: {
-    backgroundColor: ACTION_GREEN, // Green-800 -> ACTION_GREEN
+    backgroundColor: UI.colors.action,
     width: 44,
     height: 44,
-    borderRadius: 22, // Circle
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -695,256 +485,44 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  searchClear: {
-    position: "absolute",
-    right: 4,
-    top: "50%",
-    transform: [{ translateY: -9 }],
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#0F172A",
-  },
-  filterRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  segmentedControl: {
-    flexDirection: "row",
-    backgroundColor: "#F1F5F9",
-    padding: 4,
-    borderRadius: 12,
-    alignSelf: "flex-start",
-  },
-  segmentBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  segmentBtnActive: {
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#64748B",
-  },
-  segmentTextActive: {
-    color: "#0F172A",
-    fontWeight: "700",
-  },
+  searchClear: { position: "absolute", right: 4, top: "50%", transform: [{ translateY: -9 }] },
+  searchInput: { flex: 1, fontSize: 15, color: "#0F172A" },
+  filterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  segmentedControl: { flexDirection: "row", backgroundColor: "#F1F5F9", padding: 4, borderRadius: 12, alignSelf: "flex-start" },
+  segmentBtn: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8 },
+  segmentBtnActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  segmentText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  segmentTextActive: { color: "#0F172A", fontWeight: "700" },
+
   // COMPOSE
-  composeCard: {
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    backgroundColor: "#eff6ff",
-    borderRadius: UI.radius.lg,
-    padding: UI.spacing.md,
-    gap: UI.spacing.sm,
-    marginTop: 16,
-  },
-  composeTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: UI.colors.text,
-  },
-  composeOptions: {
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: UI.radius.md,
-    backgroundColor: "#fff",
-    padding: UI.spacing.sm,
-    gap: UI.spacing.xs,
-    marginBottom: UI.spacing.sm,
-  },
-  composeSubtitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: UI.colors.text,
-  },
-  composeToggleRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: UI.spacing.xs,
-  },
-  composeToggle: {
-    borderWidth: 1,
-    borderRadius: UI.radius.round,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  composeToggleActive: {
-    backgroundColor: UI.colors.tint,
-    borderColor: UI.colors.primary,
-  },
-  composeToggleInactive: {
-    backgroundColor: "#fff",
-    borderColor: "#cbd5f5",
-  },
-  composeToggleText: {
-    fontWeight: "700",
-    color: "#475569",
-  },
-  composeToggleTextActive: {
-    color: UI.colors.primary,
-  },
-  composeHint: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: UI.spacing.xs / 2,
-  },
-  composeInput: {
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: UI.radius.md,
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
-    backgroundColor: "#fff",
-    color: UI.colors.text,
-  },
-  composeDescriptionInput: {
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: UI.radius.md,
-    paddingHorizontal: UI.spacing.sm,
-    paddingVertical: UI.spacing.xs,
-    backgroundColor: "#fff",
-    color: UI.colors.text,
-    minHeight: 200,
-    maxHeight: 320,
-  },
-  imagePicker: {
-    borderWidth: 1,
-    borderColor: "#dbeafe",
-    borderRadius: UI.radius.md,
-    height: 180,
-    backgroundColor: "#fff",
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imagePreview: {
-    width: "100%",
-    height: "100%",
-  },
-  loadingBox: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  emptyBox: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: UI.spacing.xl,
-    gap: 4,
-  },
+  composeCard: { borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: UI.radius.lg, padding: UI.spacing.md, gap: UI.spacing.sm, marginTop: 16 },
+  composeTitle: { fontSize: 16, fontWeight: "800", color: UI.colors.text },
+  composeOptions: { borderWidth: 1, borderColor: "#cbd5f5", borderRadius: UI.radius.md, backgroundColor: "#fff", padding: UI.spacing.sm, gap: UI.spacing.xs, marginBottom: UI.spacing.sm },
+  composeSubtitle: { fontSize: 14, fontWeight: "700", color: UI.colors.text },
+  composeToggleRow: { flexDirection: "row", flexWrap: "wrap", gap: UI.spacing.xs },
+  composeToggle: { borderWidth: 1, borderRadius: UI.radius.round, paddingVertical: 8, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  composeToggleActive: { backgroundColor: UI.colors.tint, borderColor: UI.colors.primary },
+  composeToggleInactive: { backgroundColor: "#fff", borderColor: "#cbd5f5" },
+  composeToggleText: { fontWeight: "700", color: "#475569" },
+  composeToggleTextActive: { color: UI.colors.primary },
+  composeInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 12, fontSize: 16, color: "#1e293b", fontWeight: "600" },
+  composeDescriptionInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 12, fontSize: 15, color: "#334155", minHeight: 120 },
+  imagePicker: { height: 160, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#cbd5e1", borderStyle: "dashed", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  imagePreview: { width: "100%", height: "100%" },
+
+  loadingBox: { padding: 40, alignItems: "center" },
+  emptyBox: { padding: 40, alignItems: "center", justifyContent: "center" },
+
   // CARD
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
-    shadowColor: "#64748B",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    overflow: "hidden",
-  },
-  cardInner: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 12,
-    alignItems: 'flex-start'
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  dateColumn: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    width: 72,
-    marginTop: 2,
-    flexShrink: 0,
-    paddingHorizontal: 0,
-  },
-  dateTopLine: {
-    color: ACTION_GREEN, // Green-800 -> ACTION_GREEN
-    fontWeight: "800",
-    fontSize: 15,
-    letterSpacing: 0.2,
-    textAlign: "center"
-  },
-  dateYear: {
-    color: ACTION_GREEN, // Green-700 -> ACTION_GREEN
-    fontWeight: "700",
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 2
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1E293B",
-    flex: 1,
-    marginRight: 8,
-    lineHeight: 22
-  },
-  cardTitleMuted: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#94a3b8",
-  },
-  cardThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: "#E2E8F0",
-  },
-  cardThumbPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  cardSnippet: {
-    fontSize: 14,
-    color: "#64748B",
-    lineHeight: 20,
-    marginTop: 2,
-  },
-  fab: {
-    position: "absolute",
-    bottom: 24,
-    right: 16,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: UI.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: UI.colors.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-    zIndex: 100,
-  }
+  card: { backgroundColor: "#fff", borderRadius: 16, marginBottom: 16, shadowColor: "#475569", shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: "#F1F5F9", overflow: "hidden" },
+  cardInner: { flexDirection: "row", padding: 12 },
+  dateColumn: { width: 60, alignItems: "center", marginRight: 12 },
+  dateTopLine: { fontSize: 13, fontWeight: "800", color: "#334155", textTransform: "uppercase" },
+  dateYear: { fontSize: 11, fontWeight: "600", color: "#94A3B8" },
+  cardThumb: { width: 60, height: 60, borderRadius: 10, backgroundColor: "#f1f5f9" },
+  cardThumbPlaceholder: { width: 60, height: 60, borderRadius: 10, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E2E8F0" },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
+  cardTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A", lineHeight: 22, flex: 1, paddingRight: 8 },
+  cardTitleMuted: { fontSize: 16, fontWeight: "600", color: "#94a3b8", fontStyle: "italic" },
+  cardSnippet: { fontSize: 14, color: "#64748B", lineHeight: 20 },
 });

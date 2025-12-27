@@ -2,10 +2,11 @@ import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
+import { UI } from "../../components/Screen";
 import { pad2 } from "./helpers";
 import { MarkedDates } from "./types";
 
-const ACTION_GREEN = "#22c55e";
+
 
 // --- LAYOUT CONSTANTS ---
 const HEADER_TITLE_HEIGHT = 46;
@@ -258,7 +259,7 @@ export function CalendarHeaderSection({
                         accessibilityRole="button"
                         accessibilityLabel="Oggi"
                       >
-                        <Text style={{ fontSize: 14, fontWeight: "700", color: ACTION_GREEN }}>Oggi</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "700", color: UI.colors.action }}>Oggi</Text>
                       </TouchableOpacity>
                       <Ionicons name={iconName} size={18} color="#111827" />
                     </View>
@@ -288,14 +289,14 @@ export function CalendarHeaderSection({
                 monthTextColor: "#111827",
                 selectedDayBackgroundColor: "transparent",
                 selectedDayTextColor: "#111827",
-            todayTextColor: ACTION_GREEN,
-            arrowColor: "#111827",
-            arrowStyle: {
-              padding: 0,
-            },
+                todayTextColor: UI.colors.action,
+                arrowColor: "#111827",
+                arrowStyle: {
+                  padding: 0,
+                },
 
-            // --- CRITICAL LAYOUT OVERRIDES ---
-            "stylesheet.calendar.main": {
+                // --- CRITICAL LAYOUT OVERRIDES ---
+                "stylesheet.calendar.main": {
                   container: {
                     paddingLeft: 0,
                     paddingRight: 0,
@@ -331,27 +332,27 @@ export function CalendarHeaderSection({
                 },
                 "stylesheet.calendar.header": {
                   // Month Title Row
-              header: {
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingTop: 0,
-                paddingBottom: 0,
-                paddingLeft: 0,
-                paddingRight: 0,
-                marginTop: 0,
-                marginBottom: 0,
-                height: HEADER_TITLE_HEIGHT, // Force fixed height
-              },
-              headerContainer: {
-                flex: 1,
-                alignItems: "center",
-              },
-              monthText: {
-                fontSize: 16,
-                fontWeight: "700",
-                color: "#111827",
-                margin: 0, // Remove uncontrolled margins
+                  header: {
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    paddingLeft: 0,
+                    paddingRight: 0,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    height: HEADER_TITLE_HEIGHT, // Force fixed height
+                  },
+                  headerContainer: {
+                    flex: 1,
+                    alignItems: "center",
+                  },
+                  monthText: {
+                    fontSize: 16,
+                    fontWeight: "700",
+                    color: "#111827",
+                    margin: 0, // Remove uncontrolled margins
                   },
                   // Weekday Row (L M M G V S D)
                   week: {
@@ -449,7 +450,7 @@ export function CalendarHeaderSection({
                           width: 28,
                           height: 28,
                           borderRadius: 14,
-                          backgroundColor: isSelected ? ACTION_GREEN : "transparent",
+                          backgroundColor: isSelected ? UI.colors.action : "transparent",
                           alignItems: "center",
                           justifyContent: "center",
                         }}
@@ -467,7 +468,7 @@ export function CalendarHeaderSection({
                             height: 4,
                             width: barW,
                             borderRadius: 2,
-                            backgroundColor: ACTION_GREEN,
+                            backgroundColor: UI.colors.action,
                           }}
                         />
                       ) : null}

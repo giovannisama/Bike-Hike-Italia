@@ -5,11 +5,9 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Screen, UI } from "../components/Screen";
-import { LinearGradient } from "expo-linear-gradient"; // Import Gradient
+import { ScreenHeader } from "../components/ScreenHeader";
 import { Ionicons } from "@expo/vector-icons";
 import useCurrentProfile from "../hooks/useCurrentProfile";
-
-const ACTION_GREEN = "#22c55e"; // Global Action Green
 
 export default function AdminScreen() {
   const navigation = useNavigation<any>();
@@ -24,27 +22,20 @@ export default function AdminScreen() {
 
   return (
     <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
-      {/* HEADER GRADIENT */}
-      <View style={styles.headerGradientContainer}>
-        <LinearGradient
-          colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
-
-      {/* MANUAL HEADER */}
-      <View style={styles.headerBlock}>
-        {/* Back button removed as per request (Root Tab screen) */}
-        <Text style={styles.headerTitle}>AMMINISTRAZIONE</Text>
-        <Text style={styles.headerSubtitle}>Pannello di controllo</Text>
-      </View>
+      {/* 
+        NOTE: For AdminScreen, the user requested NO back button and Extra Top Padding 
+        to balance the layout since it's a root tab screen.
+      */}
+      <ScreenHeader
+        title="AMMINISTRAZIONE"
+        subtitle="Pannello di controllo"
+        showBack={false}
+        topPadding={60} // Matches the custom 60px padding we approved earlier
+      />
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>SEZIONI</Text>
 
-        {/* SOTTOMENU 1: Gestione Utenti */}
         <MenuTile
           title="Gestione Utenti"
           subtitle={
@@ -86,7 +77,8 @@ function MenuTile({
       disabled={disabled}
     >
       <View style={styles.tileIcon}>
-        <Ionicons name={icon} size={24} color={ACTION_GREEN} />
+        {/* Use UI.colors.action instead of local constant */}
+        <Ionicons name={icon} size={24} color={UI.colors.action} />
       </View>
 
       <View style={{ flex: 1 }}>
@@ -100,31 +92,12 @@ function MenuTile({
 }
 
 const styles = StyleSheet.create({
-  headerGradientContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: 200 },
-
-  headerBlock: {
-    paddingHorizontal: 16,
-    paddingTop: 60, // Increased top padding since back button is gone
-    paddingBottom: 24
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#1E293B",
-    letterSpacing: -0.5,
-    textTransform: 'uppercase'
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#64748B",
-    marginTop: 4
-  },
+  // header styles removed (now handled by ScreenHeader)
 
   section: {
     paddingHorizontal: 16,
     gap: 12,
-    marginTop: 20, // Push content down below header logic
+    marginTop: 20,
   },
   sectionLabel: {
     color: "#94a3b8",
@@ -142,7 +115,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-    // Soft Shadow
     shadowColor: "#0f172a",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
@@ -160,7 +132,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dcfce7", // Light Green bg
+    backgroundColor: "#dcfce7",
   },
   tileTitle: {
     fontSize: 17,

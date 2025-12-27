@@ -12,12 +12,13 @@ import {
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Ride } from "./types";
+import { UI } from "../../components/Screen";
 import { getBikeCategoryLabel } from "./bikeType";
 import { getDifficultyMeta } from "../../utils/rideDifficulty";
 import { deriveGuideSummary } from "../../utils/guideHelpers";
 import { StatusBadge } from "./StatusBadge";
 
-const ACTION_GREEN = "#22c55e";
+
 
 const styles = StyleSheet.create({
   card: {
@@ -82,16 +83,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   chip: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     backgroundColor: "rgba(34, 197, 94, 0.15)",
     borderWidth: 1,
-    borderColor: ACTION_GREEN,
+    borderColor: UI.colors.action,
   },
   chipText: {
-    color: ACTION_GREEN,
-    fontWeight: "700",
+    color: UI.colors.action,
+    fontWeight: "600",
     fontSize: 12,
   },
   centerRow: { padding: 12, alignItems: "center", justifyContent: "center" },
@@ -157,6 +158,7 @@ export function RideList({
                 <View style={styles.chip}>
                   <Text style={styles.chipText}>{bikeCategory}</Text>
                 </View>
+                {statusBadge}
               </View>
               <View style={styles.headerRow}>
                 <View style={styles.titleWrap}>
@@ -169,7 +171,6 @@ export function RideList({
                     </Text>
                   )}
                 </View>
-                <View style={styles.badgeWrap}>{statusBadge}</View>
               </View>
               <View style={styles.metaBlock}>
                 <Text style={styles.metaLabel} numberOfLines={1}>

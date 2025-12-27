@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateData } from "react-native-calendars";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { Screen } from "../components/Screen";
+import { Screen, UI } from "../components/Screen";
 import { CalendarSearchModal } from "./calendar/CalendarSearchModal";
 import { CalendarHeaderSection } from "./calendar/CalendarHeaderSection";
 import { useCalendarScreen } from "./calendar/useCalendarScreen";
@@ -86,7 +86,7 @@ export default function CalendarScreen() {
     return (
       <Screen useNativeHeader={true} scroll={false}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color="#22c55e" />
+          <ActivityIndicator size="large" color={UI.colors.action} />
         </View>
       </Screen>
     );
@@ -252,7 +252,7 @@ export default function CalendarScreen() {
             </View>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator size="small" color="#22c55e" />
+              <ActivityIndicator size="small" color={UI.colors.action} />
             </View>
           )}
         </View>

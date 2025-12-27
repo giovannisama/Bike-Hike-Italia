@@ -25,6 +25,7 @@ const COLORS = {
   danger: "#DC2626",
   warningBg: "#FFF7ED",
   warningBorder: "#FED7AA",
+  action: "#22c55e",
 };
 
 export const UI = {

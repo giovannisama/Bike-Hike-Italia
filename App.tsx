@@ -23,6 +23,7 @@ import {
   Image,
   Alert,
   FlatList,
+  DeviceEventEmitter,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef, useNavigation } from "@react-navigation/native";
@@ -1155,6 +1156,11 @@ function MainTabs() {
         options={{
           title: "Calendario",
           tabBarLabel: ({ color }) => <TabLabel label="Calendario" color={color} />,
+        }}
+        listeners={{
+          tabPress: () => {
+            DeviceEventEmitter.emit("event.calendar.reset");
+          },
         }}
       />
       <Tab.Screen

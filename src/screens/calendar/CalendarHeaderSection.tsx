@@ -62,6 +62,7 @@ type CalendarHeaderSectionProps = {
   selectedDay: string;
   onDayPress: (day: DateData) => void;
   onMonthChange: (day: DateData) => void;
+  onTodayPress?: () => void;
   gridWidth?: number;
   gridHeight?: number;
 };
@@ -72,6 +73,7 @@ export function CalendarHeaderSection({
   selectedDay,
   onDayPress,
   onMonthChange,
+  onTodayPress,
   gridWidth = 0,
   gridHeight = 0,
 }: CalendarHeaderSectionProps) {
@@ -168,6 +170,10 @@ export function CalendarHeaderSection({
   }, [cellH, gridHeight, weeksCount]);
 
   const handleTodayPress = useCallback(() => {
+    if (onTodayPress) {
+      onTodayPress();
+      return;
+    }
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
@@ -181,7 +187,7 @@ export function CalendarHeaderSection({
       timestamp: Date.UTC(year, month - 1, day),
     };
     onDayPress(payload);
-  }, [onDayPress]);
+  }, [onDayPress, onTodayPress]);
 
   useEffect(() => {
     if (!SHOW_LAYOUT_DEBUG) return;

@@ -9,6 +9,7 @@ import {
   Easing,
   useWindowDimensions,
   StyleSheet,
+  DeviceEventEmitter,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -50,6 +51,14 @@ export default function CalendarScreen() {
     filterSummary,
     hasActiveFilters,
   } = useCalendarScreen();
+
+  // Listen for Tab Press reset event
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener("event.calendar.reset", () => {
+      actions.clearFilters();
+    });
+    return () => sub.remove();
+  }, [actions]);
 
   const pageWidth = gridWidth || windowWidth;
   const bottomInset = useMemo(() => Math.max(insets.bottom, 16), [insets.bottom]);
@@ -178,6 +187,7 @@ export default function CalendarScreen() {
                     selectedDay={calendar.selectedDay}
                     onDayPress={handleDayPress}
                     onMonthChange={calendar.onMonthChange}
+                    onTodayPress={actions.clearFilters}
                     gridWidth={gridWidth}
                     gridHeight={gridHeight}
                   />

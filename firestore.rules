@@ -647,6 +647,14 @@ service cloud.firestore {
     // -----------------------
     // /analyticsEvents/{eventId}
     // -----------------------
+    match /app_content/informazioni {
+      allow read: if isAuthed();
+      allow write: if isOwner();
+    }
+
+    // -----------------------
+    // /analyticsEvents/{eventId}
+    // -----------------------
     match /analyticsEvents/{eventId} {
       allow read: if isOwner();
       allow create: if isAuthed() && validAnalyticsCreate();

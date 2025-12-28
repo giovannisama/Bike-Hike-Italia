@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     View,
     Text,
@@ -17,9 +17,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 import { Screen, UI } from "../components/Screen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
+import { auth, db } from "../firebase";
+import { PrimaryButton } from "../components/Button";
 
 // --- TYPES ---
 type InfoItemType = "text" | "phone" | "whatsapp" | "email" | "iban" | "address" | "vat";
@@ -44,6 +47,8 @@ const INITIAL_DATA: InfoItem[] = [
     { id: "8", label: "IBAN", value: "IT00 X000 0000 0000 0000 0000 000", type: "iban", section: "Dati Fiscali" },
 ];
 
+const INFO_DOC_REF = doc(db, "app_content", "informazioni");
+
 export default function InfoScreen({ navigation }: any) {
     const { isOwner } = useCurrentProfile();
     const insets = useSafeAreaInsets();
@@ -59,6 +64,71 @@ export default function InfoScreen({ navigation }: any) {
     const [formValue, setFormValue] = useState("");
     const [formType, setFormType] = useState<InfoItemType>("text");
     const [formSection, setFormSection] = useState<InfoItem["section"]>("Associazione");
+
+    useEffect(() => {
+        const loadInfo = async () => {
+            try {
+                const snap = await getDoc(INFO_DOC_REF);
+                if (!snap.exists()) {
+                    setData(INITIAL_DATA);
+                    return;
+                }
+                const payload = snap.data() as any;
+                const items = payload?.items;
+
+                const allowedSections: InfoItem["section"][] = ["Associazione", "Contatti", "Dati Fiscali"];
+                const allowedTypes: InfoItemType[] = ["text", "phone", "whatsapp", "email", "iban", "address", "vat"];
+
+                const sanitized: InfoItem[] = Array.isArray(items)
+                    ? (items as any[])
+                          .filter((it) => it && typeof it === "object")
+                          .map((it) => {
+                              const id = typeof it.id === "string" ? it.id : "";
+                              const label = typeof it.label === "string" ? it.label : "";
+                              const value = typeof it.value === "string" ? it.value : "";
+                              const type = allowedTypes.includes(it.type) ? (it.type as InfoItemType) : "text";
+                              const section = allowedSections.includes(it.section)
+                                  ? (it.section as InfoItem["section"])
+                                  : "Associazione";
+                              return { id, label, value, type, section };
+                          })
+                          .filter((it) => it.id.trim() && it.label.trim() && it.value.trim())
+                    : [];
+
+                if (sanitized.length > 0) {
+                    setData(sanitized);
+                } else {
+                    setData(INITIAL_DATA);
+                }
+            } catch (err) {
+                console.warn("Error loading info data", err);
+                setData(INITIAL_DATA);
+            }
+        };
+        loadInfo();
+    }, []);
+
+    const persistItems = async (items: InfoItem[]) => {
+        if (!isOwner) {
+            Alert.alert("Permesso negato", "Solo gli owner possono modificare queste informazioni.");
+            return;
+        }
+        const uid = auth.currentUser?.uid;
+        try {
+            await setDoc(
+                INFO_DOC_REF,
+                {
+                    items,
+                    updatedAt: serverTimestamp(),
+                    ...(uid ? { updatedBy: uid } : {}),
+                },
+                { merge: true }
+            );
+        } catch (err) {
+            console.error("Error saving info data", err);
+            Alert.alert("Errore salvataggio", "Impossibile salvare le informazioni.");
+        }
+    };
 
     // Group Data for SectionList
     const sections = [
@@ -120,7 +190,12 @@ export default function InfoScreen({ navigation }: any) {
             {
                 text: "Elimina",
                 style: "destructive",
-                onPress: () => setData((prev) => prev.filter((i) => i.id !== id)),
+                onPress: () =>
+                    setData((prev) => {
+                        const next = prev.filter((i) => i.id !== id);
+                        void persistItems(next);
+                        return next;
+                    }),
             },
         ]);
     };
@@ -140,9 +215,17 @@ export default function InfoScreen({ navigation }: any) {
         };
 
         if (editItem) {
-            setData((prev) => prev.map((i) => i.id === editItem.id ? newItem : i));
+            setData((prev) => {
+                const next = prev.map((i) => i.id === editItem.id ? newItem : i);
+                void persistItems(next);
+                return next;
+            });
         } else {
-            setData((prev) => [...prev, newItem]);
+            setData((prev) => {
+                const next = [...prev, newItem];
+                void persistItems(next);
+                return next;
+            });
         }
         setModalVisible(false);
     };
@@ -316,9 +399,11 @@ export default function InfoScreen({ navigation }: any) {
                                 </View>
                             </View>
 
-                            <Pressable onPress={saveForm} style={styles.saveBtn}>
-                                <Text style={styles.saveBtnText}>Salva</Text>
-                            </Pressable>
+                            <PrimaryButton
+                                label="Salva"
+                                onPress={saveForm}
+                                style={styles.saveBtn}
+                            />
                         </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
@@ -455,9 +540,9 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
         padding: 20,
-        backgroundColor: "#fff",
+        backgroundColor: UI.colors.card,
         borderBottomWidth: 1,
-        borderBottomColor: "#E2E8F0",
+        borderBottomColor: UI.colors.tint,
     },
     modalTitle: {
         fontSize: 18,
@@ -478,17 +563,17 @@ const styles = StyleSheet.create({
     inputLabel: {
         fontSize: 12,
         fontWeight: "700",
-        color: "#64748B",
+        color: UI.colors.muted,
         letterSpacing: 0.5,
     },
     textInput: {
-        backgroundColor: "#fff",
+        backgroundColor: UI.colors.card,
         borderWidth: 1,
         borderColor: "#CBD5E1",
         borderRadius: 12,
         padding: 14,
         fontSize: 16,
-        color: "#1E293B",
+        color: UI.colors.text,
     },
     typeSelector: {
         flexDirection: "row",
@@ -499,26 +584,22 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 8,
-        backgroundColor: "#E2E8F0",
+        backgroundColor: UI.colors.card,
+        borderWidth: 1,
+        borderColor: UI.colors.tint,
     },
     typeChipSelected: {
-        backgroundColor: "#0F766E",
+        backgroundColor: UI.colors.action,
+        borderColor: UI.colors.action,
     },
     typeChipText: {
         fontSize: 12,
         fontWeight: "700",
-        color: "#475569",
+        color: UI.colors.muted,
     },
     saveBtn: {
-        backgroundColor: "#0F766E",
-        paddingVertical: 16,
-        borderRadius: 14,
-        alignItems: "center",
         marginTop: 10,
-    },
-    saveBtnText: {
-        color: "#fff",
-        fontSize: 16,
-        fontWeight: "700",
+        backgroundColor: UI.colors.action,
+        borderColor: UI.colors.action,
     },
 });

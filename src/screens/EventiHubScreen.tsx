@@ -7,7 +7,9 @@ import { Screen, UI } from "../components/Screen";
 import { db } from "../firebase";
 import { LinearGradient } from "expo-linear-gradient";
 import useCurrentProfile from "../hooks/useCurrentProfile";
+import useActiveSocialCount from "../hooks/useActiveSocialCount";
 import AccessDenied from "../components/AccessDenied";
+import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
 
 // ------------------------------------------------------------------
 // HOOK: useActiveRidesCount (Local)
@@ -139,6 +141,7 @@ export default function EventiHubScreen({ navigation }: any) {
     loading: profileLoading,
   } = useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const socialActiveCount = useActiveSocialCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
   const insets = useSafeAreaInsets();
   const [gridWidth, setGridWidth] = useState<number | null>(null);
@@ -152,6 +155,7 @@ export default function EventiHubScreen({ navigation }: any) {
     bici: { name: "bike", color: "#16a34a" }, // Green Action
     trekking: { name: "hiking", color: "#e11d48" }, // Rose
     bikeaut: { name: "bike-fast", color: "#4f46e5" }, // Indigo
+    social: { name: "account-group-outline", color: UI.colors.eventSocial },
     viaggi: { name: "bag-checked", color: "#d97706" }, // Amber
   };
 
@@ -168,8 +172,8 @@ export default function EventiHubScreen({ navigation }: any) {
     {
       id: "bici",
       title: "Ciclismo",
-      subtitle: "Gestisci o partecipa alle uscite in Mtb ed E-Bike.",
-      caption: "Uscite attive",
+      subtitle: EVENT_CATEGORY_SUBTITLES.ciclismo,
+      caption: EVENT_CATEGORY_SUBTITLES.ciclismo,
       icon: iconMap.bici.name,
       iconColor: iconMap.bici.color,
       badge: activeCount ?? 0,
@@ -180,8 +184,8 @@ export default function EventiHubScreen({ navigation }: any) {
     {
       id: "trekking",
       title: "Trekking",
-      subtitle: "Escursioni a piedi nella natura.",
-      caption: "In arrivo",
+      subtitle: EVENT_CATEGORY_SUBTITLES.trekking,
+      caption: EVENT_CATEGORY_SUBTITLES.trekking,
       icon: iconMap.trekking.name,
       iconColor: iconMap.trekking.color,
       badge: 0,
@@ -198,6 +202,17 @@ export default function EventiHubScreen({ navigation }: any) {
       badge: null,
       enabled: false,
       permissionKey: "bikeaut",
+    },
+    {
+      id: "social",
+      title: "Social",
+      subtitle: EVENT_CATEGORY_SUBTITLES.social,
+      caption: EVENT_CATEGORY_SUBTITLES.social,
+      icon: iconMap.social.name,
+      iconColor: iconMap.social.color,
+      badge: socialActiveCount ?? 0,
+      enabled: true,
+      onPress: () => rootNav.navigate("SocialList"),
     },
     {
       id: "viaggi",

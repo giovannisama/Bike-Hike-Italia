@@ -10,6 +10,9 @@ export type RootStackParamList = {
   UserList: undefined;
   UserDetail: { uid: string; meRole?: string | null };
   UsciteList: undefined;
+  SocialList: undefined;
+  SocialDetail: { eventId: string };
+  SocialEdit: { mode?: "create" | "edit"; eventId?: string };
   Calendar: undefined;
   CalendarDay: { day: string; rides: any[] };
   Board: undefined;

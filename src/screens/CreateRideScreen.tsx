@@ -733,7 +733,7 @@ export default function CreateRideScreen() {
                     ]}
                   >
                     <Text style={styles.adminBtnText}>
-                      {archived ? "Ripristina da Archivio" : "Archivia Uscita"}
+                      {archived ? "Ripristina Uscita" : "Archivia Uscita"}
                     </Text>
                   </Pressable>
                 </View>
@@ -1365,13 +1365,13 @@ const styles = StyleSheet.create({
   },
 
   adminBtn: {
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: UI.colors.action,
   },
   adminBtnText: {
-    color: "#334155",
+    color: "#fff",
     fontWeight: "700",
     fontSize: 14,
   },

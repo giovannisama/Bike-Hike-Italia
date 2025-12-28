@@ -9,11 +9,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Screen, UI } from "../components/Screen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
+import useActiveSocialCount from "../hooks/useActiveSocialCount";
 import { auth, db } from "../firebase";
 import { loadBoardLastSeen } from "../utils/boardStorage";
 import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
 import type { MainTabParamList } from "../navigation/types";
+import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
 
 const logo = require("../../assets/images/logo.jpg");
 
@@ -165,6 +167,7 @@ export default function HomeScreen({ navigation }: any) {
   const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking } =
     useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const socialActiveCount = useActiveSocialCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
 
   const [boardLastSeen, setBoardLastSeen] = useState<Date | null>(null);
@@ -328,7 +331,7 @@ export default function HomeScreen({ navigation }: any) {
           <View style={styles.unifiedCard}>
             <EventRow
               title="Ciclismo"
-              caption="Uscite attive"
+              caption={EVENT_CATEGORY_SUBTITLES.ciclismo}
               badge={activeCount ?? 0}
               onPress={() => rootNav.navigate("UsciteList")}
               disabled={!canSeeCiclismo}
@@ -338,12 +341,21 @@ export default function HomeScreen({ navigation }: any) {
             <View style={styles.rowDivider} />
             <EventRow
               title="Trekking"
-              caption="In arrivo"
+              caption={EVENT_CATEGORY_SUBTITLES.trekking}
               badge={0}
               onPress={() => rootNav.navigate("TrekkingPlaceholder")}
               disabled={!canSeeTrekking}
               icon={<MaterialCommunityIcons name="hiking" size={24} color="#0F766E" />}
               iconBgColor="#CCFBF1" // Teal-100
+            />
+            <View style={styles.rowDivider} />
+            <EventRow
+              title="Social"
+              caption={EVENT_CATEGORY_SUBTITLES.social}
+              badge={socialActiveCount ?? 0}
+              onPress={() => rootNav.navigate("SocialList")}
+              icon={<MaterialCommunityIcons name="account-group-outline" size={24} color={UI.colors.action} />}
+              iconBgColor={UI.colors.tint}
             />
             <View style={styles.rowDivider} />
             <EventRow

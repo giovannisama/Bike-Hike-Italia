@@ -60,6 +60,9 @@ import {
 import { auth, db } from "./src/firebase";
 import HomeScreen from "./src/screens/HomeScreen";
 import NotificationSettingsScreen from "./src/screens/NotificationSettingsScreen";
+import SocialListScreen from "./src/screens/SocialListScreen";
+import SocialDetailScreen from "./src/screens/SocialDetailScreen";
+import SocialEditScreen from "./src/screens/SocialEditScreen";
 import EventiHubScreen from "./src/screens/EventiHubScreen";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
 import { registerPushToken } from "./src/notifications/registerPushToken";
@@ -985,6 +988,21 @@ export default function App() {
               options={{ headerShown: false }}
             />
             <Stack.Screen name="UsciteList" component={UsciteList} options={{ title: "Uscite" }} />
+            <Stack.Screen
+              name="SocialList"
+              component={SocialListScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="SocialDetail"
+              component={SocialDetailScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="SocialEdit"
+              component={SocialEditScreen}
+              options={{ headerShown: false }}
+            />
             {/* NOTE: legacy stack route. Prefer TabBacheca to keep bottom bar. */}
             <Stack.Screen name="Board" component={BoardScreen} options={{ title: "Bacheca" }} />
             <Stack.Screen

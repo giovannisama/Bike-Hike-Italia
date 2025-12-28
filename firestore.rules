@@ -54,6 +54,14 @@ service cloud.firestore {
         && notDisabledTrue();
     }
 
+    function isActiveUser() {
+      return canReadRides();
+    }
+
+    function isAdminOrOwner() {
+      return isAdmin() || isOwner();
+    }
+
     function has(k) { return request.resource.data.keys().hasAny([k]); }
 
     function roleIsOneOf(target) {
@@ -650,6 +658,83 @@ service cloud.firestore {
     match /app_content/informazioni {
       allow read: if isAuthed();
       allow write: if isOwner();
+    }
+
+    // -----------------------
+    // /analyticsEvents/{eventId}
+    // -----------------------
+    match /social_events/{eventId} {
+      allow read: if canReadRides();
+      allow create: if (isAdmin() || isOwner()) && validSocialEvent();
+      allow update: if (isAdmin() || isOwner()) && validSocialEvent();
+      allow delete: if (isAdmin() || isOwner());
+
+      function validSocialEvent() {
+        return (!has('status') || (request.resource.data.status in ['active','cancelled','archived']))
+          && (!has('extraServices') || validSocialExtraServices(request.resource.data.extraServices))
+          && (!has('extras') || (
+            request.resource.data.extras is map
+            && (!request.resource.data.extras.keys().hasAny(['lunch']) || request.resource.data.extras.lunch is bool)
+            && (!request.resource.data.extras.keys().hasAny(['dinner']) || request.resource.data.extras.dinner is bool)
+          ));
+      }
+
+      function validSocialExtraServices(val) {
+        return val == null ||
+          (
+            val is map &&
+            val.keys().hasOnly(['lunch','dinner']) &&
+            (!val.keys().hasAny(['lunch']) || validSocialExtraNode(val.lunch)) &&
+            (!val.keys().hasAny(['dinner']) || validSocialExtraNode(val.dinner))
+          );
+      }
+
+      function validSocialExtraNode(node) {
+        return node == null ||
+          (
+            node is map &&
+            node.keys().hasOnly(['enabled','label']) &&
+            node.enabled is bool &&
+            (!node.keys().hasAny(['label']) || node.label == null || (node.label is string && node.label.size() <= 120))
+          );
+      }
+
+      match /participants/{uid} {
+        allow read: if isActiveUser();
+        allow create: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
+        allow update: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
+        allow delete: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid));
+
+        function isSelfSocialParticipant(pid) {
+          return request.auth != null &&
+            (
+              pid == request.auth.uid
+              || (resource != null && resource.data.uid == request.auth.uid)
+              || (request.resource != null && request.resource.data.uid == request.auth.uid)
+            );
+        }
+
+        function validSocialParticipant(targetUid) {
+          return (request.resource.data.uid is string && request.resource.data.uid == targetUid)
+            && (!request.resource.data.keys().hasAny(['note']) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
+            && (!request.resource.data.keys().hasAny(['services']) || validSocialServiceResponses(request.resource.data.services))
+            && (!request.resource.data.keys().hasAny(['extrasChoice']) || (
+              request.resource.data.extrasChoice is map
+              && (!request.resource.data.extrasChoice.keys().hasAny(['lunch']) || (request.resource.data.extrasChoice.lunch in ['yes','no']))
+              && (!request.resource.data.extrasChoice.keys().hasAny(['dinner']) || (request.resource.data.extrasChoice.dinner in ['yes','no']))
+            ));
+        }
+
+        function validSocialServiceResponses(val) {
+          return val == null ||
+            (
+              val is map &&
+              val.keys().hasOnly(['lunch','dinner']) &&
+              (!val.keys().hasAny(['lunch']) || (val.lunch in ['yes','no'])) &&
+              (!val.keys().hasAny(['dinner']) || (val.dinner in ['yes','no']))
+            );
+        }
+      }
     }
 
     // -----------------------

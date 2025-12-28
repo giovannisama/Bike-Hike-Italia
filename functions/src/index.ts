@@ -292,6 +292,59 @@ export const onParticipantWrite = functions.firestore
     }
   });
 
+// -----------------------------
+// 3b) Social participants count
+// -----------------------------
+export const onSocialParticipantCreated = functions.firestore
+  .document("social_events/{eventId}/participants/{uid}")
+  .onCreate(async (snapshot, context) => {
+    const eventId = context.params.eventId as string;
+    const data = snapshot.data() || {};
+    functions.logger.info("[social participantsCount] create", {
+      eventId,
+      participantId: context.params.uid,
+      source: data?.source ?? null,
+    });
+    const eventRef = admin.firestore().doc(`social_events/${eventId}`);
+    try {
+      await eventRef.set(
+        {
+          participantsCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: "system",
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      functions.logger.error(`[social participantsCount] create failed event=${eventId}`, err);
+    }
+  });
+
+export const onSocialParticipantDeleted = functions.firestore
+  .document("social_events/{eventId}/participants/{uid}")
+  .onDelete(async (snapshot, context) => {
+    const eventId = context.params.eventId as string;
+    const data = snapshot.data() || {};
+    functions.logger.info("[social participantsCount] delete", {
+      eventId,
+      participantId: context.params.uid,
+      source: data?.source ?? null,
+    });
+    const eventRef = admin.firestore().doc(`social_events/${eventId}`);
+    try {
+      await eventRef.set(
+        {
+          participantsCount: admin.firestore.FieldValue.increment(-1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedBy: "system",
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      functions.logger.error(`[social participantsCount] delete failed event=${eventId}`, err);
+    }
+  });
+
 export const onRideManualParticipantsUpdated = functions.firestore
   .document("rides/{rideId}")
   .onUpdate(async (change, context) => {

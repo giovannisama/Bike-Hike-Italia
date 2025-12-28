@@ -23,6 +23,25 @@ Tutti i status badges devono condividere queste dimensioni esatte per allinearsi
 | **Archived** | `ARCHIVIATA` | `#F1F5F9` (Slate-100) | `#475569` (Slate-600) | `archive-outline` |
 | **Cancelled** | `ANNULLATA` | `#FEE2E2` (Red-100) | `#B91C1C` (Red-700) | `alert-circle-outline` |
 
+## 1.b Event Categories – Social
+
+La categoria **Social** utilizza un colore dedicato per essere chiaramente distinguibile dalle altre categorie Eventi.
+
+### Colore di riferimento
+- **Token UI**: `UI.colors.eventSocial`
+- **Hex**: `#7C3AED` (Purple-600)
+
+### Utilizzo obbligatorio
+Il colore `UI.colors.eventSocial` deve essere utilizzato per:
+- bordo superiore della card "Social" nella sezione Eventi
+- icona associata alla categoria Social
+- eventuali badge o indicatori di categoria Social
+
+### Regole vincolanti
+- Vietato usare valori hardcoded (`#7C3AED`) nei componenti
+- Vietato riutilizzare colori di altre categorie (es. Action Green, Red)
+- Ogni nuova UI relativa a Eventi Social deve usare esclusivamente questo token
+
 ## 2. Difficulty Badges
 Mostra il livello di difficoltà tecnica. Usa uno stile minimalista **"Dot + Text"** (senza box di sfondo).
 
@@ -99,3 +118,25 @@ Ogni tab di navigazione top-level (2–3 tab) deve usare questo pattern. È viet
 
 ### Non-regression
 Ogni sostituzione è **UI-only**: logica di stato/handler invariata.
+
+## Event Categories – Subtitles (Home + Eventi)
+
+Sottotitoli standard ufficiali (da riusare ovunque):
+
+- **Ciclismo**: "Uscite di gruppo"
+- **Trekking**: "Escursioni a piedi"
+- **Social**: "Meetup e eventi"
+
+Regole vincolanti:
+- Vietato cambiare copy o inventare varianti per singola screen.
+- Vietato hardcodare stringhe diverse in Home o EventiHub.
+- Ogni nuova categoria Eventi dovrà definire qui il proprio sottotitolo.
+
+## Participant Counter – Standard (Cards)
+
+Il contatore partecipanti nelle card deve essere identico al pattern delle Uscite:
+- pill in basso a sinistra
+- icona “due persone”
+- SOLO numero (vietato testo “partecipanti”)
+- riusare lo stesso componente/stile delle Uscite
+- vietato creare varianti per Social o altre sezioni

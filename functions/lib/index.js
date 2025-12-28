@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onSocialParticipantDeleted = exports.onSocialParticipantCreated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
@@ -260,6 +260,53 @@ exports.onParticipantWrite = functions.firestore
     }
     catch (err) {
         functions.logger.error(`[participantsCount] write failed ride=${rideId}`, err);
+    }
+});
+// -----------------------------
+// 3b) Social participants count
+// -----------------------------
+exports.onSocialParticipantCreated = functions.firestore
+    .document("social_events/{eventId}/participants/{uid}")
+    .onCreate(async (snapshot, context) => {
+    const eventId = context.params.eventId;
+    const data = snapshot.data() || {};
+    functions.logger.info("[social participantsCount] create", {
+        eventId,
+        participantId: context.params.uid,
+        source: data?.source ?? null,
+    });
+    const eventRef = admin.firestore().doc(`social_events/${eventId}`);
+    try {
+        await eventRef.set({
+            participantsCount: admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: "system",
+        }, { merge: true });
+    }
+    catch (err) {
+        functions.logger.error(`[social participantsCount] create failed event=${eventId}`, err);
+    }
+});
+exports.onSocialParticipantDeleted = functions.firestore
+    .document("social_events/{eventId}/participants/{uid}")
+    .onDelete(async (snapshot, context) => {
+    const eventId = context.params.eventId;
+    const data = snapshot.data() || {};
+    functions.logger.info("[social participantsCount] delete", {
+        eventId,
+        participantId: context.params.uid,
+        source: data?.source ?? null,
+    });
+    const eventRef = admin.firestore().doc(`social_events/${eventId}`);
+    try {
+        await eventRef.set({
+            participantsCount: admin.firestore.FieldValue.increment(-1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: "system",
+        }, { merge: true });
+    }
+    catch (err) {
+        functions.logger.error(`[social participantsCount] delete failed event=${eventId}`, err);
     }
 });
 exports.onRideManualParticipantsUpdated = functions.firestore

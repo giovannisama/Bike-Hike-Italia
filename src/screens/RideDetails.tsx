@@ -4,6 +4,7 @@ import {
   View,
   Text,
   ScrollView,
+  KeyboardAvoidingView,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -791,7 +792,7 @@ export default function RideDetails() {
         <View style={styles.topCard}>
           {/* Status Badge */}
           <View style={styles.banner}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={styles.badgesRow}>
               <StatusBadge status={status} />
               <DifficultyBadge level={ride.difficulty} />
             </View>
@@ -993,64 +994,76 @@ export default function RideDetails() {
           animationType="fade"
           onRequestClose={() => setNoteModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Partecipa all'Uscita</Text>
-              <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.modalScrollContent}
+                >
+                  <Text style={styles.modalTitle}>Partecipa all'Uscita</Text>
+                  <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
 
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Es. Arrivo in ritardo, sono vegano..."
-                value={noteText}
-                onChangeText={setNoteText}
-                multiline
-                numberOfLines={3}
-              />
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Es. Arrivo in ritardo, sono vegano..."
+                    value={noteText}
+                    onChangeText={setNoteText}
+                    multiline
+                    numberOfLines={3}
+                  />
 
-              {/* SERVICE SELECTION */}
-              {SERVICE_KEYS.map((key) => {
-                const cfg = ride.extraServices?.[key];
-                if (!cfg?.enabled) return null;
-                const label = cfg.label || SERVICE_LABELS[key];
-                const currentVal = joinServices[key];
+                  {/* SERVICE SELECTION */}
+                  {SERVICE_KEYS.map((key) => {
+                    const cfg = ride.extraServices?.[key];
+                    if (!cfg?.enabled) return null;
+                    const label = cfg.label || SERVICE_LABELS[key];
+                    const currentVal = joinServices[key];
 
-                return (
-                  <View key={key} style={styles.serviceRow}>
-                    <Text style={styles.serviceLabel}>{label}</Text>
-                    <View style={styles.serviceToggles}>
-                      <TouchableOpacity
-                        onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
-                        style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
-                        style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
-                      </TouchableOpacity>
-                    </View>
+                    return (
+                      <View key={key} style={styles.serviceRow}>
+                        <Text style={styles.serviceLabel}>{label}</Text>
+                        <View style={styles.serviceToggles}>
+                          <TouchableOpacity
+                            onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
+                            style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
+                          >
+                            <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
+                            style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
+                          >
+                            <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.modalFooterSticky}>
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                      onPress={() => setNoteModalVisible(false)}
+                    >
+                      <Text style={styles.modalBtnTextCancel}>Annulla</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                      onPress={handleJoin}
+                    >
+                      <Text style={styles.modalBtnTextConfirm}>Conferma</Text>
+                    </TouchableOpacity>
                   </View>
-                );
-              })}
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
-                  onPress={() => setNoteModalVisible(false)}
-                >
-                  <Text style={styles.modalBtnTextCancel}>Annulla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
-                  onPress={handleJoin}
-                >
-                  <Text style={styles.modalBtnTextConfirm}>Conferma</Text>
-                </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         <Modal
@@ -1059,74 +1072,86 @@ export default function RideDetails() {
           animationType="fade"
           onRequestClose={() => setManualModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Aggiungi Partecipante</Text>
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.modalScrollContent}
+                >
+                  <Text style={styles.modalTitle}>Aggiungi Partecipante</Text>
 
-              <Text style={styles.label}>Nome e Cognome *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Mario Rossi"
-                value={manualName}
-                onChangeText={setManualName}
-              />
+                  <Text style={styles.label}>Nome e Cognome *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Mario Rossi"
+                    value={manualName}
+                    onChangeText={setManualName}
+                  />
 
-              <Text style={[styles.label, { marginTop: 12 }]}>Note (Opzionale)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Note..."
-                value={manualNote}
-                onChangeText={setManualNote}
-              />
+                  <Text style={[styles.label, { marginTop: 12 }]}>Note (Opzionale)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Note..."
+                    value={manualNote}
+                    onChangeText={setManualNote}
+                  />
 
-              {/* SERVICE SELECTION MANUAL */}
-              {SERVICE_KEYS.map((key) => {
-                const cfg = ride.extraServices?.[key];
-                if (!cfg?.enabled) return null;
-                const label = cfg.label || SERVICE_LABELS[key];
-                const currentVal = manualServices[key];
+                  {/* SERVICE SELECTION MANUAL */}
+                  {SERVICE_KEYS.map((key) => {
+                    const cfg = ride.extraServices?.[key];
+                    if (!cfg?.enabled) return null;
+                    const label = cfg.label || SERVICE_LABELS[key];
+                    const currentVal = manualServices[key];
 
-                return (
-                  <View key={key} style={styles.serviceRow}>
-                    <Text style={styles.serviceLabel}>{label}</Text>
-                    <View style={styles.serviceToggles}>
-                      <TouchableOpacity
-                        onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
-                        style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
-                        style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
-                      </TouchableOpacity>
-                    </View>
+                    return (
+                      <View key={key} style={styles.serviceRow}>
+                        <Text style={styles.serviceLabel}>{label}</Text>
+                        <View style={styles.serviceToggles}>
+                          <TouchableOpacity
+                            onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
+                            style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
+                          >
+                            <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
+                            style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
+                          >
+                            <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.modalFooterSticky}>
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                      onPress={() => {
+                        setManualModalVisible(false);
+                        setManualName("");
+                        setManualNote("");
+                      }}
+                    >
+                      <Text style={styles.modalBtnTextCancel}>Annulla</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                      onPress={handleConfirmManual}
+                    >
+                      <Text style={styles.modalBtnTextConfirm}>Aggiungi</Text>
+                    </TouchableOpacity>
                   </View>
-                );
-              })}
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
-                  onPress={() => {
-                    setManualModalVisible(false);
-                    setManualName("");
-                    setManualNote("");
-                  }}
-                >
-                  <Text style={styles.modalBtnTextCancel}>Annulla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
-                  onPress={handleConfirmManual}
-                >
-                  <Text style={styles.modalBtnTextConfirm}>Aggiungi</Text>
-                </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* SHARE & CALENDAR */}
@@ -1145,12 +1170,6 @@ export default function RideDetails() {
         {(isAdmin || isGuide) && (
           <View style={styles.adminZone}>
             <Text style={styles.adminTitle}>Gestione Amministratore</Text>
-            {status === "active" && (
-              <TouchableOpacity style={styles.adminRow} onPress={handleCancelRide}>
-                <Ionicons name="close-circle" size={20} color="#ef4444" />
-                <Text style={[styles.adminRowText, { color: "#ef4444" }]}>Annulla Uscita</Text>
-              </TouchableOpacity>
-            )}
             {status === "cancelled" && (
               <TouchableOpacity style={styles.adminRow} onPress={handleRestoreRide}>
                 <Ionicons name="refresh-circle" size={20} color="#f59e0b" />
@@ -1175,18 +1194,21 @@ const styles = StyleSheet.create({
   // Top Card
   topCard: {
     margin: 16,
+    marginBottom: 20,
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
     overflow: "hidden",
   },
   banner: { paddingVertical: 8, alignItems: "center", justifyContent: "center" },
   bannerText: { fontWeight: "800", fontSize: 13, letterSpacing: 1 },
-  topCardContent: { padding: 20 },
-  badgesRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  topCardContent: { paddingVertical: 24, paddingHorizontal: 22 },
+  badgesRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", paddingHorizontal: 4 },
   title: { fontSize: 24, fontWeight: "800", color: "#0F172A", marginBottom: 16, lineHeight: 30 },
   infoGrid: { gap: 12 },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -1225,8 +1247,8 @@ const styles = StyleSheet.create({
 
   // Action Grid
   actionGrid: { flexDirection: "row", gap: 12, paddingHorizontal: 16, marginTop: 24 },
-  actionTile: { flex: 1, backgroundColor: "#f8fafc", padding: 16, borderRadius: 12, alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "#e2e8f0" },
-  actionTileText: { fontWeight: "600", color: "#475569", fontSize: 13 },
+  actionTile: { flex: 1, height: 92, backgroundColor: "#f8fafc", padding: 16, borderRadius: 12, alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: "#e2e8f0" },
+  actionTileText: { fontWeight: "600", color: "#475569", fontSize: 13, textAlign: "center" },
 
   // Admin
   adminZone: { marginTop: 40, padding: 20, backgroundColor: "#fef2f2", borderTopLeftRadius: 20, borderTopRightRadius: 20 },
@@ -1237,6 +1259,9 @@ const styles = StyleSheet.create({
   // Modals
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
   modalContent: { backgroundColor: "#fff", borderRadius: 20, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 10 },
+  modalKeyboard: { flex: 1 },
+  modalScrollContent: { paddingBottom: 16 },
+  modalFooterSticky: { paddingTop: 16 },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#1E293B", marginBottom: 8, textAlign: "center" },
   modalSubtitle: { fontSize: 15, color: "#64748b", marginBottom: 20, textAlign: "center" },
   modalInput: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 12, fontSize: 16, color: "#334155", textAlignVertical: "top", minHeight: 80 },

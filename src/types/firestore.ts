@@ -96,3 +96,24 @@ export interface ParticipantDoc {
   services?: ParticipantServices | null;
   [key: string]: any;
 }
+
+export type ExtraServiceState = { enabled: boolean; label: string | null };
+
+export interface SocialEventDoc {
+  title?: string;
+  meetingPlaceText?: string;
+  meetingMapUrl?: string | null;
+  organizerName?: string | null;
+  description?: string | null;
+  startAt?: any;
+  status?: "active" | "cancelled" | "archived";
+  extraServices?: {
+    lunch?: ExtraServiceState;
+    dinner?: ExtraServiceState;
+  } | null;
+  createdAt?: any;
+  updatedAt?: any;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  [key: string]: any;
+}

@@ -26,6 +26,7 @@ const COLORS = {
   warningBg: "#FFF7ED",
   warningBorder: "#FED7AA",
   action: "#22c55e",
+  eventSocial: "#7C3AED",
 };
 
 export const UI = {

@@ -26,7 +26,14 @@ const COLORS = {
   warningBg: "#FFF7ED",
   warningBorder: "#FED7AA",
   action: "#22c55e",
+  eventCycling: "#16a34a",
+  eventTrekking: "#e11d48",
+  eventCyclingBg: "#DCFCE7",
+  eventTrekkingBg: "#CCFBF1",
   eventSocial: "#7C3AED",
+  disabled: "#94A3B8",
+  disabledBg: "#F1F5F9",
+  borderMuted: "#E2E8F0",
 };
 
 export const UI = {

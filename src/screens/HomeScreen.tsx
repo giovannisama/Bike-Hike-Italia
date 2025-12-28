@@ -132,9 +132,10 @@ type EventRowProps = {
   disabled?: boolean;
   icon: React.ReactNode;
   iconBgColor?: string;
+  accentColor?: string;
 };
 
-function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor }: EventRowProps) {
+function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor, accentColor }: EventRowProps) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
@@ -144,7 +145,15 @@ function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor 
         pressed && !disabled && { backgroundColor: "#F8FAFC" },
       ]}
     >
-      <View style={[styles.eventIcon, { backgroundColor: disabled ? "#F1F5F9" : (iconBgColor ?? "#E7F1FD") }]}>
+      <View
+        style={[
+          styles.eventIcon,
+          {
+            backgroundColor: disabled ? UI.colors.disabledBg : (iconBgColor ?? UI.colors.tint),
+            borderColor: accentColor ?? "transparent",
+          },
+        ]}
+      >
         {icon}
       </View>
       <View style={{ flex: 1 }}>
@@ -335,8 +344,9 @@ export default function HomeScreen({ navigation }: any) {
               badge={activeCount ?? 0}
               onPress={() => rootNav.navigate("UsciteList")}
               disabled={!canSeeCiclismo}
-              icon={<MaterialCommunityIcons name="bike" size={24} color="#15803D" />}
-              iconBgColor="#DCFCE7" // Green-100
+              icon={<MaterialCommunityIcons name="bike" size={24} color={UI.colors.eventCycling} />}
+              iconBgColor={UI.colors.eventCyclingBg}
+              accentColor={UI.colors.eventCycling}
             />
             <View style={styles.rowDivider} />
             <EventRow
@@ -345,8 +355,9 @@ export default function HomeScreen({ navigation }: any) {
               badge={0}
               onPress={() => rootNav.navigate("TrekkingPlaceholder")}
               disabled={!canSeeTrekking}
-              icon={<MaterialCommunityIcons name="hiking" size={24} color="#0F766E" />}
-              iconBgColor="#CCFBF1" // Teal-100
+              icon={<MaterialCommunityIcons name="hiking" size={24} color={UI.colors.eventTrekking} />}
+              iconBgColor={UI.colors.eventTrekkingBg}
+              accentColor={UI.colors.eventTrekking}
             />
             <View style={styles.rowDivider} />
             <EventRow
@@ -354,8 +365,9 @@ export default function HomeScreen({ navigation }: any) {
               caption={EVENT_CATEGORY_SUBTITLES.social}
               badge={socialActiveCount ?? 0}
               onPress={() => rootNav.navigate("SocialList")}
-              icon={<MaterialCommunityIcons name="account-group-outline" size={24} color={UI.colors.action} />}
+              icon={<MaterialCommunityIcons name="account-group-outline" size={24} color={UI.colors.eventSocial} />}
               iconBgColor={UI.colors.tint}
+              accentColor={UI.colors.eventSocial}
             />
             <View style={styles.rowDivider} />
             <EventRow
@@ -363,7 +375,8 @@ export default function HomeScreen({ navigation }: any) {
               caption="COMING SOON"
               disabled
               badge={null}
-              icon={<MaterialCommunityIcons name="bike-fast" size={24} color="#9CA3AF" />}
+              icon={<MaterialCommunityIcons name="bike-fast" size={24} color={UI.colors.disabled} />}
+              accentColor={UI.colors.borderMuted}
             />
             <View style={styles.rowDivider} />
             <EventRow
@@ -371,7 +384,8 @@ export default function HomeScreen({ navigation }: any) {
               caption="COMING SOON"
               disabled
               badge={null}
-              icon={<MaterialCommunityIcons name="bag-checked" size={24} color="#9CA3AF" />}
+              icon={<MaterialCommunityIcons name="bag-checked" size={24} color={UI.colors.disabled} />}
+              accentColor={UI.colors.borderMuted}
             />
           </View>
         </View>
@@ -624,6 +638,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
+    borderWidth: 1,
   },
   eventTitle: {
     fontSize: 16,

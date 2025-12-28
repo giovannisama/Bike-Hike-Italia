@@ -15,18 +15,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateData } from "react-native-calendars";
 import { LinearGradient } from "expo-linear-gradient";
+import { format } from "date-fns";
+import { it } from "date-fns/locale";
+import { useNavigation } from "@react-navigation/native";
 
 import { Screen, UI } from "../components/Screen";
 import { CalendarSearchModal } from "./calendar/CalendarSearchModal";
 import { CalendarHeaderSection } from "./calendar/CalendarHeaderSection";
-import { useCalendarScreen } from "./calendar/useCalendarScreen";
+import { SocialCalendarEvent, useCalendarScreen } from "./calendar/useCalendarScreen";
 import { ActiveFiltersBanner } from "./calendar/ActiveFiltersBanner";
 import { RideList } from "./calendar/RideList";
+import { StatusBadge } from "./calendar/StatusBadge";
 import useCurrentProfile from "../hooks/useCurrentProfile";
-import AccessDenied from "../components/AccessDenied";
+import { calendarStyles } from "./calendar/styles";
 
 export default function CalendarScreen() {
-  const { canSeeCiclismo, loading: profileLoading } = useCurrentProfile();
+  const navigation = useNavigation<any>();
+  const { loading: profileLoading } = useCurrentProfile();
   const [calendarArea, setCalendarArea] = useState({ width: 0, height: 0 });
   // viewMode is now managed in useCalendarScreen hook
   const translateX = useRef(new Animated.Value(0)).current;
@@ -63,6 +68,33 @@ export default function CalendarScreen() {
   const pageWidth = gridWidth || windowWidth;
   const bottomInset = useMemo(() => Math.max(insets.bottom, 16), [insets.bottom]);
   const indicatorInsets = useMemo(() => ({ bottom: bottomInset }), [bottomInset]);
+  const socialItems = rideLists.socialForSelectedDay;
+
+  const renderSocialItem = useCallback(
+    (item: SocialCalendarEvent) => {
+      const status = item.status === "archived" ? "archived" : "active";
+      return (
+        <TouchableOpacity
+          style={[calendarStyles.rideCard, { marginBottom: 8 }]}
+          onPress={() => navigation.navigate("SocialDetail", { eventId: item.id })}
+        >
+          <View style={{ flex: 1 }}>
+            <View style={{ marginBottom: 8, alignSelf: "flex-start" }}>
+              <StatusBadge status={status} />
+            </View>
+            <Text style={calendarStyles.rideTitle} numberOfLines={2}>
+              {item.title || "Evento social"}
+            </Text>
+            <Text style={calendarStyles.ridePlace} numberOfLines={1}>
+              Organizzatore: {item.organizerName || "—"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
+      );
+    },
+    [navigation]
+  );
 
   const handleDayPress = useCallback(
     (day: DateData) => {
@@ -98,11 +130,6 @@ export default function CalendarScreen() {
           <ActivityIndicator size="large" color={UI.colors.action} />
         </View>
       </Screen>
-    );
-  }
-  if (!canSeeCiclismo) {
-    return (
-      <AccessDenied message="La sezione Ciclismo non è abilitata per il tuo profilo." />
     );
   }
 
@@ -225,38 +252,75 @@ export default function CalendarScreen() {
                         : calendar.selectedDayLabel}
                     </Text>
                   </View>
-                  <View
-                    style={{
-                      paddingHorizontal: 16,
-                      paddingTop: 16,
-                      paddingBottom: 8,
-                      backgroundColor: "#F9FAFB",
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
-                      Ciclismo
-                    </Text>
-                  </View>
-                  <RideList
-                    data={
-                      calendar.isFilteredView
-                        ? rideLists.filtered
-                        : rideLists.forSelectedDay
-                    }
-                    onSelect={actions.openRide}
-                    contentContainerStyle={{
-                      paddingTop: 8,
-                      paddingHorizontal: 16,
-                      paddingBottom: 32 + bottomInset,
-                    }}
-                    indicatorInsets={indicatorInsets}
-                    emptyMessage={
-                      calendar.isFilteredView
-                        ? "Nessun evento corrispondente ai filtri impostati."
-                        : "Nessuna uscita per questo giorno."
-                    }
-                    showDate={calendar.isFilteredView}
-                  />
+                  {(calendar.isFilteredView || rideLists.forSelectedDay.length > 0 || socialItems.length === 0) && (
+                    <>
+                      <View
+                        style={{
+                          paddingHorizontal: 16,
+                          paddingTop: 16,
+                          paddingBottom: 8,
+                          backgroundColor: "#F9FAFB",
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
+                          Ciclismo
+                        </Text>
+                      </View>
+                      <RideList
+                        data={
+                          calendar.isFilteredView
+                            ? rideLists.filtered
+                            : rideLists.forSelectedDay
+                        }
+                        onSelect={actions.openRide}
+                        contentContainerStyle={{
+                          paddingTop: 8,
+                          paddingHorizontal: 16,
+                          paddingBottom: 32 + bottomInset,
+                        }}
+                        indicatorInsets={indicatorInsets}
+                        emptyMessage={
+                          calendar.isFilteredView
+                            ? "Nessun evento corrispondente ai filtri impostati."
+                            : "Nessuna uscita per questo giorno."
+                        }
+                        showDate={calendar.isFilteredView}
+                        listFooterComponent={
+                          !calendar.isFilteredView && socialItems.length > 0 ? (
+                            <View style={{ paddingTop: 16 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
+                                Social
+                              </Text>
+                              <View style={{ marginTop: 8 }}>
+                                {socialItems.map((item) => (
+                                  <View key={item.id}>{renderSocialItem(item)}</View>
+                                ))}
+                              </View>
+                            </View>
+                          ) : null
+                        }
+                      />
+                    </>
+                  )}
+                  {!calendar.isFilteredView && rideLists.forSelectedDay.length === 0 && socialItems.length > 0 && (
+                    <View
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingTop: 16,
+                        paddingBottom: 8,
+                        backgroundColor: "#F9FAFB",
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
+                        Social
+                      </Text>
+                      <View style={{ marginTop: 8 }}>
+                        {socialItems.map((item) => (
+                          <View key={item.id}>{renderSocialItem(item)}</View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                 </View>
               </Animated.View>
             </View>

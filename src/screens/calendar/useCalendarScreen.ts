@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import useCurrentProfile from "../../hooks/useCurrentProfile";
 import {
   collection,
   getDocs,
@@ -14,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dimensions, LayoutAnimation } from "react-native";
 import { DateData } from "react-native-calendars";
 import { db } from "../../firebase";
+import { UI } from "../../components/Screen";
 import {
   endOfMonthISO,
   inputDateValue,
@@ -26,6 +28,15 @@ import {
   MONTH_NAMES,
 } from "./helpers";
 import { MarkedDates, Ride } from "./types";
+
+export type SocialCalendarEvent = {
+  id: string;
+  title?: string;
+  meetingPlaceText?: string;
+  organizerName?: string;
+  startAt?: Timestamp | null;
+  status?: "active" | "archived" | "cancelled";
+};
 
 const sanitizeBikeList = (input: unknown): string[] => {
   if (Array.isArray(input)) {
@@ -103,6 +114,7 @@ export type KeywordState = {
 export type RideLists = {
   forSelectedDay: Ride[];
   filtered: Ride[];
+  socialForSelectedDay: SocialCalendarEvent[];
 };
 
 export type LoadingFlags = {
@@ -135,6 +147,7 @@ export type UseCalendarScreenResult = {
 
 export function useCalendarScreen(): UseCalendarScreenResult {
   const navigation = useNavigation<any>();
+  const { canSeeCiclismo } = useCurrentProfile();
 
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
     const d = new Date();
@@ -148,6 +161,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
   const [rides, setRides] = useState<Ride[]>([]);
   const [allRides, setAllRides] = useState<Ride[]>([]);
+  const [socialEvents, setSocialEvents] = useState<SocialCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [allRidesLoading, setAllRidesLoading] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -251,6 +265,12 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const allRidesFetchedRef = useRef(false);
 
   useEffect(() => {
+    if (!canSeeCiclismo) {
+      allRidesFetchedRef.current = false;
+      setAllRides([]);
+      setAllRidesLoading(false);
+      return;
+    }
     if (allRidesFetchedRef.current) return;
     let cancelled = false;
 
@@ -294,7 +314,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canSeeCiclismo]);
 
   const resetFiltersAndView = useCallback(() => {
     clearSearch();
@@ -329,57 +349,94 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     const start = new Date(startOfMonthISO(currentMonth));
     const end = new Date(endOfMonthISO(currentMonth));
     const col = collection(db, "rides");
+    const socialCol = collection(db, "social_events");
 
-    const qDateTime = query(
-      col,
-      where("dateTime", ">=", Timestamp.fromDate(start)),
-      where("dateTime", "<=", Timestamp.fromDate(end)),
-      orderBy("dateTime", "asc")
-    );
+    const unsubs: Array<() => void> = [];
+    if (canSeeCiclismo) {
+      const qDateTime = query(
+        col,
+        where("dateTime", ">=", Timestamp.fromDate(start)),
+        where("dateTime", "<=", Timestamp.fromDate(end)),
+        orderBy("dateTime", "asc")
+      );
 
-    const qDate = query(
-      col,
-      where("date", ">=", Timestamp.fromDate(start)),
-      where("date", "<=", Timestamp.fromDate(end)),
-      orderBy("date", "asc")
-    );
+      const qDate = query(
+        col,
+        where("date", ">=", Timestamp.fromDate(start)),
+        where("date", "<=", Timestamp.fromDate(end)),
+        orderBy("date", "asc")
+      );
 
-    const map = new Map<string, Ride>();
+      const map = new Map<string, Ride>();
 
-    const upsertFromSnap = (snap: any) => {
-      snap.forEach((doc: any) => {
-        const d = doc.data() as any;
-        map.set(doc.id, {
-          id: doc.id,
-          title: d?.title ?? "",
-          meetingPoint: d?.meetingPoint ?? "",
-          bikes: sanitizeBikeList(d?.bikes),
-          date: d?.date ?? null,
-          dateTime: d?.dateTime ?? null,
-          status: (d?.status as Ride["status"]) ?? "active",
-          archived: !!d?.archived,
-          difficulty: d?.difficulty ?? null,
-          guidaName: d?.guidaName ?? null,
-          guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
+      const upsertFromSnap = (snap: any) => {
+        snap.forEach((doc: any) => {
+          const d = doc.data() as any;
+          map.set(doc.id, {
+            id: doc.id,
+            title: d?.title ?? "",
+            meetingPoint: d?.meetingPoint ?? "",
+            bikes: sanitizeBikeList(d?.bikes),
+            date: d?.date ?? null,
+            dateTime: d?.dateTime ?? null,
+            status: (d?.status as Ride["status"]) ?? "active",
+            archived: !!d?.archived,
+            difficulty: d?.difficulty ?? null,
+            guidaName: d?.guidaName ?? null,
+            guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
+          });
         });
-      });
-      const rows = Array.from(map.values()).sort((a, b) => {
-        const ta = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
-        const tb = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
-        return ta - tb;
-      });
-      setRides(rows);
-      setLoading(false);
-    };
+        const rows = Array.from(map.values()).sort((a, b) => {
+          const ta = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
+          const tb = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
+          return ta - tb;
+        });
+        setRides(rows);
+        setLoading(false);
+      };
 
-    const unsub1 = onSnapshot(qDateTime, upsertFromSnap, () => setLoading(false));
-    const unsub2 = onSnapshot(qDate, upsertFromSnap, () => setLoading(false));
+      const unsub1 = onSnapshot(qDateTime, upsertFromSnap, () => setLoading(false));
+      const unsub2 = onSnapshot(qDate, upsertFromSnap, () => setLoading(false));
+      unsubs.push(unsub1, unsub2);
+    } else {
+      setRides([]);
+    }
+
+    const qSocial = query(
+      socialCol,
+      where("startAt", ">=", Timestamp.fromDate(start)),
+      where("startAt", "<=", Timestamp.fromDate(end)),
+      orderBy("startAt", "asc")
+    );
+
+    const unsubSocial = onSnapshot(
+      qSocial,
+      (snap) => {
+        const rows: SocialCalendarEvent[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          const status = (d?.status as SocialCalendarEvent["status"]) ?? "active";
+          if (status === "cancelled") return;
+          rows.push({
+            id: docSnap.id,
+            title: d?.title ?? "",
+            meetingPlaceText: d?.meetingPlaceText ?? "",
+            organizerName: d?.organizerName ?? "",
+            startAt: d?.startAt ?? null,
+            status,
+          });
+        });
+        setSocialEvents(rows);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    unsubs.push(unsubSocial);
 
     return () => {
-      unsub1();
-      unsub2();
+      unsubs.forEach((unsub) => unsub());
     };
-  }, [currentMonth]);
+  }, [currentMonth, canSeeCiclismo]);
 
   const applyCalendarFilters = (
     source: Ride[],
@@ -436,18 +493,30 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const marked: MarkedDates = useMemo(() => {
     const out: MarkedDates = {};
 
-    const byDay = new Map<string, Ride[]>();
+    const byDay = new Map<string, { rides: Ride[]; hasSocial: boolean }>();
     for (const r of ridesVisible) {
       const key = toLocalISODate(r.dateTime || r.date);
       if (!key) continue;
-      if (!byDay.has(key)) byDay.set(key, []);
-      byDay.get(key)!.push(r);
+      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false });
+      byDay.get(key)!.rides.push(r);
     }
 
-    const colorFor = (r: Ride) => (r.archived ? "#3B82F6" : r.status === "cancelled" ? "#DC2626" : "#16a34a");
+    for (const s of socialEvents) {
+      const key = toLocalISODate(s.startAt);
+      if (!key) continue;
+      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false });
+      byDay.get(key)!.hasSocial = true;
+    }
 
-    byDay.forEach((list, day) => {
-      const dots = list.slice(0, 3).map((r) => ({ color: colorFor(r) }));
+    const colorFor = (_r: Ride) => UI.colors.eventCycling;
+
+    byDay.forEach((entry, day) => {
+      const rideDots = entry.rides.length > 0
+        ? [{ color: colorFor(entry.rides[0]) }]
+        : [];
+      const dots = entry.hasSocial
+        ? [...rideDots, { color: UI.colors.eventSocial }]
+        : rideDots;
       out[day] = {
         marked: dots.length > 0,
         dots,
@@ -466,7 +535,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     }
 
     return out;
-  }, [ridesVisible, selectedDay]);
+  }, [ridesVisible, socialEvents, selectedDay]);
 
   const listForSelected = useMemo(() => {
     const key = selectedDay;
@@ -474,15 +543,21 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return ridesVisible.filter((r) => toLocalISODate(r.dateTime || r.date) === key);
   }, [ridesVisible, selectedDay]);
 
+  const socialForSelectedDay = useMemo(() => {
+    const key = selectedDay;
+    return socialEvents.filter((e) => toLocalISODate(e.startAt) === key);
+  }, [socialEvents, selectedDay]);
+
   const hasEventsForDay = useCallback(
     (dateString: string) =>
-      ridesVisible.some((r) => toLocalISODate(r.dateTime || r.date) === dateString),
-    [ridesVisible]
+      ridesVisible.some((r) => toLocalISODate(r.dateTime || r.date) === dateString) ||
+      socialEvents.some((e) => toLocalISODate(e.startAt) === dateString),
+    [ridesVisible, socialEvents]
   );
 
   const hasEventsForSelectedDay = useMemo(
-    () => listForSelected.length > 0,
-    [listForSelected]
+    () => listForSelected.length > 0 || socialForSelectedDay.length > 0,
+    [listForSelected, socialForSelectedDay]
   );
 
   const resultsAll = useMemo(() => {
@@ -828,6 +903,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const rideLists: RideLists = {
     forSelectedDay: listForSelected,
     filtered: resultsAll,
+    socialForSelectedDay,
   };
 
   return {

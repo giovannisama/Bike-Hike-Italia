@@ -110,6 +110,7 @@ export type RideListProps = {
   emptyMessage?: string;
   onClearFilters?: () => void;
   showDate?: boolean;
+  listFooterComponent?: React.ReactElement | null;
 };
 
 export function RideList({
@@ -121,6 +122,7 @@ export function RideList({
   emptyMessage,
   onClearFilters,
   showDate,
+  listFooterComponent,
 }: RideListProps) {
   return (
     <FlatList
@@ -191,6 +193,7 @@ export function RideList({
           </TouchableOpacity>
         );
       }}
+      ListFooterComponent={listFooterComponent}
       ListEmptyComponent={
         <View style={[styles.centerRow, { paddingVertical: 40 }]}>
           <View style={{ alignItems: "center", gap: 12, paddingHorizontal: 24 }}>

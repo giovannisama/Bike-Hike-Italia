@@ -60,7 +60,7 @@ function HeroCard({ item }: { item: EventSection }) {
       onPress={item.enabled ? item.onPress : undefined}
       style={({ pressed }) => [
         styles.heroCard,
-        { borderTopColor: item.enabled ? item.iconColor : "#E2E8F0", borderTopWidth: 4 },
+        { borderTopColor: item.enabled ? item.iconColor : UI.colors.borderMuted, borderTopWidth: 4 },
         pressed && item.enabled && { opacity: 0.95, transform: [{ scale: 0.99 }] },
       ]}
     >
@@ -69,7 +69,7 @@ function HeroCard({ item }: { item: EventSection }) {
           <MaterialCommunityIcons
             name={item.icon}
             size={32}
-            color={item.enabled ? item.iconColor ?? UI.colors.primary : "#94A3B8"}
+            color={item.enabled ? item.iconColor ?? UI.colors.primary : UI.colors.disabled}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -97,7 +97,7 @@ function GridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }
       onPress={item.enabled ? item.onPress : undefined}
       style={({ pressed }) => [
         styles.gridCard,
-        { width: cardWidth, borderTopColor: item.enabled ? item.iconColor : "#E2E8F0", borderTopWidth: 4 },
+        { width: cardWidth, borderTopColor: item.enabled ? item.iconColor : UI.colors.borderMuted, borderTopWidth: 4 },
         !item.enabled && styles.gridCardDisabled,
         pressed && item.enabled && { opacity: 0.9, transform: [{ scale: 0.98 }] },
       ]}
@@ -107,7 +107,7 @@ function GridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }
           <MaterialCommunityIcons
             name={item.icon}
             size={24}
-            color={item.enabled ? item.iconColor ?? UI.colors.primary : "#94A3B8"}
+            color={item.enabled ? item.iconColor ?? UI.colors.primary : UI.colors.disabled}
           />
         </View>
         {typeof item.badge === "number" && item.enabled && (
@@ -152,11 +152,11 @@ export default function EventiHubScreen({ navigation }: any) {
       : undefined;
 
   const iconMap: Record<string, { name: string; color: string }> = {
-    bici: { name: "bike", color: "#16a34a" }, // Green Action
-    trekking: { name: "hiking", color: "#e11d48" }, // Rose
-    bikeaut: { name: "bike-fast", color: "#4f46e5" }, // Indigo
+    bici: { name: "bike", color: UI.colors.eventCycling },
+    trekking: { name: "hiking", color: UI.colors.eventTrekking },
+    bikeaut: { name: "bike-fast", color: UI.colors.disabled },
     social: { name: "account-group-outline", color: UI.colors.eventSocial },
-    viaggi: { name: "bag-checked", color: "#d97706" }, // Amber
+    viaggi: { name: "bag-checked", color: UI.colors.disabled },
   };
 
   const hasOverrides = enabledSectionsNormalized !== null;

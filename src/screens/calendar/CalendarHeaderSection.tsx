@@ -401,7 +401,8 @@ export function CalendarHeaderSection({
 
                 const calendarDate = date as DateData;
                 const info = marking || {};
-                const isMarked = !!info.marked;
+                const dots = Array.isArray(info.dots) ? info.dots : [];
+                const isMarked = dots.length > 0 || !!info.marked;
                 const key = `${calendarDate.year}-${pad2(calendarDate.month)}-${pad2(calendarDate.day)}`;
                 const isSelected = key === selectedDay;
                 const isDisabled = state === "disabled";
@@ -470,13 +471,23 @@ export function CalendarHeaderSection({
                         <View
                           style={{
                             position: "absolute",
-                            bottom: 10,
-                            height: 4,
-                            width: barW,
-                            borderRadius: 2,
-                            backgroundColor: UI.colors.action,
+                            bottom: 8,
+                            alignItems: "center",
+                            gap: 2,
                           }}
-                        />
+                        >
+                          {(dots.length > 0 ? dots : [{ color: UI.colors.action }]).map((dot, idx) => (
+                            <View
+                              key={idx}
+                              style={{
+                                height: 4,
+                                width: barW,
+                                borderRadius: 2,
+                                backgroundColor: dot.color,
+                              }}
+                            />
+                          ))}
+                        </View>
                       ) : null}
                     </TouchableOpacity>
                   </View>

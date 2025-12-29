@@ -13,7 +13,9 @@ import {
   Platform,
   TouchableOpacity,
   KeyboardAvoidingView,
+  Keyboard,
   Share,
+  useWindowDimensions,
 } from "react-native";
 import { Screen, UI } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -80,6 +82,9 @@ export default function SocialDetailScreen() {
   const canEdit = isAdmin || isOwner;
   const [event, setEvent] = useState<SocialEvent | null>(null);
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
+  const [kbHeight, setKbHeight] = useState(0);
+  const { height: windowHeight } = useWindowDimensions();
+  const modalHeight = Math.min(Math.round(windowHeight * 0.85), 720);
   const [loading, setLoading] = useState(true);
   const [joinSaving, setJoinSaving] = useState(false);
   const [isSavingJoinLeave, setIsSavingJoinLeave] = useState(false);
@@ -494,6 +499,20 @@ export default function SocialDetailScreen() {
     }
   };
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
+      setKbHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+      setKbHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   return (
     <Screen useNativeHeader scroll={false} backgroundColor="#FDFCF8">
       <ScreenHeader
@@ -723,20 +742,28 @@ export default function SocialDetailScreen() {
       <Modal
         visible={noteModalVisible}
         transparent
-        animationType="fade"
+        animationType={Platform.OS === "android" ? "none" : "fade"}
         onRequestClose={() => setNoteModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalKeyboard}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ScrollView
-                contentContainerStyle={styles.modalScrollContent}
-                keyboardShouldPersistTaps="handled"
-              >
+        {Platform.OS === "ios" ? (
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior="padding"
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { height: modalHeight, minHeight: 420 }]}>
+                <View style={styles.modalBody}>
+                  <ScrollView
+                    style={styles.modalScroll}
+                    contentContainerStyle={[
+                      styles.modalScrollContent,
+                      {
+                        paddingBottom: 64 + (Platform.OS === "android" ? kbHeight : 0),
+                        flexGrow: 1,
+                      },
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                  >
                 <Text style={styles.modalTitle}>Partecipa all'Evento</Text>
                 <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
 
@@ -774,7 +801,8 @@ export default function SocialDetailScreen() {
                     </View>
                   );
                 })}
-              </ScrollView>
+                  </ScrollView>
+                </View>
 
               <View style={styles.modalFooterSticky}>
                 <View style={styles.modalButtons}>
@@ -794,26 +822,108 @@ export default function SocialDetailScreen() {
               </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { height: modalHeight, minHeight: 420 }]}>
+              <View style={styles.modalBody}>
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={[
+                    styles.modalScrollContent,
+                    {
+                      paddingBottom: 64 + (Platform.OS === "android" ? kbHeight : 0),
+                      flexGrow: 1,
+                    },
+                  ]}
+                  keyboardShouldPersistTaps="handled"
+                >
+                <Text style={styles.modalTitle}>Partecipa all'Evento</Text>
+                <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
+
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Es. Arrivo in ritardo, sono vegano..."
+                  value={noteText}
+                  onChangeText={setNoteText}
+                  multiline
+                  numberOfLines={3}
+                />
+
+                {EXTRA_KEYS.map((key) => {
+                  const cfg = event?.extraServices?.[key];
+                  if (!cfg?.enabled) return null;
+                  const label = cfg.label || SERVICE_LABELS[key];
+                  const currentVal = joinServices[key];
+                  return (
+                    <View key={key} style={styles.serviceRow}>
+                      <Text style={styles.serviceLabel}>{label}</Text>
+                      <View style={styles.serviceToggles}>
+                        <TouchableOpacity
+                          onPress={() => setJoinServices((p) => ({ ...p, [key]: p[key] === "no" ? null : "no" }))}
+                          style={[styles.choiceBtn, currentVal === "no" && styles.choiceBtnSelected]}
+                        >
+                          <Text style={[styles.choiceText, currentVal === "no" && styles.choiceTextSelected]}>NO</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setJoinServices((p) => ({ ...p, [key]: p[key] === "yes" ? null : "yes" }))}
+                          style={[styles.choiceBtn, currentVal === "yes" && styles.choiceBtnSelected]}
+                        >
+                          <Text style={[styles.choiceText, currentVal === "yes" && styles.choiceTextSelected]}>SI</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+                  </ScrollView>
+                </View>
+
+              <View style={[styles.modalFooterSticky, { marginBottom: kbHeight }]}>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                    onPress={() => setNoteModalVisible(false)}
+                  >
+                    <Text style={styles.modalBtnTextCancel}>Annulla</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                    onPress={handleJoin}
+                  >
+                    <Text style={styles.modalBtnTextConfirm}>Conferma</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
       </Modal>
 
       <Modal
         visible={manualModalVisible}
         transparent
-        animationType="fade"
+        animationType={Platform.OS === "android" ? "none" : "fade"}
         onRequestClose={() => setManualModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalKeyboard}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ScrollView
-                contentContainerStyle={styles.modalScrollContent}
-                keyboardShouldPersistTaps="handled"
-              >
+        {Platform.OS === "ios" ? (
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior="padding"
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { height: modalHeight, minHeight: 420 }]}>
+                <View style={styles.modalBody}>
+                  <ScrollView
+                    style={styles.modalScroll}
+                    contentContainerStyle={[
+                      styles.modalScrollContent,
+                      {
+                        paddingBottom: 64 + (Platform.OS === "android" ? kbHeight : 0),
+                        flexGrow: 1,
+                      },
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                  >
                 <Text style={styles.modalTitle}>Aggiungi Partecipante</Text>
                 <Text style={styles.label}>Nome e Cognome *</Text>
                 <TextInput
@@ -854,7 +964,8 @@ export default function SocialDetailScreen() {
                     </View>
                   );
                 })}
-              </ScrollView>
+                  </ScrollView>
+                </View>
 
               <View style={styles.modalFooterSticky}>
                 <View style={styles.modalButtons}>
@@ -880,7 +991,90 @@ export default function SocialDetailScreen() {
               </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { height: modalHeight, minHeight: 420 }]}>
+              <View style={styles.modalBody}>
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={[
+                    styles.modalScrollContent,
+                    {
+                      paddingBottom: 64 + (Platform.OS === "android" ? kbHeight : 0),
+                      flexGrow: 1,
+                    },
+                  ]}
+                  keyboardShouldPersistTaps="handled"
+                >
+                <Text style={styles.modalTitle}>Aggiungi Partecipante</Text>
+                <Text style={styles.label}>Nome e Cognome *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Nome e cognome"
+                  value={manualName}
+                  onChangeText={setManualName}
+                />
+                <Text style={[styles.label, { marginTop: 12 }]}>Note (Opzionale)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Note..."
+                  value={manualNote}
+                  onChangeText={setManualNote}
+                />
+                {EXTRA_KEYS.map((key) => {
+                  const cfg = event?.extraServices?.[key];
+                  if (!cfg?.enabled) return null;
+                  const label = cfg.label || SERVICE_LABELS[key];
+                  const currentVal = manualServices[key];
+                  return (
+                    <View key={key} style={styles.serviceRow}>
+                      <Text style={styles.serviceLabel}>{label}</Text>
+                      <View style={styles.serviceToggles}>
+                        <TouchableOpacity
+                          onPress={() => setManualServices((p) => ({ ...p, [key]: p[key] === "no" ? null : "no" }))}
+                          style={[styles.choiceBtn, currentVal === "no" && styles.choiceBtnSelected]}
+                        >
+                          <Text style={[styles.choiceText, currentVal === "no" && styles.choiceTextSelected]}>NO</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setManualServices((p) => ({ ...p, [key]: p[key] === "yes" ? null : "yes" }))}
+                          style={[styles.choiceBtn, currentVal === "yes" && styles.choiceBtnSelected]}
+                        >
+                          <Text style={[styles.choiceText, currentVal === "yes" && styles.choiceTextSelected]}>SI</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+                </ScrollView>
+              </View>
+
+              <View style={[styles.modalFooterSticky, { marginBottom: kbHeight }]}>
+                <View style={styles.modalButtons}>
+                  <Pressable
+                    style={[styles.modalBtn, { backgroundColor: "#f1f5f9" }]}
+                    onPress={() => {
+                      setManualModalVisible(false);
+                      setManualName("");
+                      setManualNote("");
+                    }}
+                    disabled={manualSaving}
+                  >
+                    <Text style={styles.modalBtnTextCancel}>Annulla</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalBtn, { backgroundColor: UI.colors.action }]}
+                    onPress={handleConfirmManual}
+                    disabled={manualSaving}
+                  >
+                    {manualSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnTextConfirm}>Aggiungi</Text>}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
       </Modal>
     </Screen>
   );
@@ -959,7 +1153,7 @@ const styles = StyleSheet.create({
   // Modals
   modalKeyboard: { flex: 1 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
-  modalContent: { backgroundColor: "#fff", borderRadius: 20, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 10 },
+  modalContent: { backgroundColor: "#fff", borderRadius: 20, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 10, overflow: "hidden", flexShrink: 1, width: "92%" },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#1E293B", marginBottom: 8, textAlign: "center" },
   modalSubtitle: { fontSize: 15, color: "#64748b", marginBottom: 20, textAlign: "center" },
   modalInput: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 12, fontSize: 16, color: "#334155", textAlignVertical: "top", minHeight: 80 },
@@ -967,6 +1161,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 12, fontSize: 16, color: "#334155" },
   modalScrollContent: { paddingBottom: 16 },
   modalFooterSticky: { paddingTop: 16 },
+  modalBody: { flex: 1 },
+  modalScroll: { flex: 1 },
   modalButtons: { flexDirection: "row", gap: 12, marginTop: 24 },
   modalBtn: { flex: 1, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   modalBtnTextCancel: { color: "#64748b", fontWeight: "700", fontSize: 16 },

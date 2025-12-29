@@ -389,10 +389,14 @@ export default function SocialEditScreen() {
   const handleToggleCancelled = async () => {
     if (!canEdit || !eventId) return;
     const next = status === "cancelled" ? "active" : "cancelled";
+    const uid = auth.currentUser?.uid ?? null;
     await updateDoc(doc(db, "social_events", eventId), {
       status: next,
+      ...(next === "cancelled"
+        ? { cancelledAt: serverTimestamp(), cancelledBy: uid }
+        : {}),
       updatedAt: serverTimestamp(),
-      updatedBy: auth.currentUser?.uid ?? null,
+      updatedBy: uid,
     });
     setStatus(next);
   };

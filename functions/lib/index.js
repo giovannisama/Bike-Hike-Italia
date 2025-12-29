@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onSocialParticipantDeleted = exports.onSocialParticipantCreated = exports.onParticipantWrite = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onSocialParticipantDeleted = exports.onSocialParticipantCreated = exports.onParticipantWrite = exports.onSocialEventUpdated = exports.onSocialEventCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
@@ -175,11 +175,13 @@ exports.onRideCreated = functions.firestore
             dateLabel = null;
         }
     }
-    const { tokens: recipients, approvedUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
         eventFlagField: "notificationsDisabledForCreatedRide",
+        enabledSection: "ciclismo",
     });
     functions.logger.info(`[onRideCreated] ${rideId} approved users=${approvedUsersCount}`);
     functions.logger.info(`[onRideCreated] ${rideId} tokens collected=${recipients.length}`);
+    functions.logger.info(`[onRideCreated] ${rideId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`);
     if (!recipients.length) {
         functions.logger.info(`[onRideCreated] ${rideId} no recipients`);
         return;
@@ -223,11 +225,13 @@ exports.onRideUpdated = functions.firestore
     const body = title
         ? `L'uscita "${title}" è stata annullata.`
         : "Un'uscita è stata annullata.";
-    const { tokens: recipients, approvedUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
         eventFlagField: "notificationsDisabledForCancelledRide",
+        enabledSection: "ciclismo",
     });
     functions.logger.info(`[onRideUpdated] ${rideId} cancellation approved users=${approvedUsersCount}`);
     functions.logger.info(`[onRideUpdated] ${rideId} cancellation tokens collected=${recipients.length}`);
+    functions.logger.info(`[onRideUpdated] ${rideId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`);
     if (!recipients.length) {
         functions.logger.info(`[onRideUpdated] ${rideId} cancellation no recipients`);
         return;
@@ -240,6 +244,94 @@ exports.onRideUpdated = functions.firestore
     });
     results.forEach((result, index) => {
         functions.logger.info(`[onRideUpdated] ${rideId} cancel chunk ${index} status=${result.status} ok=${result.ok}`);
+    });
+});
+// -----------------------------
+// 3a) Trigger su nuovo evento social
+// -----------------------------
+exports.onSocialEventCreated = functions.firestore
+    .document("social_events/{eventId}")
+    .onCreate(async (snapshot, context) => {
+    const eventId = context.params.eventId;
+    const data = snapshot.data() || {};
+    const title = typeof data?.title === "string" && data.title.trim().length > 0
+        ? data.title
+        : "Evento social";
+    const dateValue = data?.startAt;
+    let dateLabel = null;
+    if (dateValue?.toDate) {
+        try {
+            dateLabel = dateValue.toDate().toLocaleDateString("it-IT", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            });
+        }
+        catch {
+            dateLabel = null;
+        }
+    }
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)();
+    functions.logger.info(`[onSocialEventCreated] ${eventId} approved users=${approvedUsersCount}`);
+    functions.logger.info(`[onSocialEventCreated] ${eventId} tokens collected=${recipients.length}`);
+    functions.logger.info(`[onSocialEventCreated] ${eventId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`);
+    if (!recipients.length) {
+        functions.logger.info(`[onSocialEventCreated] ${eventId} no recipients`);
+        return;
+    }
+    const body = dateLabel
+        ? `È stato pubblicato un nuovo evento: ${title} (${dateLabel})`
+        : `È stato pubblicato un nuovo evento: ${title}`;
+    const results = await (0, expoPush_1.sendExpoPushNotification)({
+        to: recipients,
+        title: "Nuovo evento social",
+        body,
+        data: { type: "socialEvent", eventId },
+    });
+    results.forEach((result, index) => {
+        functions.logger.info(`[onSocialEventCreated] ${eventId} chunk ${index} status=${result.status} ok=${result.ok}`);
+    });
+});
+// -----------------------------
+// 3a) Trigger su aggiornamento evento social (annullamento)
+// -----------------------------
+exports.onSocialEventUpdated = functions.firestore
+    .document("social_events/{eventId}")
+    .onUpdate(async (change, context) => {
+    const eventId = context.params.eventId;
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!before || !after) {
+        functions.logger.info(`[onSocialEventUpdated] ${eventId} missing snapshot data`);
+        return;
+    }
+    const prevStatus = typeof before.status === "string" ? before.status : "active";
+    const nextStatus = typeof after.status === "string" ? after.status : "active";
+    if (prevStatus === "cancelled" || nextStatus !== "cancelled") {
+        return;
+    }
+    const title = typeof after.title === "string" && after.title.trim().length > 0
+        ? after.title
+        : null;
+    const body = title
+        ? `L'evento "${title}" è stato annullato.`
+        : "Un evento è stato annullato.";
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)();
+    functions.logger.info(`[onSocialEventUpdated] ${eventId} approved users=${approvedUsersCount}`);
+    functions.logger.info(`[onSocialEventUpdated] ${eventId} tokens collected=${recipients.length}`);
+    functions.logger.info(`[onSocialEventUpdated] ${eventId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`);
+    if (!recipients.length) {
+        functions.logger.info(`[onSocialEventUpdated] ${eventId} cancellation no recipients`);
+        return;
+    }
+    const results = await (0, expoPush_1.sendExpoPushNotification)({
+        to: recipients,
+        title: "Evento annullato",
+        body,
+        data: { type: "socialEventCancelled", eventId },
+    });
+    results.forEach((result, index) => {
+        functions.logger.info(`[onSocialEventUpdated] ${eventId} cancel chunk ${index} status=${result.status} ok=${result.ok}`);
     });
 });
 // -----------------------------

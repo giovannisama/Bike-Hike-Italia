@@ -701,9 +701,13 @@ service cloud.firestore {
 
       match /participants/{uid} {
         allow read: if isActiveUser();
-        allow create: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
-        allow update: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
-        allow delete: if isActiveUser() && (isAdmin() || isOwner() || isSelfSocialParticipant(uid));
+        allow create: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
+        allow update: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
+        allow delete: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid));
+
+        function socialEventNotCancelled(id) {
+          return get(/databases/$(database)/documents/social_events/$(id)).data.status != "cancelled";
+        }
 
         function isSelfSocialParticipant(pid) {
           return request.auth != null &&

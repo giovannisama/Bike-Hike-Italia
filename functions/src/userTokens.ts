@@ -2,6 +2,7 @@ import { db } from "./firebaseAdmin";
 
 export type ApprovedTokensResult = {
   approvedUsersCount: number;
+  activeUsersCount: number;
   tokens: string[];
 };
 
@@ -17,18 +18,23 @@ type TokenFilterOptions = {
    *  - "notificationsDisabledForPendingUser"
    */
   eventFlagField?: string;
+  enabledSection?: string;
 };
 
 export async function fetchApprovedExpoTokens(
   options?: TokenFilterOptions
 ): Promise<ApprovedTokensResult> {
-  const snapshot = await db
+  let queryRef: FirebaseFirestore.Query = db
     .collection("users")
-    .where("approved", "==", true)
-    .get();
+    .where("approved", "==", true);
+  if (options?.enabledSection) {
+    queryRef = queryRef.where("enabledSections", "array-contains", options.enabledSection);
+  }
+  const snapshot = await queryRef.get();
 
   const tokensSet = new Set<string>();
   const eventFlagField = options?.eventFlagField;
+  let activeUsersCount = 0;
 
   snapshot.docs.forEach((docSnap) => {
     const data = docSnap.data() as any;
@@ -39,6 +45,8 @@ export async function fetchApprovedExpoTokens(
 
     // Se è specificato un flag per evento, escludiamo chi ha disattivato quel tipo
     if (eventFlagField && (data[eventFlagField] === true)) return;
+
+    activeUsersCount += 1;
 
     const tokens = Array.isArray(data.expoPushTokens)
       ? data.expoPushTokens
@@ -53,6 +61,7 @@ export async function fetchApprovedExpoTokens(
 
   return {
     approvedUsersCount: snapshot.docs.length,
+    activeUsersCount,
     tokens: Array.from(tokensSet),
   };
 }

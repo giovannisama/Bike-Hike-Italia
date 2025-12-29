@@ -178,6 +178,8 @@ export default function SocialDetailScreen() {
   };
   const status = (event?.status as "active" | "cancelled" | "archived") ?? "active";
   const isInactive = status !== "active";
+  const isCancelled = status === "cancelled";
+  const canModifyParticipation = !isCancelled;
 
   const stats = useMemo(() => {
     const base = {
@@ -232,6 +234,10 @@ export default function SocialDetailScreen() {
     if (!eventId || !userId) return;
     if (isSavingJoinLeave) return;
     if (isInactive) return;
+    if (isCancelled) {
+      Alert.alert("Evento annullato", "Le iscrizioni sono disabilitate.");
+      return;
+    }
     if (hasMissingChoices) {
       const missing = EXTRA_KEYS.filter((key) => extrasEnabled[key] && !joinServices[key]);
       const labels = missing
@@ -276,6 +282,10 @@ export default function SocialDetailScreen() {
     if (!eventId || !userId) return;
     if (isSavingJoinLeave) return;
     if (isInactive) return;
+    if (isCancelled) {
+      Alert.alert("Evento annullato", "Le iscrizioni sono disabilitate.");
+      return;
+    }
     setJoinSaving(true);
     setIsSavingJoinLeave(true);
     try {
@@ -365,6 +375,8 @@ export default function SocialDetailScreen() {
             const uid = auth.currentUser?.uid ?? null;
             await updateDoc(doc(db, "social_events", eventId), {
               status: "cancelled",
+              cancelledAt: serverTimestamp(),
+              cancelledBy: uid,
               updatedAt: serverTimestamp(),
               updatedBy: uid,
             });
@@ -605,13 +617,13 @@ export default function SocialDetailScreen() {
           )}
 
           <View style={styles.section}>
-            {!isInactive && (
+            {status !== "archived" && (
               <View style={{ marginBottom: 16 }}>
                 {userParticipant ? (
                   <Pressable
                     style={[styles.bigButton, { backgroundColor: "#fee2e2", borderColor: "#fecaca" }]}
                     onPress={handleLeave}
-                    disabled={joinSaving || isSavingJoinLeave}
+                    disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
                   >
                     <Text style={[styles.bigButtonText, { color: "#991b1b" }]}>Annulla iscrizione</Text>
                   </Pressable>
@@ -619,7 +631,7 @@ export default function SocialDetailScreen() {
                   <Pressable
                     style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
                     onPress={() => setNoteModalVisible(true)}
-                    disabled={joinSaving || isSavingJoinLeave}
+                    disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
                   >
                     {joinSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'evento</Text>}
                   </Pressable>
@@ -674,7 +686,11 @@ export default function SocialDetailScreen() {
                     )}
                   </View>
                   {(canEdit || p.uid === userId) && (
-                    <Pressable onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))} style={{ padding: 4 }}>
+                    <Pressable
+                      onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
+                      style={{ padding: 4 }}
+                      disabled={!canModifyParticipation}
+                    >
                       <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
                     </Pressable>
                   )}

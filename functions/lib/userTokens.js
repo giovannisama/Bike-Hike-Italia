@@ -5,12 +5,16 @@ exports.fetchOwnerExpoTokens = fetchOwnerExpoTokens;
 exports.fetchApprovedExpoTokensForBoardPost = fetchApprovedExpoTokensForBoardPost;
 const firebaseAdmin_1 = require("./firebaseAdmin");
 async function fetchApprovedExpoTokens(options) {
-    const snapshot = await firebaseAdmin_1.db
+    let queryRef = firebaseAdmin_1.db
         .collection("users")
-        .where("approved", "==", true)
-        .get();
+        .where("approved", "==", true);
+    if (options?.enabledSection) {
+        queryRef = queryRef.where("enabledSections", "array-contains", options.enabledSection);
+    }
+    const snapshot = await queryRef.get();
     const tokensSet = new Set();
     const eventFlagField = options?.eventFlagField;
+    let activeUsersCount = 0;
     snapshot.docs.forEach((docSnap) => {
         const data = docSnap.data();
         // Utente disabilitato o notifiche globalmente disabilitate
@@ -21,6 +25,7 @@ async function fetchApprovedExpoTokens(options) {
         // Se è specificato un flag per evento, escludiamo chi ha disattivato quel tipo
         if (eventFlagField && (data[eventFlagField] === true))
             return;
+        activeUsersCount += 1;
         const tokens = Array.isArray(data.expoPushTokens)
             ? data.expoPushTokens
             : [];
@@ -32,6 +37,7 @@ async function fetchApprovedExpoTokens(options) {
     });
     return {
         approvedUsersCount: snapshot.docs.length,
+        activeUsersCount,
         tokens: Array.from(tokensSet),
     };
 }

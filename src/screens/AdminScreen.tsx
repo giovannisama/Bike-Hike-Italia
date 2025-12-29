@@ -29,7 +29,7 @@ export default function AdminScreen() {
       <ScreenHeader
         title="AMMINISTRAZIONE"
         subtitle="Pannello di controllo"
-        showBack={false}
+        showBack={true}
         topPadding={60} // Matches the custom 60px padding we approved earlier
       />
 

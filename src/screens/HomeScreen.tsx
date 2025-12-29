@@ -330,9 +330,7 @@ export default function HomeScreen({ navigation }: any) {
         {isOwner && (
           <Pressable
             onPress={() =>
-              navigation.navigate("TabMore", {
-                screen: "Amministrazione",
-              })
+              navigation.navigate("Amministrazione")
             }
             style={({ pressed }) => [styles.adminCard, pressed && { opacity: 0.95 }]}
           >
@@ -354,9 +352,7 @@ export default function HomeScreen({ navigation }: any) {
         {/* INFO CARD (Visible to all) */}
         <Pressable
           onPress={() =>
-            navigation.navigate("TabMore", {
-              screen: "Info",
-            })
+            navigation.navigate("Info")
           }
           style={({ pressed }) => [styles.infoCard, pressed && { opacity: 0.95 }]}
         >

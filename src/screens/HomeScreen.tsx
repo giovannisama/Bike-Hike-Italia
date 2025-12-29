@@ -16,6 +16,7 @@ import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
 import type { MainTabParamList } from "../navigation/types";
 import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
+import { EventGridCard, EventSection } from "../components/EventGridCard";
 
 const logo = require("../../assets/images/logo.jpg");
 
@@ -124,53 +125,8 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
   return { preview, loading, unreadCount: unread };
 }
 
-type EventRowProps = {
-  title: string;
-  caption?: string;
-  badge?: number | null;
-  onPress?: () => void;
-  disabled?: boolean;
-  icon: React.ReactNode;
-  iconBgColor?: string;
-  accentColor?: string;
-};
+// EventRow component removed in favor of EventGridCard
 
-function EventRow({ title, caption, badge, onPress, disabled, icon, iconBgColor, accentColor }: EventRowProps) {
-  return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      style={({ pressed }) => [
-        styles.eventRow,
-        disabled && styles.eventRowDisabled,
-        pressed && !disabled && { backgroundColor: "#F8FAFC" },
-      ]}
-    >
-      <View
-        style={[
-          styles.eventIcon,
-          {
-            backgroundColor: disabled ? UI.colors.disabledBg : (iconBgColor ?? UI.colors.tint),
-            borderColor: accentColor ?? "transparent",
-          },
-        ]}
-      >
-        {icon}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.eventTitle, disabled && styles.eventTitleDisabled]}>{title}</Text>
-        {!!caption && <Text style={styles.eventCaption}>{caption}</Text>}
-      </View>
-      <View style={styles.eventRight}>
-        {typeof badge === "number" && (
-          <View style={[styles.badge, disabled && styles.badgeDisabled]}>
-            <Text style={styles.badgeText}>{badge}</Text>
-          </View>
-        )}
-        <Ionicons name="chevron-forward" size={20} color={disabled ? "#CBD5E1" : "#94A3B8"} />
-      </View>
-    </Pressable>
-  );
-}
 
 export default function HomeScreen({ navigation }: any) {
   const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking } =
@@ -229,6 +185,91 @@ export default function HomeScreen({ navigation }: any) {
 
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 16) + 32;
+
+  // --- GRID LAYOUT LOGIC ---
+  const [gridWidth, setGridWidth] = useState<number | null>(null);
+  const gridGap = 12;
+  const cardWidth = gridWidth ? Math.floor((gridWidth - gridGap) / 2) : 0;
+
+  const iconMap: Record<string, { name: string; color: string }> = {
+    bici: { name: "bike", color: UI.colors.eventCycling },
+    trekking: { name: "hiking", color: UI.colors.eventTrekking },
+    bikeaut: { name: "bike-fast", color: UI.colors.disabled },
+    social: { name: "account-group-outline", color: UI.colors.eventSocial },
+    viaggi: { name: "bag-checked", color: UI.colors.disabled },
+  };
+
+  const sections: EventSection[] = [
+    {
+      id: "bici",
+      title: "Ciclismo",
+      caption: EVENT_CATEGORY_SUBTITLES.ciclismo,
+      icon: iconMap.bici.name,
+      iconColor: iconMap.bici.color,
+      badge: activeCount ?? 0,
+      enabled: true,
+      permissionKey: "ciclismo",
+      onPress: () => rootNav.navigate("UsciteList"),
+    },
+    {
+      id: "trekking",
+      title: "Trekking",
+      caption: EVENT_CATEGORY_SUBTITLES.trekking,
+      icon: iconMap.trekking.name,
+      iconColor: iconMap.trekking.color,
+      badge: 0,
+      enabled: true,
+      permissionKey: "trekking",
+      onPress: () => rootNav.navigate("TrekkingPlaceholder"),
+    },
+    {
+      id: "social",
+      title: "Social",
+      caption: EVENT_CATEGORY_SUBTITLES.social,
+      icon: iconMap.social.name,
+      iconColor: iconMap.social.color,
+      badge: socialActiveCount ?? 0,
+      enabled: true,
+      onPress: () => rootNav.navigate("SocialList"),
+    },
+    {
+      id: "spacer-1",
+      title: "",
+      caption: "",
+      icon: "",
+      enabled: true,
+      invisible: true,
+    },
+    {
+      id: "bikeaut",
+      title: "Bike Aut",
+      caption: "COMING SOON",
+      icon: iconMap.bikeaut.name,
+      iconColor: iconMap.bikeaut.color,
+      badge: null,
+      enabled: false,
+      permissionKey: "bikeaut",
+    },
+    {
+      id: "viaggi",
+      title: "Viaggi",
+      caption: "COMING SOON",
+      icon: iconMap.viaggi.name,
+      iconColor: iconMap.viaggi.color,
+      badge: null,
+      enabled: false,
+    },
+  ];
+
+  /* 
+   * Filter logic similar to EventiHub but simpler since Home shows all options 
+   * (even disabled ones are shown as disabled cards in Grid now, matching EventiHub visual).
+   * Note: Original Home code showed ALL items in list.
+   * If user wants "identical to EventiHub", they might mean showing valid ones?
+   * "mantenere la stessa lista/ordine categorie attuale della Home" implies showing all.
+   * So we render all 'sections'. 
+   */
+
 
   // Header Gradient logic: subtle decoration
   return (
@@ -332,61 +373,19 @@ export default function HomeScreen({ navigation }: any) {
         </Pressable>
 
         {/* EVENTI SECTION - Unified container */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Eventi</Text>
-          </View>
+        {/* EVENTS GRID SECTION */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Eventi</Text>
+        </View>
 
-          <View style={styles.unifiedCard}>
-            <EventRow
-              title="Ciclismo"
-              caption={EVENT_CATEGORY_SUBTITLES.ciclismo}
-              badge={activeCount ?? 0}
-              onPress={() => rootNav.navigate("UsciteList")}
-              disabled={!canSeeCiclismo}
-              icon={<MaterialCommunityIcons name="bike" size={24} color={UI.colors.eventCycling} />}
-              iconBgColor={UI.colors.eventCyclingBg}
-              accentColor={UI.colors.eventCycling}
-            />
-            <View style={styles.rowDivider} />
-            <EventRow
-              title="Trekking"
-              caption={EVENT_CATEGORY_SUBTITLES.trekking}
-              badge={0}
-              onPress={() => rootNav.navigate("TrekkingPlaceholder")}
-              disabled={!canSeeTrekking}
-              icon={<MaterialCommunityIcons name="hiking" size={24} color={UI.colors.eventTrekking} />}
-              iconBgColor={UI.colors.eventTrekkingBg}
-              accentColor={UI.colors.eventTrekking}
-            />
-            <View style={styles.rowDivider} />
-            <EventRow
-              title="Social"
-              caption={EVENT_CATEGORY_SUBTITLES.social}
-              badge={socialActiveCount ?? 0}
-              onPress={() => rootNav.navigate("SocialList")}
-              icon={<MaterialCommunityIcons name="account-group-outline" size={24} color={UI.colors.eventSocial} />}
-              iconBgColor={UI.colors.tint}
-              accentColor={UI.colors.eventSocial}
-            />
-            <View style={styles.rowDivider} />
-            <EventRow
-              title="Bike Aut"
-              caption="COMING SOON"
-              disabled
-              badge={null}
-              icon={<MaterialCommunityIcons name="bike-fast" size={24} color={UI.colors.disabled} />}
-              accentColor={UI.colors.borderMuted}
-            />
-            <View style={styles.rowDivider} />
-            <EventRow
-              title="Viaggi"
-              caption="COMING SOON"
-              disabled
-              badge={null}
-              icon={<MaterialCommunityIcons name="bag-checked" size={24} color={UI.colors.disabled} />}
-              accentColor={UI.colors.borderMuted}
-            />
+        <View
+          style={{ marginHorizontal: 16 }}
+          onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
+        >
+          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+            {sections.map((item) => (
+              <EventGridCard key={item.id} item={item} cardWidth={cardWidth} />
+            ))}
           </View>
         </View>
 

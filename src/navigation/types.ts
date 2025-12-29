@@ -32,11 +32,8 @@ export type RootStackParamList = {
 // Tipi per il Tab Navigator principale (vedi MainTabs in App.tsx).
 export type MainTabParamList = {
   TabHome: undefined;
-  TabEventi: undefined;
+  // TabEventi removed
   TabBacheca: undefined;
   TabCalendar: undefined;
-  TabMore: {
-    screen?: "Info" | "MoreHome" | "Amministrazione" | "Profile";
-    params?: any;
-  };
+  TabProfile: undefined;
 };

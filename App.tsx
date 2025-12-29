@@ -63,7 +63,6 @@ import NotificationSettingsScreen from "./src/screens/NotificationSettingsScreen
 import SocialListScreen from "./src/screens/SocialListScreen";
 import SocialDetailScreen from "./src/screens/SocialDetailScreen";
 import SocialEditScreen from "./src/screens/SocialEditScreen";
-import EventiHubScreen from "./src/screens/EventiHubScreen";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
 import { registerPushToken } from "./src/notifications/registerPushToken";
 import type { RootStackParamList } from "./src/navigation/types";
@@ -117,138 +116,11 @@ function AdminGate() {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
-const MoreStack = createNativeStackNavigator();
-// ---- ALTRO (More) Nested Stack and Menu ----
+// MoreStack removed
 const ACTION_GREEN = "#22c55e";
 
-function MoreHomeScreen() {
-  const navigation: any = useNavigation();
-  const { isOwner } = useCurrentProfile();
+// MoreHomeScreen and MoreStackNavigator removed
 
-  const items = useMemo(
-    () => {
-      const base: Array<{ key: string; title: string; subtitle: string; icon: any; onPress: () => void }> = [
-        {
-          key: "info",
-          title: "Informazioni",
-          subtitle: "Dati e contatti dell’associazione",
-          icon: "information-circle-outline",
-          onPress: () => navigation.navigate("Info"),
-        },
-        {
-          key: "profile",
-          title: "Profilo",
-          subtitle: "I tuoi dati e certificati",
-          icon: "person-circle-outline",
-          // Profile is a Root Stack screen (keeps Tabs at 5 visible items)
-          onPress: () => navRef.navigate("Profile" as any),
-        },
-      ];
-
-      if (isOwner) {
-        base.push({
-          key: "admin",
-          title: "Amministrazione",
-          subtitle: "Gestione utenti e permessi",
-          icon: "settings-outline",
-          onPress: () => navigation.navigate("Amministrazione"),
-        });
-      }
-
-      return base;
-    },
-    [isOwner, navigation]
-  );
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
-      {/* Header aligned with other screens */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 }}>
-        <Text style={{ fontSize: 30, fontWeight: "800", color: "#1E293B", letterSpacing: -0.5 }}>Altro</Text>
-        <Text style={{ fontSize: 16, color: "#64748B", fontWeight: "500", marginTop: 4 }}>Seleziona una sezione</Text>
-      </View>
-
-      {/* Single Card Container */}
-      <View style={{
-        marginHorizontal: 16,
-        backgroundColor: "#fff",
-        borderRadius: 20, // Modern radius
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        elevation: 3,
-        overflow: "hidden", // For ripple/press containment
-      }}>
-        {items.map((item, index) => {
-          const isLast = index === items.length - 1;
-          return (
-            <Pressable
-              key={item.key}
-              onPress={item.onPress}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 16,
-                paddingHorizontal: 16,
-                backgroundColor: pressed ? "rgba(34, 197, 94, 0.04)" : "#fff",
-              })}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  backgroundColor: "rgba(34, 197, 94, 0.08)", // ACTION_GREEN faint
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 14,
-                }}
-              >
-                <Ionicons name={item.icon} size={22} color={ACTION_GREEN} />
-              </View>
-
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: "#0F172A" }}>
-                  {item.title}
-                </Text>
-                <Text style={{ marginTop: 2, fontSize: 14, color: "#64748B", fontWeight: "500" }} numberOfLines={1}>
-                  {item.subtitle}
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
-
-              {/* Divider (hairline) */}
-              {!isLast && (
-                <View
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    left: 72, // Align with text start (42 icon + 14 margin + 16 padding)
-                    right: 0,
-                    height: 1,
-                    backgroundColor: "#F1F5F9",
-                  }}
-                />
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function MoreStackNavigator() {
-  return (
-    <MoreStack.Navigator screenOptions={{ headerShown: false }}>
-      <MoreStack.Screen name="MoreHome" component={MoreHomeScreen} />
-      <MoreStack.Screen name="Info" component={InfoScreen} />
-      {/* Profile and Calendar are accessed via Tabs now */}
-      <MoreStack.Screen name="Amministrazione" component={AdminGate} />
-    </MoreStack.Navigator>
-  );
-}
 // Navigation ref per future esigenze (es. deep link)
 export const navRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -976,11 +848,7 @@ export default function App() {
               component={MainTabs}
               options={{ headerShown: false }}
             />
-            <Stack.Screen
-              name="Amministrazione"
-              component={AdminGate}
-              options={{ title: "Amministrazione" }}
-            />
+
             <Stack.Screen name="UserList" component={UserListScreen} options={{ title: "Gestione Utenti" }} />
             <Stack.Screen
               name="UserDetail"
@@ -1051,7 +919,8 @@ export default function App() {
               component={NotificationSettingsScreen}
               options={{ headerShown: false }}
             />
-            {/* Info is now in Tabs as TabMore -> Info */}
+            <Stack.Screen name="Info" component={InfoScreen} options={{ title: "Informazioni" }} />
+            <Stack.Screen name="Amministrazione" component={AdminGate} options={{ headerShown: false }} />
           </Stack.Navigator>
         )
       )}
@@ -1130,14 +999,15 @@ function MainTabs() {
           switch (route.name) {
             case "TabHome":
               return <Ionicons name="home-outline" size={iconSize} color={color} />;
-            case "TabEventi":
-              return <MaterialCommunityIcons name="star-outline" size={iconSize} color={color} />;
+            case "TabHome":
+              return <Ionicons name="home-outline" size={iconSize} color={color} />;
+            // TabEventi removed
             case "TabBacheca":
               return <Ionicons name="newspaper-outline" size={iconSize} color={color} />;
             case "TabCalendar":
               return <Ionicons name="calendar-outline" size={iconSize} color={color} />;
-            case "TabMore":
-              return <Ionicons name="grid-outline" size={iconSize} color={color} />;
+            case "TabProfile":
+              return <Ionicons name="person-circle-outline" size={iconSize} color={color} />;
             default:
               return null;
           }
@@ -1150,14 +1020,6 @@ function MainTabs() {
         options={{
           title: "Home",
           tabBarLabel: ({ color }) => <TabLabel label="Home" color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="TabEventi"
-        component={EventiHubScreen}
-        options={{
-          title: "Eventi",
-          tabBarLabel: ({ color }) => <TabLabel label="Eventi" color={color} />,
         }}
       />
       <Tab.Screen
@@ -1182,20 +1044,12 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="TabMore"
-        component={MoreStackNavigator}
-        options={({ navigation }) => ({
-          title: "Altro",
-          tabBarLabel: ({ color }) => <TabLabel label="Altro" color={color} />,
-        })}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            // Prevent default action
-            e.preventDefault();
-            // Navigate to the Tab, then specifically to the Menu screen (Reset behavior)
-            navigation.navigate("TabMore", { screen: "MoreHome" });
-          },
-        })}
+        name="TabProfile"
+        component={ProfileScreen}
+        options={{
+          title: "Profilo",
+          tabBarLabel: ({ color }) => <TabLabel label="Profilo" color={color} />,
+        }}
       />
     </Tab.Navigator>
   );

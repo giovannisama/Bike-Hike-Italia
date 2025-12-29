@@ -33,7 +33,13 @@ export function EventGridCard({ item, cardWidth }: { item: EventSection; cardWid
                     borderTopWidth: 4,
                 },
                 !item.enabled && styles.gridCardDisabled,
-                pressed && item.enabled && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+                // 3D Press Effect: Scale down + Move down (reduce shadow)
+                pressed && item.enabled && {
+                    transform: [{ scale: 0.96 }, { translateY: 2 }],
+                    shadowOpacity: 0.05,
+                    shadowRadius: 4,
+                    elevation: 2,
+                },
             ]}
         >
             <View style={styles.gridHeader}>
@@ -66,21 +72,28 @@ export function EventGridCard({ item, cardWidth }: { item: EventSection; cardWid
 const styles = StyleSheet.create({
     gridCard: {
         backgroundColor: "#FFFFFF",
-        borderRadius: 16,
+        borderRadius: 20, // Slightly more rounded
         padding: 16,
-        marginBottom: 12,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
+        marginBottom: 16, // More spacing
+        // Enhanced 3D Shadow
+        shadowColor: "#0F172A",
+        shadowOffset: { width: 0, height: 6 }, // Deeper shadow
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+        elevation: 8, // High elevation for Android
+        borderWidth: 1,
+        borderColor: "#F1F5F9",
         minHeight: 120,
         justifyContent: "space-between",
     },
     gridCardDisabled: {
         backgroundColor: "#F8FAFC",
         borderTopColor: "#E2E8F0",
-        elevation: 0,
+        shadowOpacity: 0.02,
+        shadowRadius: 2,
+        elevation: 1,
+        borderWidth: 1,
+        borderColor: "#F1F5F9",
     },
     gridHeader: {
         flexDirection: "row",

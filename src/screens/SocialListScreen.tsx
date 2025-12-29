@@ -96,16 +96,18 @@ export default function SocialListScreen() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        console.log("[social_events] list docs", snap.size);
+        if (__DEV__) console.log("[social_events] list docs", snap.size);
         if (snap.size > 0) {
           const first = snap.docs[0];
           const data = first.data() as any;
-          console.log("[social_events] first doc", {
-            id: first.id,
-            status: data?.status,
-            startAt: data?.startAt,
-            startAtType: data?.startAt?.constructor?.name,
-          });
+          if (__DEV__) {
+            console.log("[social_events] first doc", {
+              id: first.id,
+              status: data?.status,
+              startAt: data?.startAt,
+              startAtType: data?.startAt?.constructor?.name,
+            });
+          }
         }
         const next: SocialEvent[] = [];
         snap.forEach((docSnap) => {
@@ -128,16 +130,18 @@ export default function SocialListScreen() {
           );
           getDocs(debugQ)
             .then((debugSnap) => {
-              console.log("[social_events] debug docs", debugSnap.size);
-              debugSnap.forEach((docSnap) => {
-                const data = docSnap.data() as any;
-                console.log("[social_events] debug item", {
-                  id: docSnap.id,
-                  status: data?.status,
-                  startAt: data?.startAt,
-                  startAtType: data?.startAt?.constructor?.name,
+              if (__DEV__) {
+                console.log("[social_events] debug docs", debugSnap.size);
+                debugSnap.forEach((docSnap) => {
+                  const data = docSnap.data() as any;
+                  console.log("[social_events] debug item", {
+                    id: docSnap.id,
+                    status: data?.status,
+                    startAt: data?.startAt,
+                    startAtType: data?.startAt?.constructor?.name,
+                  });
                 });
-              });
+              }
             })
             .catch((err) => {
               console.error("[social_events] debug failed", err);
@@ -158,7 +162,7 @@ export default function SocialListScreen() {
     return () => {
       try {
         unsub();
-      } catch {}
+      } catch { }
     };
   }, [filterType]);
 

@@ -35,7 +35,7 @@ async function ensureAndroidNotificationPermission(): Promise<boolean> {
       }
     );
 
-    console.log("[registerPushToken] POST_NOTIFICATIONS:", granted);
+    if (__DEV__) console.log("[registerPushToken] POST_NOTIFICATIONS:", granted);
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
     console.warn("[registerPushToken] Errore richiesta POST_NOTIFICATIONS:", err);
@@ -58,7 +58,7 @@ async function ensureAndroidNotificationChannel() {
       enableVibrate: true,
       showBadge: true,
     });
-    console.log("[registerPushToken] Canale 'default' configurato");
+    if (__DEV__) console.log("[registerPushToken] Canale 'default' configurato");
   } catch (err) {
     console.warn("[registerPushToken] Errore configurazione canale Android:", err);
   }
@@ -123,7 +123,7 @@ export async function registerPushToken() {
       } else {
         console.warn(
           "[registerPushToken] projectId non trovato nel manifest. " +
-            "Procedo senza specificarlo (fallback)."
+          "Procedo senza specificarlo (fallback)."
         );
         // @ts-ignore overload senza parametri
         tokenData = await Notifications.getExpoPushTokenAsync();

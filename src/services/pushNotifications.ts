@@ -56,9 +56,11 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   const appOwnership = Constants.appOwnership;
   if (appOwnership === "expo") {
     // Evita di salvare token di Expo Go → niente notifiche duplicate in dev
-    console.log(
-      "[pushNotifications] esecuzione dentro Expo Go; salto registrazione token per evitare duplicati."
-    );
+    if (__DEV__) {
+      console.log(
+        "[pushNotifications] esecuzione dentro Expo Go; salto registrazione token per evitare duplicati."
+      );
+    }
     return null;
   }
 
@@ -178,12 +180,14 @@ export async function setNotificationsDisabled(disabled: boolean): Promise<void>
   };
   try {
     await updateDoc(userRef, payload);
-    console.log(
-      "[pushNotifications] notificationsDisabled aggiornato a",
-      disabled,
-      "per utente",
-      currentUser.uid
-    );
+    if (__DEV__) {
+      console.log(
+        "[pushNotifications] notificationsDisabled aggiornato a",
+        disabled,
+        "per utente",
+        currentUser.uid
+      );
+    }
   } catch (error) {
     console.error(
       "[pushNotifications] errore aggiornando notificationsDisabled:",

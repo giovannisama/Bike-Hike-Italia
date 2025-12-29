@@ -21,6 +21,7 @@ import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc, Timestamp 
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import AndroidTimePicker from "../components/AndroidTimePicker";
 import { auth, db } from "../firebase";
 import type { RootStackParamList } from "../navigation/types";
@@ -357,11 +358,13 @@ export default function SocialEditScreen() {
       } else if (isEdit) {
         payload.extraServices = null;
       }
-      console.log("[social_events] write", {
-        collection: "social_events",
-        status: payload.status,
-        startAtType: payload.startAt?.constructor?.name,
-      });
+      if (__DEV__) {
+        console.log("[social_events] write", {
+          collection: "social_events",
+          status: payload.status,
+          startAtType: payload.startAt?.constructor?.name,
+        });
+      }
       if (isEdit && eventId) {
         await updateDoc(doc(db, "social_events", eventId), payload);
       } else {
@@ -371,7 +374,7 @@ export default function SocialEditScreen() {
           createdAt: serverTimestamp(),
           createdBy: uid,
         });
-        console.log("[social_events] created", docRef.id);
+        if (__DEV__) console.log("[social_events] created", docRef.id);
       }
       navigation.goBack();
     } catch (err: any) {
@@ -416,25 +419,12 @@ export default function SocialEditScreen() {
   const titleScreen = isEdit ? "Modifica Evento" : "Crea Evento";
 
   return (
-    <Screen title={titleScreen} useNativeHeader scroll={false} backgroundColor="#FDFCF8">
+    <Screen title={titleScreen} useNativeHeader={false} scroll={false} backgroundColor="#FDFCF8" disableHero={true}>
       <View style={styles.root}>
-        <View style={styles.headerContainer}>
-          <SafeAreaView edges={["top"]}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={styles.backButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="arrow-back" size={24} color="#1E293B" />
-              </TouchableOpacity>
-              <View style={{ flex: 1, justifyContent: "center" }}>
-                <Text style={styles.headerTitle}>{titleScreen}</Text>
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
-
+        <ScreenHeader
+          title={titleScreen}
+          subtitle={isEdit ? "Modifica Dettagli" : undefined}
+        />
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={UI.colors.primary} />
@@ -666,74 +656,79 @@ export default function SocialEditScreen() {
               <View style={{ height: 40 }} />
             </ScrollView>
           </KeyboardAvoidingView>
-        )}
+        )
+        }
 
-        {!loading && (
-          <View style={styles.footerContainer}>
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={saving || !canEdit}
-              style={[
-                styles.saveBtn,
-                (saving || !canEdit) && styles.saveBtnDisabled,
-              ]}
-              activeOpacity={0.8}
-            >
-              {saving ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <ActivityIndicator color="#fff" />
-                  <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno..." : "Salvataggio..."}</Text>
-                </View>
-              ) : (
-                <Text style={styles.saveBtnText}>{isEdit ? "Salva Modifiche" : "Crea Evento"}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {Platform.OS === "ios" && (
-        <Modal
-          transparent
-          animationType="fade"
-          visible={iosPickerMode !== null}
-          onRequestClose={() => setIosPickerMode(null)}
-        >
-          <View style={styles.pickerWrapper}>
-            <Pressable style={styles.pickerOverlay} onPress={() => setIosPickerMode(null)} />
-            <View style={styles.pickerContainer}>
-              <View style={styles.pickerHeader}>
-                <Pressable onPress={() => setIosPickerMode(null)}>
-                  <Text style={styles.pickerHeaderText}>Annulla</Text>
-                </Pressable>
-                <Pressable onPress={confirmIosPicker}>
-                  <Text style={styles.pickerHeaderTextPrimary}>Fatto</Text>
-                </Pressable>
-              </View>
-              {iosPickerMode === "date" && (
-                <View style={styles.pickerPreviewRow}>
-                  <Text style={styles.pickerPreviewLabel}>{formatDisplayDateLabel(formatDateValue(iosPickerValue))}</Text>
-                </View>
-              )}
-              {iosPickerMode && (
-                <DateTimePicker
-                  value={iosPickerValue}
-                  mode={iosPickerMode}
-                  display="spinner"
-                  onChange={(_, selected) => {
-                    if (selected) setIosPickerValue(selected);
-                  }}
-                  minuteInterval={iosPickerMode === "time" ? 5 : undefined}
-                  locale="it-IT"
-                  style={styles.iosPicker}
-                />
-              )}
+        {
+          !loading && (
+            <View style={styles.footerContainer}>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={saving || !canEdit}
+                style={[
+                  styles.saveBtn,
+                  (saving || !canEdit) && styles.saveBtnDisabled,
+                ]}
+                activeOpacity={0.8}
+              >
+                {saving ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator color="#fff" />
+                    <Text style={styles.saveBtnText}>{isEdit ? "Aggiorno..." : "Salvataggio..."}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.saveBtnText}>{isEdit ? "Salva Modifiche" : "Crea Evento"}</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </View>
-        </Modal>
-      )}
+          )
+        }
+      </View >
 
-      <AndroidTimePicker
+      {
+        Platform.OS === "ios" && (
+          <Modal
+            transparent
+            animationType="fade"
+            visible={iosPickerMode !== null}
+            onRequestClose={() => setIosPickerMode(null)}
+          >
+            <View style={styles.pickerWrapper}>
+              <Pressable style={styles.pickerOverlay} onPress={() => setIosPickerMode(null)} />
+              <View style={styles.pickerContainer}>
+                <View style={styles.pickerHeader}>
+                  <Pressable onPress={() => setIosPickerMode(null)}>
+                    <Text style={styles.pickerHeaderText}>Annulla</Text>
+                  </Pressable>
+                  <Pressable onPress={confirmIosPicker}>
+                    <Text style={styles.pickerHeaderTextPrimary}>Fatto</Text>
+                  </Pressable>
+                </View>
+                {iosPickerMode === "date" && (
+                  <View style={styles.pickerPreviewRow}>
+                    <Text style={styles.pickerPreviewLabel}>{formatDisplayDateLabel(formatDateValue(iosPickerValue))}</Text>
+                  </View>
+                )}
+                {iosPickerMode && (
+                  <DateTimePicker
+                    value={iosPickerValue}
+                    mode={iosPickerMode}
+                    display="spinner"
+                    onChange={(_, selected) => {
+                      if (selected) setIosPickerValue(selected);
+                    }}
+                    minuteInterval={iosPickerMode === "time" ? 5 : undefined}
+                    locale="it-IT"
+                    style={styles.iosPicker}
+                  />
+                )}
+              </View>
+            </View>
+          </Modal>
+        )
+      }
+
+      < AndroidTimePicker
         visible={androidTimePickerVisible}
         initialDate={androidTimePickerInitialDate}
         onCancel={() => setAndroidTimePickerVisible(false)}
@@ -742,7 +737,7 @@ export default function SocialEditScreen() {
           applyPickerValue("time", value);
         }}
       />
-    </Screen>
+    </Screen >
   );
 }
 

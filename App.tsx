@@ -849,13 +849,13 @@ export default function App() {
               options={{ headerShown: false }}
             />
 
-            <Stack.Screen name="UserList" component={UserListScreen} options={{ title: "Gestione Utenti" }} />
+            <Stack.Screen name="UserList" component={UserListScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="UserDetail"
               component={UserDetailScreen}
               options={{ headerShown: false }}
             />
-            <Stack.Screen name="UsciteList" component={UsciteList} options={{ title: "Uscite" }} />
+            <Stack.Screen name="UsciteList" component={UsciteList} options={{ headerShown: false }} />
             <Stack.Screen
               name="SocialList"
               component={SocialListScreen}
@@ -872,11 +872,11 @@ export default function App() {
               options={{ headerShown: false }}
             />
             {/* NOTE: legacy stack route. Prefer TabBacheca to keep bottom bar. */}
-            <Stack.Screen name="Board" component={BoardScreen} options={{ title: "Bacheca" }} />
+            <Stack.Screen name="Board" component={BoardScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="Calendar"
               component={CalendarScreen}
-              options={{ title: "Calendario" }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="CalendarDay"
@@ -902,24 +902,20 @@ export default function App() {
             <Stack.Screen
               name="RideDetails"
               component={RideDetails}
-              options={({ route }) => ({ title: route.params?.title || "Dettagli Uscita" })}
+              options={{ headerShown: false }}
             />
-            <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profilo Utente" }} />
+            <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="BoardPostDetail"
               component={BoardPostDetailScreen}
-              options={{
-                headerShown: false,
-                headerBackTitleVisible: false,
-                title: "",
-              }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="NotificationSettings"
               component={NotificationSettingsScreen}
               options={{ headerShown: false }}
             />
-            <Stack.Screen name="Info" component={InfoScreen} options={{ title: "Informazioni" }} />
+            <Stack.Screen name="Info" component={InfoScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Amministrazione" component={AdminGate} options={{ headerShown: false }} />
           </Stack.Navigator>
         )

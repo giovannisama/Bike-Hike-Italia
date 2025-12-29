@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useLayoutEffect } from "react";
 import {
     View,
     Text,
@@ -65,6 +65,12 @@ export default function InfoScreen({ navigation }: any) {
     const [formType, setFormType] = useState<InfoItemType>("text");
     const [formSection, setFormSection] = useState<InfoItem["section"]>("Associazione");
 
+    useLayoutEffect(() => {
+        navigation.setOptions({
+            headerShown: false,
+        });
+    }, [navigation]);
+
     useEffect(() => {
         const loadInfo = async () => {
             try {
@@ -81,18 +87,18 @@ export default function InfoScreen({ navigation }: any) {
 
                 const sanitized: InfoItem[] = Array.isArray(items)
                     ? (items as any[])
-                          .filter((it) => it && typeof it === "object")
-                          .map((it) => {
-                              const id = typeof it.id === "string" ? it.id : "";
-                              const label = typeof it.label === "string" ? it.label : "";
-                              const value = typeof it.value === "string" ? it.value : "";
-                              const type = allowedTypes.includes(it.type) ? (it.type as InfoItemType) : "text";
-                              const section = allowedSections.includes(it.section)
-                                  ? (it.section as InfoItem["section"])
-                                  : "Associazione";
-                              return { id, label, value, type, section };
-                          })
-                          .filter((it) => it.id.trim() && it.label.trim() && it.value.trim())
+                        .filter((it) => it && typeof it === "object")
+                        .map((it) => {
+                            const id = typeof it.id === "string" ? it.id : "";
+                            const label = typeof it.label === "string" ? it.label : "";
+                            const value = typeof it.value === "string" ? it.value : "";
+                            const type = allowedTypes.includes(it.type) ? (it.type as InfoItemType) : "text";
+                            const section = allowedSections.includes(it.section)
+                                ? (it.section as InfoItem["section"])
+                                : "Associazione";
+                            return { id, label, value, type, section };
+                        })
+                        .filter((it) => it.id.trim() && it.label.trim() && it.value.trim())
                     : [];
 
                 if (sanitized.length > 0) {
@@ -299,9 +305,18 @@ export default function InfoScreen({ navigation }: any) {
                 />
 
                 <View style={styles.headerContent}>
-                    <View>
-                        <Text style={styles.heroTitle}>Informazioni</Text>
-                        <Text style={styles.heroSubtitle}>Dati e contatti dell’associazione</Text>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                        <Pressable
+                            onPress={() => navigation.goBack()}
+                            hitSlop={15}
+                            style={{ paddingRight: 4, marginTop: 4 }}
+                        >
+                            <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                        </Pressable>
+                        <View>
+                            <Text style={styles.heroTitle}>Informazioni</Text>
+                            <Text style={styles.heroSubtitle}>Dati e contatti dell’associazione</Text>
+                        </View>
                     </View>
 
                     {isOwner && (

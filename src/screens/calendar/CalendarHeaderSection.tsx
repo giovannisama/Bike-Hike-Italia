@@ -187,16 +187,16 @@ export function CalendarHeaderSection({
   }, [onDayPress, onTodayPress]);
 
   useEffect(() => {
-    if (!SHOW_LAYOUT_DEBUG) return;
-    // eslint-disable-next-line no-console
-    console.log("[CalendarLayout]", {
-      gridWidth,
-      cellW,
-      gridW,
-      outerWrapperW: layoutDebug.outerWrapperW,
-      innerWrapperW: layoutDebug.innerWrapperW,
-      calendarW: layoutDebug.calendarW,
-    });
+    if (__DEV__) {
+      console.log("[CalendarLayout]", {
+        gridWidth,
+        cellW,
+        gridW,
+        outerWrapperW: layoutDebug.outerWrapperW,
+        innerWrapperW: layoutDebug.innerWrapperW,
+        calendarW: layoutDebug.calendarW,
+      });
+    }
   }, [
     gridWidth,
     cellW,

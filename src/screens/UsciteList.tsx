@@ -38,6 +38,7 @@ import { getBikeCategoryLabel } from "./calendar/bikeType";
 import { deriveGuideSummary } from "../utils/guideHelpers";
 import { getDifficultyMeta } from "../utils/rideDifficulty";
 import AccessDenied from "../components/AccessDenied";
+import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
 
 // ---- Tipi ----
 type Ride = {
@@ -292,20 +293,7 @@ export default function UsciteList() {
 
     const guideSummary = deriveGuideSummary({ guidaNames: item.guidaNames, guidaName: item.guidaName });
     const guideLabel = guideSummary?.main ? String(guideSummary.main) : "";
-    if (
-      __DEV__ &&
-      guideSummary &&
-      typeof guideSummary === "object" &&
-      "main" in guideSummary &&
-      "all" in guideSummary
-    ) {
-      console.log("[UsciteList] guideSummary", {
-        rideId: item.id,
-        type: typeof guideSummary,
-        value: guideSummary,
-        filter: activeCategory,
-      });
-    }
+
     const categoryLabel = getBikeCategoryLabel(item);
 
     return (
@@ -382,7 +370,7 @@ export default function UsciteList() {
       */}
       <ScreenHeader
         title="ELENCO USCITE"
-        subtitle="Calendario Condiviso"
+        subtitle={EVENT_CATEGORY_SUBTITLES.ciclismo}
         showBack={true}
         rightAction={
           isAdmin && (

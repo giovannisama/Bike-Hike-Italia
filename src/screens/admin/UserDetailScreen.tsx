@@ -13,6 +13,7 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { Screen, UI } from "../../components/Screen";
+import { ScreenHeader } from "../../components/ScreenHeader";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 import { getUserStatus } from "../../utils/userStatus";
 import {
@@ -566,28 +567,17 @@ export default function UserDetailScreen() {
   const statusLabel = isSelfDeleted ? "Eliminato" : status?.statusLabel ?? "In attesa";
   return (
     <Screen
-      useNativeHeader={true}
+      useNativeHeader={false}
       title={undefined}
       scroll={true}
       keyboardShouldPersistTaps="handled"
       backgroundColor="#FDFCF8"
+      disableHero={true}
     >
-      {/* MANUAL HEADER BLOCK */}
-      <View style={styles.headerBlock}>
-        <View style={styles.headerRow}>
-          {/* Back Btn - Icon Only */}
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ marginRight: 8, padding: 4 }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={24} color="#1E293B" />
-          </TouchableOpacity>
-
-          <View style={{ flex: 1 }} />
-
-          {/* Edit Action (if allowed) */}
-          {canEditProfile && !editMode && (
+      <ScreenHeader
+        title="Dettaglio Utente"
+        rightAction={
+          canEditProfile && !editMode ? (
             <TouchableOpacity
               onPress={startEdit}
               style={{ padding: 4 }}
@@ -595,9 +585,9 @@ export default function UserDetailScreen() {
             >
               <Ionicons name="pencil-sharp" size={22} color="#1E293B" />
             </TouchableOpacity>
-          )}
-        </View>
-      </View>
+          ) : undefined
+        }
+      />
 
       <View style={styles.profileHeader}>
         <Text style={styles.profileName}>{fullName()}</Text>

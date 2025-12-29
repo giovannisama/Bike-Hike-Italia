@@ -690,7 +690,9 @@ export default function RideDetails() {
         target: "all_participants", // Backend handles logic
       });
     } catch (e) {
-      console.log("Notification trigger failed", e);
+      if (__DEV__) {
+        console.log("Notification trigger failed", e);
+      }
     }
   };
 

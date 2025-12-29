@@ -37,6 +37,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { Screen, UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import AndroidTimePicker from "../components/AndroidTimePicker";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
@@ -654,34 +655,13 @@ export default function CreateRideScreen() {
   return (
     <Screen
       title={titleScreen}
-      useNativeHeader={true}
+      useNativeHeader={false}
       scroll={false}
       backgroundColor="#FDFCF8"
+      disableHero={true}
     >
       <View style={styles.root}>
-        {/* CUSTOM HEADER */}
-        <View style={styles.headerContainer}>
-          <SafeAreaView edges={["top"]}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={styles.backButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="arrow-back" size={24} color="#1E293B" />
-              </TouchableOpacity>
-              <View style={{ flex: 1, justifyContent: 'center' }}>
-                <Text style={styles.headerTitle}>
-                  {titleScreen}
-                </Text>
-                {!isAdmin && (
-                  <Text style={styles.headerSubtitle}>Solo Admin o Owner possono salvare</Text>
-                )}
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
-
+        <ScreenHeader title={titleScreen} />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1 }}
@@ -1039,59 +1019,61 @@ export default function CreateRideScreen() {
           </TouchableOpacity>
           <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
         </View>
-      </View>
+      </View >
 
       {/* iOS Modal DatePicker */}
-      {Platform.OS === "ios" && (
-        <Modal
-          transparent
-          animationType="fade"
-          visible={iosPickerMode !== null}
-          onRequestClose={closeIosPicker}
-        >
-          <View style={styles.pickerWrapper}>
-            <TouchableWithoutFeedback onPress={closeIosPicker}>
-              <View style={styles.pickerOverlay} />
-            </TouchableWithoutFeedback>
+      {
+        Platform.OS === "ios" && (
+          <Modal
+            transparent
+            animationType="fade"
+            visible={iosPickerMode !== null}
+            onRequestClose={closeIosPicker}
+          >
+            <View style={styles.pickerWrapper}>
+              <TouchableWithoutFeedback onPress={closeIosPicker}>
+                <View style={styles.pickerOverlay} />
+              </TouchableWithoutFeedback>
 
-            <View style={styles.pickerContainer}>
-              <View style={styles.pickerHeader}>
-                <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
-                  <Text style={styles.pickerHeaderText}>Annulla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
-                  <Text style={styles.pickerHeaderTextPrimary}>
-                    Fatto
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {iosPickerMode === "date" && (
-                <View style={styles.pickerPreviewRow}>
-                  <Text style={styles.pickerPreviewLabel}>
-                    {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
-                  </Text>
+              <View style={styles.pickerContainer}>
+                <View style={styles.pickerHeader}>
+                  <TouchableOpacity onPress={closeIosPicker} style={styles.pickerHeaderBtn}>
+                    <Text style={styles.pickerHeaderText}>Annulla</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={confirmIosPicker} style={styles.pickerHeaderBtn}>
+                    <Text style={styles.pickerHeaderTextPrimary}>
+                      Fatto
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )}
 
-              {iosPickerMode && (
-                <DateTimePicker
-                  value={iosPickerValue}
-                  mode={iosPickerMode}
-                  display="spinner"
-                  onChange={(_, selected) => {
-                    if (selected) setIosPickerValue(selected);
-                  }}
-                  minuteInterval={iosPickerMode === "time" ? 5 : undefined}
-                  locale="it-IT"
-                  style={styles.iosPicker}
-                  textColor="#000000"
-                />
-              )}
+                {iosPickerMode === "date" && (
+                  <View style={styles.pickerPreviewRow}>
+                    <Text style={styles.pickerPreviewLabel}>
+                      {formatDisplayDateLabel(formatDateValue(iosPickerValue))}
+                    </Text>
+                  </View>
+                )}
+
+                {iosPickerMode && (
+                  <DateTimePicker
+                    value={iosPickerValue}
+                    mode={iosPickerMode}
+                    display="spinner"
+                    onChange={(_, selected) => {
+                      if (selected) setIosPickerValue(selected);
+                    }}
+                    minuteInterval={iosPickerMode === "time" ? 5 : undefined}
+                    locale="it-IT"
+                    style={styles.iosPicker}
+                    textColor="#000000"
+                  />
+                )}
+              </View>
             </View>
-          </View>
-        </Modal>
-      )}
+          </Modal>
+        )
+      }
 
       {/* Android TimePicker Helper */}
       <AndroidTimePicker
@@ -1103,7 +1085,7 @@ export default function CreateRideScreen() {
           setAndroidTimePickerVisible(false);
         }}
       />
-    </Screen>
+    </Screen >
   );
 }
 

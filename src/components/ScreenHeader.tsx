@@ -1,18 +1,20 @@
 // src/components/ScreenHeader.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UI } from './Screen';
 
 type ScreenHeaderProps = {
     title: string;
     subtitle?: string | React.ReactNode;
     showBack?: boolean;
     rightAction?: React.ReactNode;
-    // Allows overriding the top padding if needed (e.g. for AdminScreen without back button)
+    // Allows overriding the top padding if needed
     topPadding?: number;
-    disableUppercase?: boolean;
+    disableUppercase?: boolean; // Kept for compat, but Info style is Mixed case
 };
 
 export function ScreenHeader({
@@ -24,6 +26,9 @@ export function ScreenHeader({
     disableUppercase
 }: ScreenHeaderProps) {
     const navigation = useNavigation<any>();
+    const insets = useSafeAreaInsets();
+
+    const effectiveTopPadding = topPadding !== undefined ? topPadding : (insets.top > 0 ? insets.top + 10 : 20);
 
     return (
         <View style={styles.container}>
@@ -40,36 +45,33 @@ export function ScreenHeader({
             {/* Header Content */}
             <View style={[
                 styles.headerBlock,
-                topPadding !== undefined ? { paddingTop: topPadding } : undefined
+                { paddingTop: effectiveTopPadding }
             ]}>
+                <View style={styles.mainRow}>
+                    <View style={styles.leftGroup}>
+                        {showBack && (
+                            <Pressable
+                                onPress={() => navigation.goBack()}
+                                hitSlop={15}
+                                style={styles.backButton}
+                            >
+                                <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                            </Pressable>
+                        )}
+                        <View style={styles.titleBlock}>
+                            <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{title}</Text>
+                            {!!subtitle && (
+                                typeof subtitle === 'string'
+                                    ? <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
+                                    : subtitle
+                            )}
+                        </View>
+                    </View>
 
-                {/* Top Row: Back Button & Right Action */}
-                <View style={styles.actionRow}>
-                    {showBack ? (
-                        <TouchableOpacity
-                            onPress={() => navigation.goBack()}
-                            style={styles.backButton}
-                            hitSlop={10}
-                        >
-                            <Ionicons name="arrow-back" size={24} color="#1E293B" />
-                        </TouchableOpacity>
-                    ) : (
-                        // Spacer if back is hidden but we want to maintain alignment? 
-                        // Actually, usually if back is hidden we align left or center.
-                        // For now, if hidden, we just render nothing.
-                        <View />
-                    )}
-
-                    {rightAction}
-                </View>
-
-                {/* Title & Subtitle */}
-                <View>
-                    <Text style={[styles.headerTitle, disableUppercase && { textTransform: 'none' }]}>{title}</Text>
-                    {!!subtitle && (
-                        typeof subtitle === 'string'
-                            ? <Text style={styles.headerSubtitle}>{subtitle}</Text>
-                            : subtitle
+                    {rightAction && (
+                        <View style={styles.rightAction}>
+                            {rightAction}
+                        </View>
                     )}
                 </View>
             </View>
@@ -79,44 +81,56 @@ export function ScreenHeader({
 
 const styles = StyleSheet.create({
     container: {
-        // This container sits at the top of the screen content
         marginBottom: 0,
+        zIndex: 10,
     },
     gradientContainer: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        height: 200, // Covers enough height for the header area
+        bottom: 0, // Fill the container height
         zIndex: -1,
     },
     headerBlock: {
-        paddingHorizontal: 16,
-        paddingTop: 8, // Default top padding
+        paddingHorizontal: 20,
         paddingBottom: 24,
-        gap: 12
     },
-    actionRow: {
+    mainRow: {
         flexDirection: 'row',
+        alignItems: 'flex-start',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 4,
-        height: 32, // Reserved height for back button row
+        gap: 16
+    },
+    leftGroup: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        flex: 1,
     },
     backButton: {
-        width: 40,
+        paddingRight: 4,
+        marginTop: 4
+    },
+    titleBlock: {
+        flex: 1,
+        justifyContent: 'center',
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: "800",
         color: "#1E293B",
         letterSpacing: -0.5,
-        textTransform: 'uppercase'
     },
     headerSubtitle: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: "500",
         color: "#64748B",
-        marginTop: 4
+        marginTop: 2
     },
+    rightAction: {
+        // marginTop: 4
+    }
 });
+
+

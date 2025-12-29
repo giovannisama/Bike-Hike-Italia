@@ -106,7 +106,7 @@ export default function SocialDetailScreen() {
     return () => {
       try {
         unsub();
-      } catch {}
+      } catch { }
     };
   }, [eventId]);
 
@@ -138,7 +138,7 @@ export default function SocialDetailScreen() {
     return () => {
       try {
         unsub();
-      } catch {}
+      } catch { }
     };
   }, [eventId]);
 
@@ -203,7 +203,7 @@ export default function SocialDetailScreen() {
     return format(dateObj, "EEE d MMM • HH:mm", { locale: it });
   };
   const dateObj = event?.startAt?.toDate?.();
-  const dateLabel = dateObj ? format(dateObj, "EEE d MMMM", { locale: it }) : "";
+  const dateLabel = dateObj ? format(dateObj, "EEE d MMMM yyyy", { locale: it }) : "";
   const timeLabel = dateObj ? format(dateObj, "HH:mm") : "";
 
   const handleChoiceChange = useCallback(
@@ -219,7 +219,7 @@ export default function SocialDetailScreen() {
             [key]: value,
           },
         });
-      } catch {}
+      } catch { }
     },
     [eventId, isInactive, userId, userParticipant]
   );
@@ -334,9 +334,9 @@ export default function SocialDetailScreen() {
         note: manualNote.trim() || null,
         services: Object.keys(manualServices).some((key) => manualServices[key as "lunch" | "dinner"])
           ? {
-              ...(manualServices.lunch ? { lunch: manualServices.lunch } : {}),
-              ...(manualServices.dinner ? { dinner: manualServices.dinner } : {}),
-            }
+            ...(manualServices.lunch ? { lunch: manualServices.lunch } : {}),
+            ...(manualServices.dinner ? { dinner: manualServices.dinner } : {}),
+          }
           : null,
         joinedAt: serverTimestamp(),
         source: "manual",

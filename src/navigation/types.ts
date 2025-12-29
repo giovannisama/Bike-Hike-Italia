@@ -22,6 +22,7 @@ export type RootStackParamList = {
   RideDetails: { rideId: string; title?: string };
   Profile: undefined;
   Attesa: undefined;
+  Rejected: undefined;
   NotificationSettings: undefined;
   TrekkingPlaceholder: undefined;
   Info: undefined;

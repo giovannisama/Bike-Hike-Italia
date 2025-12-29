@@ -72,6 +72,7 @@ type ScreenProps = {
   keyboardShouldPersistTaps?: "always" | "handled" | "never";
   headerContent?: React.ReactNode;
   avoidKeyboard?: boolean;
+  disableHero?: boolean;
 };
 
 export function Screen({
@@ -87,6 +88,7 @@ export function Screen({
   headerContent,
   avoidKeyboard = true,
   backgroundColor,
+  disableHero = false,
 }: ScreenProps & { backgroundColor?: string }) {
   const keyboardBehavior: KeyboardAvoidingViewProps["behavior"] = Platform.select({
     ios: "padding",
@@ -101,7 +103,7 @@ export function Screen({
   // render tree kept inline so we don't recreate components each render (avoids TextInput blur)
   const content = (
     <View style={{ flex: 1, backgroundColor: backgroundColor ?? UI.colors.bg }}>
-      {!useNativeHeader && (
+      {!useNativeHeader && !disableHero && (
         <LinearGradient
           colors={[UI.colors.primary, "#146C43", UI.colors.secondary]}
           start={{ x: 0, y: 0 }}
@@ -174,10 +176,10 @@ export function Screen({
       <View
         style={{
           flex: 1,
-          marginTop: useNativeHeader ? 0 : -UI.radius.xl,
+          marginTop: (useNativeHeader || disableHero) ? 0 : -UI.radius.xl,
           backgroundColor: backgroundColor ?? UI.colors.bg,
-          borderTopLeftRadius: useNativeHeader ? 0 : UI.radius.xl,
-          borderTopRightRadius: useNativeHeader ? 0 : UI.radius.xl,
+          borderTopLeftRadius: (useNativeHeader || disableHero) ? 0 : UI.radius.xl,
+          borderTopRightRadius: (useNativeHeader || disableHero) ? 0 : UI.radius.xl,
           padding: UI.spacing.lg,
         }}
       >

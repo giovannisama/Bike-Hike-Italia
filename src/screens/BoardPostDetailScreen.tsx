@@ -4,6 +4,7 @@ import { deleteDoc, doc, getDoc, updateDoc, serverTimestamp, deleteField } from 
 import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import { Ionicons } from "@expo/vector-icons";
 import { ZoomableImageModal } from "../components/ZoomableImageModal";
 import useCurrentProfile from "../hooks/useCurrentProfile";
@@ -14,6 +15,9 @@ const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
 const renderLinkedText = (text: string, onPressLink: (url: string) => void) => {
     const nodes: React.ReactNode[] = [];
     let lastIndex = 0;
+    // ... (omitting lengthy unneeded parts, focusing on top and render)
+    // Actually I need to split this into two replaces or use multi_replace for far apart sections.
+    // I will use multi_replace.
     let match: RegExpExecArray | null;
 
     URL_REGEX_GLOBAL.lastIndex = 0;
@@ -197,28 +201,21 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
 
     return (
         <View style={{ flex: 1, backgroundColor: "#FDFCF8" }}>
-            {/* HEADER CUSTOM: No "Home" button, standard style */}
-            <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-                <View style={styles.headerRow}>
-                    <View style={styles.headerLeft}>
-                        <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.6 }]}>
-                            <Ionicons name="arrow-back" size={28} color="#1E293B" />
-                        </Pressable>
-                        <Text style={styles.headerTitle} numberOfLines={1}>Dettaglio News</Text>
-                    </View>
-
-                    {canEdit && (
+            <ScreenHeader
+                title="Dettaglio News"
+                rightAction={
+                    canEdit ? (
                         <Pressable
                             onPress={() => setActionSheetVisible(true)}
-                            style={({ pressed }) => [styles.manageBtn, pressed && { opacity: 0.8 }]}
+                            style={({ pressed }) => [styles.manageBtn, pressed && { opacity: 0.7 }]}
                         >
                             <Text style={styles.manageBtnText}>Gestisci</Text>
                         </Pressable>
-                    )}
-                </View>
-            </View>
-
+                    ) : undefined
+                }
+            />
             <ScrollView contentContainerStyle={styles.container}>
+
                 <View style={{ paddingHorizontal: 20 }}>
                     {/* Meta Data */}
                     {dateLabel ? <Text style={styles.date}>{dateLabel}</Text> : null}
@@ -311,7 +308,7 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
-        </View>
+        </View >
     );
 }
 
@@ -359,18 +356,15 @@ const styles = StyleSheet.create({
     },
     // MANAGE BUTTON
     manageBtn: {
-        paddingVertical: 10,  // Increased
-        paddingHorizontal: 16, // Increased
-        backgroundColor: "#E0F2FE",
-        borderRadius: 999, // Pill
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 40, // Target size
+        backgroundColor: "rgba(255,255,255,0.6)",
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
     },
     manageBtnText: {
-        fontSize: 14,
         fontWeight: "700",
-        color: "#0284C7",
+        fontSize: 14,
+        color: "#0F172A",
     },
     // BODY
     container: {

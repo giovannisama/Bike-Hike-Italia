@@ -65,6 +65,7 @@ type CalendarHeaderSectionProps = {
   onTodayPress?: () => void;
   gridWidth?: number;
   gridHeight?: number;
+  forceSixWeeks?: boolean;
 };
 
 export function CalendarHeaderSection({
@@ -76,6 +77,7 @@ export function CalendarHeaderSection({
   onTodayPress,
   gridWidth = 0,
   gridHeight = 0,
+  forceSixWeeks = false,
 }: CalendarHeaderSectionProps) {
   const SHOW_LAYOUT_DEBUG = false; // audit concluso: debug disattivato
   const [layoutDebug, setLayoutDebug] = useState({
@@ -108,14 +110,8 @@ export function CalendarHeaderSection({
     return fallbackCellW;
   }, [gridW]);
 
-  // Remainder split: guarantees equal left/right visual space.
-  const { padLeft, padRight } = useMemo(() => {
-    if (effectiveW <= 0 || gridW <= 0) return { padLeft: 0, padRight: 0 };
-    const remainder = Math.max(0, effectiveW - gridW);
-    const left = Math.floor(remainder / 2);
-    const right = remainder - left;
-    return { padLeft: left, padRight: right };
-  }, [effectiveW, gridW]);
+  // Remainder split: guarantees equal left/right visual space. (Handled by alignSelf: center)
+  // dead code removed
 
   const hairline = StyleSheet.hairlineWidth;
   const gridBorderWidth = hairline < 1 ? 1 : hairline;
@@ -145,10 +141,11 @@ export function CalendarHeaderSection({
 
   // Exact number of weeks needed (4, 5, or 6)
   const weeksCount = useMemo(() => {
+    if (forceSixWeeks) return 6;
     const totalDays = Math.round((gridEndUTC - gridStartUTC) / 86400000) + 1;
     const weeks = Math.max(4, Math.min(6, Math.ceil(totalDays / 7)));
     return weeks;
-  }, [gridEndUTC, gridStartUTC]);
+  }, [gridEndUTC, gridStartUTC, forceSixWeeks]);
 
   // 3. Dynamic Cell Height Calculation
   const availableForGrid = useMemo(() => {
@@ -274,13 +271,13 @@ export function CalendarHeaderSection({
                 return <Ionicons name={iconName} size={18} color="#111827" />;
               }}
               style={{
-                width: gridW,
+                width: "100%",
                 height: "100%",
                 backgroundColor: "transparent",
                 alignSelf: "center",
               }}
               hideExtraDays={false}
-              showSixWeeks={false}
+              showSixWeeks={forceSixWeeks}
               enableSwipeMonths
               markedDates={markedDates}
               onDayPress={onDayPress}

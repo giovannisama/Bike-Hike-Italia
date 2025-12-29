@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   StyleSheet,
   DeviceEventEmitter,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,7 +46,6 @@ export default function CalendarScreen() {
   const gridWidth = calendarArea.width;
 
   const canRenderCalendar = gridWidth > 0 && gridHeight > 0;
-
   const {
     actions,
     searchModal,
@@ -217,6 +217,7 @@ export default function CalendarScreen() {
                     onTodayPress={actions.clearFilters}
                     gridWidth={gridWidth}
                     gridHeight={gridHeight}
+                    forceSixWeeks={Platform.OS === "android"}
                   />
                 </View>
                 <View style={{ width: pageWidth, flex: 1, backgroundColor: "#F9FAFB" }}>

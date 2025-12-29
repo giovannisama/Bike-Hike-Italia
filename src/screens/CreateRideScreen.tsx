@@ -693,7 +693,7 @@ export default function CreateRideScreen() {
             {isEdit && isAdmin && (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Stato Uscita</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <View style={{ flexDirection: "row", gap: 10 }}>
                   <Pressable
                     onPress={toggleCancelled}
                     style={[
@@ -713,7 +713,7 @@ export default function CreateRideScreen() {
                     ]}
                   >
                     <Text style={styles.adminBtnText}>
-                      {archived ? "Ripristina Uscita" : "Archivia Uscita"}
+                      {archived ? "Ripristina Uscita" : "Archivia"}
                     </Text>
                   </Pressable>
                 </View>
@@ -1351,11 +1351,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: UI.colors.action,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
   },
   adminBtnText: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 14,
+    textAlign: "center",
   },
 
   // STICKY FOOTER

@@ -423,7 +423,7 @@ export default function SocialEditScreen() {
       <View style={styles.root}>
         <ScreenHeader
           title={titleScreen}
-          subtitle={isEdit ? "Modifica Dettagli" : undefined}
+
         />
         {loading ? (
           <View style={styles.center}>
@@ -463,7 +463,7 @@ export default function SocialEditScreen() {
                       ]}
                     >
                       <Text style={styles.adminBtnText}>
-                        {status === "archived" ? "Ripristina Evento" : "Archivia Evento"}
+                        {status === "archived" ? "Ripristina Evento" : "Archivia"}
                       </Text>
                     </Pressable>
                   </View>
@@ -849,10 +849,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: UI.colors.action,
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   adminBtnText: {
     color: "#fff",
     fontWeight: "700",
+    textAlign: "center",
   },
   helperText: {
     marginTop: 8,

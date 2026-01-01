@@ -21,13 +21,15 @@ import type { RootStackParamList } from "../navigation/types";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
+import type { FirestoreTimestamp } from "../types/firestore";
+import { toDateSafe, toMillisSafe } from "../utils/firestoreDate";
 
 type SocialEvent = {
   id: string;
   title?: string;
   meetingPlaceText?: string | null;
   organizerName?: string | null;
-  startAt?: any;
+  startAt?: FirestoreTimestamp | null;
   participantsCount?: number | null;
 };
 
@@ -68,14 +70,8 @@ export default function SocialListScreen() {
             participantsCount: data?.participantsCount ?? null,
           });
         });
-        const toMillis = (value: any) => {
-          if (value?.toMillis) return value.toMillis();
-          if (typeof value?.seconds === "number") return value.seconds * 1000;
-          const asDate = value?.toDate?.();
-          return asDate ? asDate.getTime() : 0;
-        };
         next.sort((a, b) => {
-          const diff = toMillis(a.startAt) - toMillis(b.startAt);
+          const diff = (toMillisSafe(a.startAt) ?? 0) - (toMillisSafe(b.startAt) ?? 0);
           return status === "archived" ? -diff : diff;
         });
         setItems(next);
@@ -188,7 +184,7 @@ export default function SocialListScreen() {
   }, [items, searchText]);
 
   const renderItem = ({ item }: { item: SocialEvent }) => {
-    const dt = item.startAt?.toDate?.();
+    const dt = toDateSafe(item.startAt);
     const dateLabel = dt ? format(dt, "EEE d MMM • HH:mm", { locale: it }) : "Data da definire";
     return (
       <View style={styles.card}>

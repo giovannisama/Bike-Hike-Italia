@@ -12,6 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
+const ACTION_GREEN_VALUE = "#22c55e";
+
 const COLORS = {
   primary: "#0B3D2E",
   secondary: "#1FA36B",
@@ -25,7 +27,8 @@ const COLORS = {
   danger: "#DC2626",
   warningBg: "#FFF7ED",
   warningBorder: "#FED7AA",
-  action: "#22c55e",
+  action: ACTION_GREEN_VALUE,
+  actionGreen: ACTION_GREEN_VALUE,
   eventCycling: "#16a34a",
   eventTrekking: "#e11d48",
   eventCyclingBg: "#DCFCE7",

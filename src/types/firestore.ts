@@ -1,4 +1,7 @@
 // Tipi centralizzati per i documenti principali in Firestore
+import type { Timestamp } from "firebase/firestore";
+
+export type FirestoreTimestamp = Timestamp;
 
 export type ParticipantServices = Partial<
   Record<"lunch" | "dinner" | "overnight", "yes" | "no" | null | undefined>
@@ -26,10 +29,10 @@ export interface UserDoc {
     | null
     | {
         base64?: string;
-        updatedAt?: any;
+        updatedAt?: FirestoreTimestamp | null;
       };
   medicalCertificate?: any;
-  createdAt?: any;
+  createdAt?: FirestoreTimestamp | null;
   [key: string]: any;
 }
 
@@ -42,7 +45,7 @@ export interface PublicUserDoc {
   approved?: boolean | null;
   disabled?: boolean | null;
   email?: string | null;
-  createdAt?: any;
+  createdAt?: FirestoreTimestamp | null;
   [key: string]: any;
 }
 
@@ -51,8 +54,8 @@ export interface RideDoc {
   meetingPoint?: string;
   description?: string | null;
   bikes?: string[] | null;
-  date?: any;
-  dateTime?: any;
+  date?: FirestoreTimestamp | null;
+  dateTime?: FirestoreTimestamp | null;
   maxParticipants?: number | null;
   participantsCount?: number | null;
   participantsCountSelf?: number | null;
@@ -71,7 +74,7 @@ export interface RideDoc {
     note?: string | null;
     manual?: boolean;
     addedBy?: string | null;
-    createdAt?: any;
+    createdAt?: FirestoreTimestamp | null;
     services?: ParticipantServices | null;
     [key: string]: any;
   }> | null;
@@ -81,8 +84,8 @@ export interface RideDoc {
     overnight?: { enabled?: boolean; label?: string | null };
     [key: string]: any;
   } | null;
-  createdAt?: any;
-  updatedAt?: any;
+  createdAt?: FirestoreTimestamp | null;
+  updatedAt?: FirestoreTimestamp | null;
   [key: string]: any;
 }
 
@@ -92,7 +95,7 @@ export interface ParticipantDoc {
   displayName?: string;
   nickname?: string;
   note?: string | null;
-  createdAt?: any;
+  createdAt?: FirestoreTimestamp | null;
   services?: ParticipantServices | null;
   [key: string]: any;
 }
@@ -105,14 +108,14 @@ export interface SocialEventDoc {
   meetingMapUrl?: string | null;
   organizerName?: string | null;
   description?: string | null;
-  startAt?: any;
+  startAt?: FirestoreTimestamp | null;
   status?: "active" | "cancelled" | "archived";
   extraServices?: {
     lunch?: ExtraServiceState;
     dinner?: ExtraServiceState;
   } | null;
-  createdAt?: any;
-  updatedAt?: any;
+  createdAt?: FirestoreTimestamp | null;
+  updatedAt?: FirestoreTimestamp | null;
   createdBy?: string | null;
   updatedBy?: string | null;
   [key: string]: any;

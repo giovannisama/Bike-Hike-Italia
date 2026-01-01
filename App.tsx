@@ -7,6 +7,7 @@ import { auth } from "./src/firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
 import RootNavigator from "./src/navigation/RootNavigator";
+import AppErrorBoundary from "./src/components/AppErrorBoundary";
 import type { RootStackParamList } from "./src/navigation/types";
 
 // Navigation ref
@@ -68,9 +69,11 @@ export default function App() {
 
   // 3) Navigator
   return (
-    <NavigationContainer theme={AppTheme} ref={navRef}>
-      <RootNavigator user={user} profile={profile} />
-    </NavigationContainer>
+    <AppErrorBoundary>
+      <NavigationContainer theme={AppTheme} ref={navRef}>
+        <RootNavigator user={user} profile={profile} />
+      </NavigationContainer>
+    </AppErrorBoundary>
   );
 }
 

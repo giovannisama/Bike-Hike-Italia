@@ -196,7 +196,7 @@ export default function HomeScreen({ navigation }: any) {
     trekking: { name: "hiking", color: UI.colors.eventTrekking },
     bikeaut: { name: "bike-fast", color: UI.colors.disabled },
     social: { name: "account-group-outline", color: UI.colors.eventSocial },
-    viaggi: { name: "bag-checked", color: UI.colors.disabled },
+    viaggi: { name: "bag-checked", color: UI.colors.eventTravel },
   };
 
   const sections: EventSection[] = [
@@ -223,6 +223,16 @@ export default function HomeScreen({ navigation }: any) {
       onPress: () => rootNav.navigate("TrekkingPlaceholder"),
     },
     {
+      id: "viaggi",
+      title: "Viaggi",
+      caption: "Scopri il mondo",
+      icon: iconMap.viaggi.name,
+      iconColor: iconMap.viaggi.color,
+      badge: 0,
+      enabled: true,
+      onPress: () => rootNav.navigate("ViaggiPlaceholder"),
+    },
+    {
       id: "social",
       title: "Social",
       caption: EVENT_CATEGORY_SUBTITLES.social,
@@ -231,14 +241,6 @@ export default function HomeScreen({ navigation }: any) {
       badge: socialActiveCount ?? 0,
       enabled: true,
       onPress: () => rootNav.navigate("SocialList"),
-    },
-    {
-      id: "spacer-1",
-      title: "",
-      caption: "",
-      icon: "",
-      enabled: true,
-      invisible: true,
     },
     {
       id: "bikeaut",
@@ -251,13 +253,12 @@ export default function HomeScreen({ navigation }: any) {
       permissionKey: "bikeaut",
     },
     {
-      id: "viaggi",
-      title: "Viaggi",
-      caption: "COMING SOON",
-      icon: iconMap.viaggi.name,
-      iconColor: iconMap.viaggi.color,
-      badge: null,
-      enabled: false,
+      id: "spacer-1",
+      title: "",
+      caption: "",
+      icon: "",
+      enabled: true,
+      invisible: true,
     },
   ];
 
@@ -375,7 +376,6 @@ export default function HomeScreen({ navigation }: any) {
         </View>
 
         <View
-          style={{ marginHorizontal: 16 }}
           onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
         >
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>

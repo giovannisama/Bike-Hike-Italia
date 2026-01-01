@@ -42,6 +42,18 @@ Il colore `UI.colors.eventSocial` deve essere utilizzato per:
 - Vietato riutilizzare colori di altre categorie (es. Action Green, Red)
 - Ogni nuova UI relativa a Eventi Social deve usare esclusivamente questo token
 
+## 1.c Event Categories – Viaggi
+
+La categoria **Viaggi** utilizza un colore dedicato per essere chiaramente distinguibile.
+
+### Colore di riferimento
+- **Token UI**: `UI.colors.eventTravel`
+- **Hex**: `#0EA5E9` (Sky-500)
+
+### Utilizzo obbligatorio
+- **NON** usare questo colore per altre categorie.
+- Usare per icona e dettagli relativi a Viaggi.
+
 ## 2. Difficulty Badges
 Mostra il livello di difficoltà tecnica. Usa uno stile minimalista **"Dot + Text"** (senza box di sfondo).
 
@@ -126,6 +138,7 @@ Sottotitoli standard ufficiali (da riusare ovunque):
 - **Ciclismo**: "Uscite di gruppo"
 - **Trekking**: "Escursioni a piedi"
 - **Social**: "Meetup e eventi"
+- **Viaggi**: "Avventure nel mondo"
 
 Regole vincolanti:
 - Vietato cambiare copy o inventare varianti per singola screen.

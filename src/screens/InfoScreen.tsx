@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 import { Screen, UI } from "../components/Screen";
+import { ScreenHeader } from "../components/ScreenHeader";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import { auth, db } from "../firebase";
 import { PrimaryButton } from "../components/Button";
@@ -295,40 +296,21 @@ export default function InfoScreen({ navigation }: any) {
 
     return (
         <View style={{ flex: 1, backgroundColor: "#FDFCF8" }}>
-            {/* HERO HEADER - Custom implementation without Screen wrapper header */}
-            <View style={[styles.heroHeader, { paddingTop: insets.top }]}>
-                <LinearGradient
-                    colors={["rgba(20, 83, 45, 0.08)", "rgba(14, 165, 233, 0.08)"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={StyleSheet.absoluteFill}
-                />
-
-                <View style={styles.headerContent}>
-                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                        <Pressable
-                            onPress={() => navigation.goBack()}
-                            hitSlop={15}
-                            style={{ paddingRight: 4, marginTop: 4 }}
-                        >
-                            <Ionicons name="arrow-back" size={24} color="#1E293B" />
-                        </Pressable>
-                        <View>
-                            <Text style={styles.heroTitle}>Informazioni</Text>
-                            <Text style={styles.heroSubtitle}>Dati e contatti dell’associazione</Text>
-                        </View>
-                    </View>
-
-                    {isOwner && (
+            <ScreenHeader
+                title="Informazioni"
+                subtitle="Dati e contatti dell’associazione"
+                showBack={true}
+                rightAction={
+                    isOwner && (
                         <Pressable
                             onPress={() => setIsEditing(!isEditing)}
                             style={({ pressed }) => [styles.manageBtn, pressed && { opacity: 0.7 }]}
                         >
                             <Text style={styles.manageBtnText}>{isEditing ? "Fine" : "Gestisci"}</Text>
                         </Pressable>
-                    )}
-                </View>
-            </View>
+                    )
+                }
+            />
 
             <SectionList
                 sections={sections}
@@ -428,28 +410,6 @@ export default function InfoScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-    heroHeader: {
-        paddingTop: 60, // Fallback if safe area not used
-        paddingBottom: 24,
-        paddingHorizontal: 20,
-    },
-    headerContent: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-    },
-    heroTitle: {
-        fontSize: 32,
-        fontWeight: "800",
-        color: "#1E293B",
-        letterSpacing: -1,
-    },
-    heroSubtitle: {
-        fontSize: 16,
-        fontWeight: "500",
-        color: "#64748B",
-        marginTop: 4,
-    },
     manageBtn: {
         backgroundColor: "rgba(255,255,255,0.6)",
         paddingHorizontal: 12,

@@ -87,7 +87,7 @@ export default function MainTabs() {
                         case "TabCalendar":
                             return <Ionicons name="calendar-outline" size={iconSize} color={color} />;
                         case "TabProfile":
-                            return <Ionicons name="person-circle-outline" size={iconSize} color={color} />;
+                            return <Ionicons name="person-outline" size={iconSize} color={color} />;
                         default:
                             return null;
                     }

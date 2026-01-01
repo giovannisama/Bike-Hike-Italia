@@ -25,6 +25,7 @@ export type RootStackParamList = {
   Rejected: undefined;
   NotificationSettings: undefined;
   TrekkingPlaceholder: undefined;
+  ViaggiPlaceholder: undefined;
   Info: undefined;
   TabBacheca: undefined;
   BoardPostDetail: { postId: string; title?: string };

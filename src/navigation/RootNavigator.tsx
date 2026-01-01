@@ -27,6 +27,7 @@ import BoardScreen from "../screens/BoardScreen";
 import CalendarScreen from "../screens/CalendarScreen";
 import CalendarDayScreen from "../screens/CalendarDayScreen";
 import TrekkingPlaceholderScreen from "../screens/TrekkingPlaceholderScreen";
+import ViaggiPlaceholderScreen from "../screens/ViaggiPlaceholderScreen";
 import CreateRideScreen from "../screens/CreateRideScreen";
 import RideDetails from "../screens/RideDetails";
 import ProfileScreen from "../screens/ProfileScreen";
@@ -386,6 +387,7 @@ export default function RootNavigator({ user, profile }: { user: any; profile: a
             <Stack.Screen name="Calendar" component={CalendarScreen} options={{ headerShown: false }} />
             <Stack.Screen name="CalendarDay" component={CalendarDayScreen} options={{ headerShown: false }} />
             <Stack.Screen name="TrekkingPlaceholder" component={TrekkingPlaceholderScreen} options={{ title: "Trekking" }} />
+            <Stack.Screen name="ViaggiPlaceholder" component={ViaggiPlaceholderScreen} options={{ title: "Viaggi" }} />
             <Stack.Screen name="CreateRide" component={CreateRideScreen} options={{ title: "Crea Uscita", headerShown: false }} />
             <Stack.Screen name="Create" component={CreateRideScreen} options={{ title: "Crea Uscita", headerShown: false }} />
             <Stack.Screen name="RideDetails" component={RideDetails} options={{ headerShown: false }} />

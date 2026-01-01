@@ -31,6 +31,7 @@ const COLORS = {
   eventCyclingBg: "#DCFCE7",
   eventTrekkingBg: "#CCFBF1",
   eventSocial: "#7C3AED",
+  eventTravel: "#0EA5E9",
   disabled: "#94A3B8",
   disabledBg: "#F1F5F9",
   borderMuted: "#E2E8F0",

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform, Pressable } from "react-native";
+import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform, Pressable, ScrollView } from "react-native";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../services/pushNotifications";
@@ -261,141 +261,143 @@ const NotificationSettingsScreen: React.FC = () => {
   const eventSwitchDisabled = saving || !globalEnabled;
 
   return (
-    <Screen useNativeHeader scroll backgroundColor="#FDFCF8">
+    <Screen useNativeHeader scroll={false} backgroundColor="#FDFCF8">
       <ScreenHeader title="Notifiche" showBack />
-      {/* Toggle globale */}
-      <View style={styles.card}>
-        <Pressable
-          style={({ pressed }) => [styles.settingRow, pressed && styles.rowPressed]}
-          onPress={() => handleGlobalToggle(!globalEnabled)}
-          disabled={saving}
-          android_ripple={{ color: UI.colors.tint }}
-          hitSlop={{ top: 6, bottom: 6 }}
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.cardTitle}>Notifiche push</Text>
-            <Text style={styles.cardSubtitle}>
-              Attiva o disattiva le notifiche push dell&apos;app. Quando sono disattivate,
-              non riceverai alcun avviso.
-            </Text>
-          </View>
-          <View style={styles.switchWrapper}>
-            <Switch
-              value={globalEnabled}
-              onValueChange={handleGlobalToggle}
-              disabled={saving}
-              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
-            />
-          </View>
-        </Pressable>
-      </View>
+      <ScrollView contentContainerStyle={{ padding: UI.spacing.lg }}>
+        {/* Toggle globale */}
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, pressed && styles.rowPressed]}
+            onPress={() => handleGlobalToggle(!globalEnabled)}
+            disabled={saving}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.cardTitle}>Notifiche push</Text>
+              <Text style={styles.cardSubtitle}>
+                Attiva o disattiva le notifiche push dell&apos;app. Quando sono disattivate,
+                non riceverai alcun avviso.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={globalEnabled}
+                onValueChange={handleGlobalToggle}
+                disabled={saving}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+        </View>
 
-      {/* Toggle per singolo evento */}
-      <View style={styles.card}>
-        <Text style={[styles.cardTitle, { marginBottom: UI.spacing.sm }]}>
-          Eventi
-        </Text>
+        {/* Toggle per singolo evento */}
+        <View style={styles.card}>
+          <Text style={[styles.cardTitle, { marginBottom: UI.spacing.sm }]}>
+            Eventi
+          </Text>
 
-        <Pressable
-          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
-          onPress={() => handleRideCreatedToggle(!rideCreatedEnabled)}
-          disabled={eventSwitchDisabled}
-          android_ripple={{ color: UI.colors.tint }}
-          hitSlop={{ top: 6, bottom: 6 }}
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.eventTitle}>Nuove uscite</Text>
-            <Text style={styles.eventSubtitle}>
-              Ricevi una notifica quando viene pubblicata una nuova uscita.
-            </Text>
-          </View>
-          <View style={styles.switchWrapper}>
-            <Switch
-              value={rideCreatedEnabled}
-              onValueChange={handleRideCreatedToggle}
-              disabled={eventSwitchDisabled}
-              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
-            />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
-          onPress={() => handleRideCancelledToggle(!rideCancelledEnabled)}
-          disabled={eventSwitchDisabled}
-          android_ripple={{ color: UI.colors.tint }}
-          hitSlop={{ top: 6, bottom: 6 }}
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.eventTitle}>Uscite annullate</Text>
-            <Text style={styles.eventSubtitle}>
-              Ricevi una notifica quando un&apos;uscita a cui potresti partecipare viene annullata.
-            </Text>
-          </View>
-          <View style={styles.switchWrapper}>
-            <Switch
-              value={rideCancelledEnabled}
-              onValueChange={handleRideCancelledToggle}
-              disabled={eventSwitchDisabled}
-              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
-            />
-          </View>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
-          onPress={() => handleBoardPostToggle(!boardPostEnabled)}
-          disabled={eventSwitchDisabled}
-          android_ripple={{ color: UI.colors.tint }}
-          hitSlop={{ top: 6, bottom: 6 }}
-        >
-          <View style={styles.rowText}>
-            <Text style={styles.eventTitle}>News in bacheca</Text>
-            <Text style={styles.eventSubtitle}>
-              Ricevi una notifica quando viene pubblicata una nuova news in bacheca.
-            </Text>
-          </View>
-          <View style={styles.switchWrapper}>
-            <Switch
-              value={boardPostEnabled}
-              onValueChange={handleBoardPostToggle}
-              disabled={eventSwitchDisabled}
-              trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
-            />
-          </View>
-        </Pressable>
-
-        {isOwner && (
           <Pressable
             style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
-            onPress={() => handlePendingUserToggle(!pendingUserEnabled)}
+            onPress={() => handleRideCreatedToggle(!rideCreatedEnabled)}
             disabled={eventSwitchDisabled}
             android_ripple={{ color: UI.colors.tint }}
             hitSlop={{ top: 6, bottom: 6 }}
           >
             <View style={styles.rowText}>
-              <Text style={styles.eventTitle}>Nuovi utenti in attesa</Text>
+              <Text style={styles.eventTitle}>Nuove uscite</Text>
               <Text style={styles.eventSubtitle}>
-                Ricevi una notifica quando un nuovo utente si registra ed è in attesa di approvazione.
+                Ricevi una notifica quando viene pubblicata una nuova uscita.
               </Text>
             </View>
             <View style={styles.switchWrapper}>
               <Switch
-                value={pendingUserEnabled}
-                onValueChange={handlePendingUserToggle}
+                value={rideCreatedEnabled}
+                onValueChange={handleRideCreatedToggle}
                 disabled={eventSwitchDisabled}
                 trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
               />
             </View>
           </Pressable>
-        )}
-      </View>
 
-      <Text style={styles.note}>
-        Se le notifiche risultano ancora disattivate, controlla anche le
-        impostazioni di sistema del dispositivo per l&apos;app{" "}
-        {Platform.OS === "ios" ? `"Bike Hike Italia".` : `"Bike Hike Italia".`}
-      </Text>
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleRideCancelledToggle(!rideCancelledEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Uscite annullate</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando un&apos;uscita a cui potresti partecipare viene annullata.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={rideCancelledEnabled}
+                onValueChange={handleRideCancelledToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleBoardPostToggle(!boardPostEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>News in bacheca</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando viene pubblicata una nuova news in bacheca.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={boardPostEnabled}
+                onValueChange={handleBoardPostToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          {isOwner && (
+            <Pressable
+              style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+              onPress={() => handlePendingUserToggle(!pendingUserEnabled)}
+              disabled={eventSwitchDisabled}
+              android_ripple={{ color: UI.colors.tint }}
+              hitSlop={{ top: 6, bottom: 6 }}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.eventTitle}>Nuovi utenti in attesa</Text>
+                <Text style={styles.eventSubtitle}>
+                  Ricevi una notifica quando un nuovo utente si registra ed è in attesa di approvazione.
+                </Text>
+              </View>
+              <View style={styles.switchWrapper}>
+                <Switch
+                  value={pendingUserEnabled}
+                  onValueChange={handlePendingUserToggle}
+                  disabled={eventSwitchDisabled}
+                  trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+                />
+              </View>
+            </Pressable>
+          )}
+        </View>
+
+        <Text style={styles.note}>
+          Se le notifiche risultano ancora disattivate, controlla anche le
+          impostazioni di sistema del dispositivo per l&apos;app{" "}
+          {Platform.OS === "ios" ? `"Bike Hike Italia".` : `"Bike Hike Italia".`}
+        </Text>
+      </ScrollView>
     </Screen>
   );
 };

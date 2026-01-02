@@ -6,6 +6,9 @@ export type FieldErrors = {
   maxParticipants?: string;
   link?: string;
   bikes?: string;
+  elevation?: string;
+  length?: string;
+  mandatoryGear?: string;
 };
 
 export type ExtraServiceState = {
@@ -25,6 +28,10 @@ export type CreateRideForm = {
   difficulty: string;
   guidaText: string;
   extraServices: Record<string, ExtraServiceState>;
+  // Trek specific
+  elevation?: string;
+  length?: string;
+  mandatoryGear?: string;
 };
 
 const parseFormDateTime = (date: string, time: string): Date | null => {

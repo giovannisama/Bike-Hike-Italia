@@ -264,7 +264,7 @@ export default function CalendarScreen() {
                         }}
                       >
                         <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
-                          Ciclismo
+                          Eventi in programma
                         </Text>
                       </View>
                       <RideList

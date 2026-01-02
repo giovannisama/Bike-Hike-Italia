@@ -147,7 +147,7 @@ export type UseCalendarScreenResult = {
 
 export function useCalendarScreen(): UseCalendarScreenResult {
   const navigation = useNavigation<any>();
-  const { canSeeCiclismo } = useCurrentProfile();
+  const { canSeeCiclismo, canSeeTrekking } = useCurrentProfile();
 
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
     const d = new Date();
@@ -159,7 +159,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
   });
 
-  const [rides, setRides] = useState<Ride[]>([]);
+  const [rides, setRides] = useState<Ride[]>([]); // Contains both rides and treks for the month
+  const [ridesOnly, setRidesOnly] = useState<Ride[]>([]);
+  const [treksOnly, setTreksOnly] = useState<Ride[]>([]);
   const [allRides, setAllRides] = useState<Ride[]>([]);
   const [socialEvents, setSocialEvents] = useState<SocialCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,7 +316,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return () => {
       cancelled = true;
     };
-  }, [canSeeCiclismo]);
+  }, [canSeeCiclismo, canSeeTrekking]);
 
   const resetFiltersAndView = useCallback(() => {
     clearSearch();
@@ -351,7 +353,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     const col = collection(db, "rides");
     const socialCol = collection(db, "social_events");
 
+    const map = new Map<string, Ride>();
     const unsubs: Array<() => void> = [];
+
     if (canSeeCiclismo) {
       const qDateTime = query(
         col,
@@ -367,7 +371,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
         orderBy("date", "asc")
       );
 
-      const map = new Map<string, Ride>();
+
 
       const upsertFromSnap = (snap: any) => {
         snap.forEach((doc: any) => {
@@ -433,10 +437,61 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     );
     unsubs.push(unsubSocial);
 
+    if (canSeeTrekking) {
+      const trekCol = collection(db, "treks");
+      // Reuse query constraints (roughly same fields)
+      const qDateTimeTrek = query(
+        trekCol,
+        where("dateTime", ">=", Timestamp.fromDate(start)),
+        where("dateTime", "<=", Timestamp.fromDate(end)),
+        orderBy("dateTime", "asc")
+      );
+      const qDateTrek = query(
+        trekCol,
+        where("date", ">=", Timestamp.fromDate(start)),
+        where("date", "<=", Timestamp.fromDate(end)),
+        orderBy("date", "asc")
+      );
+
+      const upsertTreks = (snap: any) => {
+        snap.forEach((doc: any) => {
+          const d = doc.data() as any;
+          map.set(doc.id, {
+            id: doc.id,
+            title: d?.title ?? "",
+            meetingPoint: d?.meetingPoint ?? "",
+            bikes: [], // Trek has no bikes
+            date: d?.date ?? null,
+            dateTime: d?.dateTime ?? null,
+            status: (d?.status as Ride["status"]) ?? "active",
+            archived: !!d?.archived,
+            difficulty: null, // Trek has difficulty in trek object, but Ride type expects standard diff? 
+            // Actually Ride type has `trek` object now.
+            guidaName: d?.guidaName ?? null,
+            guidaNames: Array.isArray(d?.guidaNames) ? d.guidaNames : null,
+            kind: "trek",
+            trek: d?.trek,
+          });
+        });
+        // Re-sort and set
+        const rows = Array.from(map.values()).sort((a, b) => {
+          const ta = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
+          const tb = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
+          return ta - tb;
+        });
+        setRides(rows);
+        setLoading(false);
+      };
+
+      const unsubT1 = onSnapshot(qDateTimeTrek, upsertTreks, () => setLoading(false));
+      const unsubT2 = onSnapshot(qDateTrek, upsertTreks, () => setLoading(false));
+      unsubs.push(unsubT1, unsubT2);
+    }
+
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [currentMonth, canSeeCiclismo]);
+  }, [currentMonth, canSeeCiclismo, canSeeTrekking]);
 
   const applyCalendarFilters = (
     source: Ride[],
@@ -508,7 +563,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       byDay.get(key)!.hasSocial = true;
     }
 
-    const colorFor = (_r: Ride) => UI.colors.eventCycling;
+    const colorFor = (r: Ride) => r.kind === "trek" ? UI.colors.eventTrekking : UI.colors.eventCycling;
 
     byDay.forEach((entry, day) => {
       const rideDots = entry.rides.length > 0

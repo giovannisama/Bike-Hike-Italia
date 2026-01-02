@@ -145,7 +145,7 @@ const VSpace = ({ size = "md" as keyof typeof UI.spacing }) => (
 export default function CreateRideScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, "CreateRide">>();
-  const rideId = route.params?.rideId;
+  const { rideId, collectionName = "rides", kind = "ride" } = route.params || {};
 
   // ---------- stato admin ----------
   const [isAdmin, setIsAdmin] = useState(false);
@@ -160,6 +160,11 @@ export default function CreateRideScreen() {
   const [date, setDate] = useState(""); // YYYY-MM-DD
   const [time, setTime] = useState(""); // HH:MM
   const [bikes, setBikes] = useState<string[]>([]);
+  // Trek Fields
+  const [elevation, setElevation] = useState("");
+  const [length, setLength] = useState("");
+  const [mandatoryGear, setMandatoryGear] = useState("");
+
   const [difficulty, setDifficulty] = useState<string>(""); // opzionale
   const [maxParticipants, setMaxParticipants] = useState<string>("");
   const [extraServices, setExtraServices] = useState<Record<ExtraServiceKey, ExtraServiceState>>(
@@ -337,7 +342,7 @@ export default function CreateRideScreen() {
     setServicesLocked(false);
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "rides", rideId));
+        const snap = await getDoc(doc(db, collectionName, rideId));
         if (!snap.exists()) {
           Alert.alert("Attenzione", "Uscita non trovata.");
           navigation.goBack();
@@ -363,6 +368,14 @@ export default function CreateRideScreen() {
         setDescription(d?.description ?? "");
         setBikes(Array.isArray(d?.bikes) ? d.bikes : []);
         setDifficulty(d?.difficulty ?? "");
+
+        // Trek Prefill
+        if (d?.kind === "trek" && d?.trek) {
+          setElevation(d.trek.elevation ? String(d.trek.elevation) : "");
+          setLength(d.trek.length ? String(d.trek.length) : "");
+          setMandatoryGear(d.trek.mandatoryGear ?? "");
+        }
+
         // date/time
         const dt = (d?.dateTime || d?.date) as Timestamp | undefined;
         if (dt?.toDate) {
@@ -433,6 +446,9 @@ export default function CreateRideScreen() {
       difficulty,
       guidaText,
       extraServices,
+      elevation,
+      length,
+      mandatoryGear,
     };
     const validation = validateCreateRide(form);
     const errs = getCreateRideErrors(form);
@@ -450,6 +466,9 @@ export default function CreateRideScreen() {
     difficulty,
     guidaText,
     extraServices,
+    elevation,
+    length,
+    mandatoryGear,
   ]);
 
   // ---------- salva ----------
@@ -495,26 +514,30 @@ export default function CreateRideScreen() {
       difficulty,
       guidaText,
       extraServices,
+      elevation,
+      length,
+      mandatoryGear,
     };
     const payload = mapCreateRideToFirestore(form, {
       uid: auth.currentUser.uid,
       dateTime: dt,
       isEdit,
+      kind,
     });
 
     setSaving(true);
     try {
       if (isEdit) {
-        await updateDoc(doc(db, "rides", rideId!), {
+        await updateDoc(doc(db, collectionName, rideId!), {
           ...payload,
           status,
           archived,
         });
         setFeedback({ type: "success", message: "Uscita aggiornata correttamente." });
       } else {
-        const ridesColl = collection(db, "rides");
+        const ridesColl = collection(db, collectionName);
         const newId = (globalThis as any).crypto?.randomUUID?.() ?? doc(ridesColl).id;
-        await setDoc(doc(db, "rides", newId), payload);
+        await setDoc(doc(db, collectionName, newId), payload);
         setFeedback({ type: "success", message: "Uscita creata!" });
       }
       setTimeout(() => navigation.goBack(), 400);
@@ -538,7 +561,7 @@ export default function CreateRideScreen() {
     if (!isAdmin) return;
     try {
       const next = status === "active" ? "cancelled" : "active";
-      await updateDoc(doc(db, "rides", rideId), { status: next });
+      await updateDoc(doc(db, collectionName, rideId), { status: next });
       setStatus(next);
       Alert.alert("Fatto", next === "cancelled" ? "Uscita annullata." : "Uscita riaperta.");
     } catch (e: any) {
@@ -554,7 +577,7 @@ export default function CreateRideScreen() {
       const dateObj = parseDateTime() ?? new Date();
       const y = dateObj.getFullYear();
       const m = dateObj.getMonth() + 1;
-      await updateDoc(doc(db, "rides", rideId), {
+      await updateDoc(doc(db, collectionName, rideId), {
         archived: next,
         ...(next ? { archiveYear: y, archiveMonth: m } : { archiveYear: null, archiveMonth: null }),
       });
@@ -692,29 +715,58 @@ export default function CreateRideScreen() {
             {/* CARD 2: TIPO & DIFFICOLTÀ */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="bicycle-outline" size={22} color={UI.colors.action} />
-                <Text style={styles.cardTitle}>Tipologia</Text>
+                {kind === "trek" ? <Ionicons name="walk-outline" size={22} color={UI.colors.action} /> : <Ionicons name="bicycle-outline" size={22} color={UI.colors.action} />}
+                <Text style={styles.cardTitle}>{kind === "trek" ? "Dettagli Trekking" : "Tipologia"}</Text>
               </View>
 
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Tipo Bici (Multi-selezione)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
-                  {BIKE_TYPES.map((b) => {
-                    const active = bikes.includes(b);
-                    return (
-                      <Pressable
-                        key={b}
-                        onPress={() => toggleBike(b)}
-                        style={[styles.chip, active && styles.chipActive]}
-                      >
-                        {active && <Ionicons name="checkmark" size={16} color={UI.colors.action} />}
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
-              </View>
+              {kind === "ride" && (
+                <View style={styles.formBlock}>
+                  <Text style={styles.label}>Tipo Bici (Multi-selezione)</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
+                    {BIKE_TYPES.map((b) => {
+                      const active = bikes.includes(b);
+                      return (
+                        <Pressable
+                          key={b}
+                          onPress={() => toggleBike(b)}
+                          style={[styles.chip, active && styles.chipActive]}
+                        >
+                          {active && <Ionicons name="checkmark" size={16} color={UI.colors.action} />}
+                          <Text style={[styles.chipText, active && styles.chipTextActive]}>{b}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  {errors.bikes && <Text style={styles.errorText}>{errors.bikes}</Text>}
+                </View>
+              )}
+
+              {kind === "trek" && (
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                  <View style={[styles.formBlock, { flex: 1 }]}>
+                    <Text style={styles.label}>Dislivello (m)</Text>
+                    <TextInput
+                      value={elevation}
+                      onChangeText={setElevation}
+                      placeholder="Es. 500"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="numeric"
+                      style={styles.input}
+                    />
+                  </View>
+                  <View style={[styles.formBlock, { flex: 1 }]}>
+                    <Text style={styles.label}>Sviluppo (km)</Text>
+                    <TextInput
+                      value={length}
+                      onChangeText={setLength}
+                      placeholder="Es. 12.5"
+                      placeholderTextColor="#94a3b8"
+                      keyboardType="numeric"
+                      style={styles.input}
+                    />
+                  </View>
+                </View>
+              )}
 
               <View style={styles.formBlock}>
                 <Text style={styles.label}>Difficoltà</Text>
@@ -802,7 +854,34 @@ export default function CreateRideScreen() {
                 />
                 {errors.link && <Text style={styles.errorText}>{errors.link}</Text>}
               </View>
+
+              {/* TREK: Mandatory Gear (Info Card or Here? Maybe here or new card) */}
+
             </View>
+
+            {/* CARD 3.5: ATTREZZATURA OBBLIGATORIA (TREK ONLY) */}
+            {kind === "trek" && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="medical-outline" size={22} color={UI.colors.action} />
+                  <Text style={styles.cardTitle}>Attrezzatura Obbligatoria</Text>
+                </View>
+                <View style={styles.formBlock}>
+                  <TextInput
+                    value={mandatoryGear}
+                    onChangeText={setMandatoryGear}
+                    placeholder="Es. Scarponi, bastoncini..."
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                    numberOfLines={3}
+                    style={[styles.input, { minHeight: 80, textAlignVertical: "top" }]}
+                  />
+                  <Text style={styles.helperText}>
+                    Elenca l'attrezzatura necessaria per partecipare in sicurezza.
+                  </Text>
+                </View>
+              </View>
+            )}
 
             {/* CARD 4: DESCRIZIONE */}
             <View style={styles.card}>

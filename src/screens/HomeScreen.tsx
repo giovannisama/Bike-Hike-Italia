@@ -52,6 +52,30 @@ function useActiveRidesCount() {
   return count;
 }
 
+function useActiveTreksCount() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "treks"),
+      (snap) => {
+        let c = 0;
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          const archived = d?.archived === true;
+          const status = (d?.status ?? "active") as string;
+          if (!archived && status !== "cancelled") c += 1;
+        });
+        setCount(c);
+      },
+      () => setCount(null)
+    );
+    return () => unsub();
+  }, []);
+
+  return count;
+}
+
 function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
   const [items, setItems] = useState<BoardPreviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +156,7 @@ export default function HomeScreen({ navigation }: any) {
   const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking } =
     useCurrentProfile();
   const activeCount = useActiveRidesCount();
+  const activeTreksCount = useActiveTreksCount();
   const socialActiveCount = useActiveSocialCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
 
@@ -217,10 +242,16 @@ export default function HomeScreen({ navigation }: any) {
       caption: EVENT_CATEGORY_SUBTITLES.trekking,
       icon: iconMap.trekking.name,
       iconColor: iconMap.trekking.color,
-      badge: 0,
+      badge: activeTreksCount ?? 0,
       enabled: true,
       permissionKey: "trekking",
-      onPress: () => rootNav.navigate("TrekkingPlaceholder"),
+      onPress: () =>
+        rootNav.navigate("UsciteList", {
+          collectionName: "treks",
+          kind: "trek",
+          title: "TREKKING",
+          subtitle: EVENT_CATEGORY_SUBTITLES.trekking,
+        }),
     },
     {
       id: "viaggi",

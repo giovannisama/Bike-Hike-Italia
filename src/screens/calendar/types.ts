@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase/firestore";
+import type { TrekData } from "../../types/firestore";
 
 export type Ride = {
   id: string;
@@ -12,6 +13,8 @@ export type Ride = {
   difficulty?: string | null;
   guidaName?: string | null;
   guidaNames?: string[] | null;
+  kind?: "ride" | "trek";
+  trek?: TrekData | null;
 };
 
 export type MarkedDate = {

@@ -139,8 +139,14 @@ export function RideList({
         });
         const guidaLabel = guideSummary.all.length > 0 ? guideSummary.all.join("; ") : "—";
         const difficultyMeta = getDifficultyMeta(item.difficulty);
-        const bikeCategoryRaw = getBikeCategoryLabel(item);
+
+        // Handle Trek vs Ride
+        const isTrek = item.kind === "trek";
+        const bikeCategoryRaw = !isTrek ? getBikeCategoryLabel(item) : "";
         const bikeCategory = bikeCategoryRaw === "Altro" ? "MTB/Gravel" : bikeCategoryRaw;
+
+        const categoryLabel = isTrek ? (item.trek?.difficulty ?? "Trekking") : bikeCategory;
+        const categoryIcon = isTrek ? "walk" : "bicycle";
         const statusBadge = isArchived ? (
           <StatusBadge status="archived" />
         ) : (
@@ -161,8 +167,8 @@ export function RideList({
             <View style={{ flex: 1 }}>
               <View style={[styles.chipsRow, styles.chipsTop]}>
                 <View style={styles.chip}>
-                  <Ionicons name="bicycle" size={14} color="#0F172A" />
-                  <Text style={styles.chipText}>{bikeCategory}</Text>
+                  <Ionicons name={categoryIcon} size={14} color="#0F172A" />
+                  <Text style={styles.chipText}>{categoryLabel}</Text>
                 </View>
                 {statusBadge}
               </View>

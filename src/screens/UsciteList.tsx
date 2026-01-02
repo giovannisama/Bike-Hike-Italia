@@ -16,7 +16,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { db } from "../firebase";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import {
@@ -39,6 +39,8 @@ import { deriveGuideSummary } from "../utils/guideHelpers";
 import { getDifficultyMeta } from "../utils/rideDifficulty";
 import AccessDenied from "../components/AccessDenied";
 import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
+import { RootStackParamList } from "../navigation/types"; // ADDED
+import { TrekDoc } from "../types/firestore"; // ADDED
 
 // ---- Tipi ----
 type Ride = {
@@ -59,6 +61,8 @@ type Ride = {
   difficulty?: string | null;
   archived?: boolean;
   manualParticipants?: any[];
+  kind?: "ride" | "trek";
+  trek?: TrekDoc["trek"];
 };
 
 const normalizeForSearch = (value?: string) =>
@@ -74,12 +78,19 @@ const normalizeForSearch = (value?: string) =>
 // Removed local ACTION_GREEN -> using UI.colors.action
 
 // ---- Badge partecipanti ----
-function ParticipantsBadge({ count, max }: { count?: number; max?: number | null }) {
+function ParticipantsBadge({ count, max, kind }: { count?: number; max?: number | null; kind?: "ride" | "trek" }) {
   const display = max != null ? `${count ?? 0}/${max}` : String(count ?? 0);
+  // Determine colors based on kind
+  const isTrek = kind === "trek";
+  // Trekking: Red (#e11d48) -> Bg Rose-100 (#FFE4E6)
+  // Cycling: Green (#16a34a) -> Bg Green-100 (#DCFCE7)
+  const color = isTrek ? UI.colors.eventTrekking : UI.colors.eventCycling;
+  const bg = isTrek ? "#FFE4E6" : UI.colors.eventCyclingBg;
+
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeIcon}>👥</Text>
-      <Text style={styles.badgeText}>{display}</Text>
+    <View style={[styles.badge, { backgroundColor: bg }]}>
+      <Text style={[styles.badgeIcon, { color }]}>👥</Text>
+      <Text style={[styles.badgeText, { color }]}>{display}</Text>
     </View>
   );
 }
@@ -90,6 +101,7 @@ type RideListItemProps = {
   onPress: (rideId: string, title: string) => void;
   onSubscribe: (rideId: string) => void;
   onUnsubscribe: (rideId: string) => void;
+  kind?: "ride" | "trek";
 };
 
 const RideListItem = React.memo(function RideListItem({
@@ -98,6 +110,7 @@ const RideListItem = React.memo(function RideListItem({
   onPress,
   onSubscribe,
   onUnsubscribe,
+  kind = "ride",
 }: RideListItemProps) {
   useEffect(() => {
     onSubscribe(item.id);
@@ -129,10 +142,14 @@ const RideListItem = React.memo(function RideListItem({
       >
         {/* Header Card: Category + Status */}
         <View style={styles.cardHeaderRow}>
-          <View style={styles.categoryBadge}>
-            <Ionicons name="bicycle" size={14} color="#0F172A" />
-            <Text style={styles.categoryText}>{categoryLabel}</Text>
-          </View>
+          {kind === "ride" && (
+            <View style={styles.categoryBadge}>
+              <Ionicons name="bicycle" size={14} color="#0F172A" />
+              <Text style={styles.categoryText}>{categoryLabel}</Text>
+            </View>
+          )}
+
+
           {isCancelled ? (
             <StatusBadge status="cancelled" />
           ) : (
@@ -173,7 +190,7 @@ const RideListItem = React.memo(function RideListItem({
 
         {/* Footer: Participants */}
         <View style={styles.cardFooter}>
-          <ParticipantsBadge count={displayCount} max={item.maxParticipants} />
+          <ParticipantsBadge count={displayCount} max={item.maxParticipants} kind={kind} />
           <View style={styles.chevronBox}>
             <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
           </View>
@@ -198,8 +215,16 @@ const matchesBikeFilter = (
 // ---- Schermata lista uscite ----
 export default function UsciteList() {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<RootStackParamList, "UsciteList">>();
+  const {
+    collectionName = "rides",
+    kind = "ride",
+    title = "ELENCO USCITE",
+    subtitle = EVENT_CATEGORY_SUBTITLES.ciclismo,
+  } = route.params || {};
+
   const { width } = useWindowDimensions();
-  const { isAdmin, profile, loading: profileLoading, canSeeCiclismo } =
+  const { isAdmin, profile, loading: profileLoading, canSeeCiclismo, canSeeTrekking } =
     useCurrentProfile() as any;
 
   const approvedOk =
@@ -212,7 +237,11 @@ export default function UsciteList() {
     ((profile.disabled === true) ||
       (profile.disabled === "true") ||
       (profile.disabled === 1));
-  const canReadRides = isAdmin || (approvedOk && !disabledOn);
+
+  // Basic permission check: if Kind is Trek, check Trek permission?
+  // User profile has 'canSeeTrekking'.
+  const hasPermission = kind === "trek" ? canSeeTrekking : canSeeCiclismo;
+  const canReadRides = isAdmin || (approvedOk && !disabledOn); // General approval
 
   const [rides, setRides] = useState<Ride[]>([]);
   const ridesRef = useRef<Ride[]>([]);
@@ -274,7 +303,7 @@ export default function UsciteList() {
       const last = lastFetchRef.current.get(rideId) ?? 0;
       if (!force && now - last < CACHE_TTL) return;
 
-      const colRef = collection(db, "rides", rideId, "participants");
+      const colRef = collection(db, collectionName, rideId, "participants");
       const snapshot = await getCountFromServer(query(colRef));
       const selfCount = snapshot.data().count as number;
 
@@ -300,7 +329,7 @@ export default function UsciteList() {
 
     fetchCountForRide(rideId);
 
-    const colRef = collection(db, "rides", rideId, "participants");
+    const colRef = collection(db, collectionName, rideId, "participants");
     const unsub = onSnapshot(
       colRef,
       (snap) => {
@@ -339,10 +368,10 @@ export default function UsciteList() {
 
   useEffect(() => {
     if (profileLoading) return;
-    if (!canSeeCiclismo || !canReadRides) {
+    if (!hasPermission || !canReadRides) {
       setRides([]); setLoading(false); return;
     }
-    const base = collection(db, "rides");
+    const base = collection(db, collectionName);
     const q = query(base, orderBy("dateTime", "asc"));
 
     const unsub = onSnapshot(
@@ -369,6 +398,8 @@ export default function UsciteList() {
             difficulty: d?.difficulty ?? null,
             archived: !!d?.archived,
             manualParticipants: Array.isArray(d?.manualParticipants) ? d.manualParticipants : [],
+            kind: d?.kind ?? "ride",
+            trek: d?.trek,
           });
         });
 
@@ -379,11 +410,11 @@ export default function UsciteList() {
       (err) => { console.error("Error fetching rides:", err); setLoading(false); }
     );
     return () => unsub();
-  }, [profileLoading, canSeeCiclismo, canReadRides]);
+  }, [profileLoading, hasPermission, canReadRides, collectionName]);
 
   const handleOpenRide = useCallback((rideId: string, title: string) => {
-    navigation.navigate("RideDetails", { rideId, title });
-  }, [navigation]);
+    navigation.navigate("RideDetails", { rideId, title, collectionName, kind });
+  }, [navigation, collectionName, kind]);
 
   const renderItem = useCallback(({ item }: { item: Ride }) => {
     const manualCount = item.manualParticipants?.length || 0;
@@ -397,9 +428,10 @@ export default function UsciteList() {
         onPress={handleOpenRide}
         onSubscribe={subscribeFor}
         onUnsubscribe={unsubscribeFor}
+        kind={kind}
       />
     );
-  }, [counts, handleOpenRide, subscribeFor, unsubscribeFor]);
+  }, [counts, handleOpenRide, subscribeFor, unsubscribeFor, kind]);
 
   const listHeader = useMemo(() => (
     <View style={styles.headerBlock}>
@@ -440,28 +472,30 @@ export default function UsciteList() {
         </Pressable>
       </View>
 
-      {/* Category Filters */}
-      <View style={styles.chipRow}>
-        {(["MTBGravel", "BDC", "Enduro"] as const).map((cat) => {
-          const isActive = activeCategory === cat;
-          const label = cat === "MTBGravel" ? "MTB/Gravel" : cat === "BDC" ? "Bici da Corsa" : cat;
-          return (
-            <Pressable
-              key={cat}
-              onPress={() => setActiveCategory(isActive ? "Tutte" : cat)}
-              style={[
-                styles.chip,
-                { flex: 1 },
-                isActive && styles.chipActive
-              ]}
-            >
-              <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1} adjustsFontSizeToFit>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Category Filters - ONLY VISIBLE IF KIND IS RIDE */}
+      {kind === "ride" && (
+        <View style={styles.chipRow}>
+          {(["MTBGravel", "BDC", "Enduro"] as const).map((cat) => {
+            const isActive = activeCategory === cat;
+            const label = cat === "MTBGravel" ? "MTB/Gravel" : cat === "BDC" ? "Bici da Corsa" : cat;
+            return (
+              <Pressable
+                key={cat}
+                onPress={() => setActiveCategory(isActive ? "Tutte" : cat)}
+                style={[
+                  styles.chip,
+                  { flex: 1 },
+                  isActive && styles.chipActive
+                ]}
+              >
+                <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {/* Results Meta */}
       <View style={styles.resultsMeta}>
@@ -480,7 +514,7 @@ export default function UsciteList() {
   ), [activeCategory, filterType, filteredRides.length, searchText]);
 
   if (profileLoading) return <Screen useNativeHeader={true}><ActivityIndicator style={{ marginTop: 50 }} /></Screen>;
-  if (!canSeeCiclismo) return <AccessDenied title="Sezione Riservata" message="Non hai i permessi per visualizzare il calendario bici." />;
+  if (!hasPermission) return <AccessDenied title="Sezione Riservata" message={`Non hai i permessi per visualizzare la sezione ${kind}.`} />;
   if (!canReadRides) return <AccessDenied title="Account in attesa" message="Il tuo account deve essere approvato." />;
 
   return (
@@ -490,14 +524,14 @@ export default function UsciteList() {
         Standard topPadding is fine here.
       */}
       <ScreenHeader
-        title="ELENCO USCITE"
-        subtitle={EVENT_CATEGORY_SUBTITLES.ciclismo}
+        title={title}
+        subtitle={subtitle}
         showBack={true}
         rightAction={
           isAdmin && (
             <TouchableOpacity
-              onPress={() => navigation.navigate("CreateRide")}
-              style={styles.addButton}
+              onPress={() => navigation.navigate("CreateRide", { collectionName, kind })}
+              style={[styles.addButton, { backgroundColor: kind === "trek" ? UI.colors.eventTrekking : UI.colors.eventCycling }]}
               accessibilityRole="button"
               accessibilityLabel="Crea nuova uscita"
             >

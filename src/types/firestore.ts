@@ -25,12 +25,12 @@ export interface UserDoc {
   enabledSections?: string[];
   expoPushTokens?: string[];
   membershipCard?:
-    | string
-    | null
-    | {
-        base64?: string;
-        updatedAt?: FirestoreTimestamp | null;
-      };
+  | string
+  | null
+  | {
+    base64?: string;
+    updatedAt?: FirestoreTimestamp | null;
+  };
   medicalCertificate?: any;
   createdAt?: FirestoreTimestamp | null;
   [key: string]: any;
@@ -60,6 +60,8 @@ export interface RideDoc {
   participantsCount?: number | null;
   participantsCountSelf?: number | null;
   participantsCountTotal?: number | null;
+  kind?: "ride" | "trek";
+  trek?: TrekData | null;
   status?: string;
   archived?: boolean;
   archiveYear?: number | null;
@@ -87,6 +89,18 @@ export interface RideDoc {
   createdAt?: FirestoreTimestamp | null;
   updatedAt?: FirestoreTimestamp | null;
   [key: string]: any;
+}
+
+export interface TrekData {
+  difficulty?: "Facile" | "Medio" | "Impegnativo" | "Estremo" | null;
+  elevation?: number | string | null;
+  length?: number | string | null; // Sviluppo planimetrico
+  mandatoryGear?: string | null;
+}
+
+export interface TrekDoc extends RideDoc {
+  kind: "trek";
+  trek: TrekData;
 }
 
 export interface ParticipantDoc {

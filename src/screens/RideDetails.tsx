@@ -153,7 +153,7 @@ const handlePressLink = (rawUrl: string) => {
 // TYPES
 // ------------------------------------------------------------------
 type RootStackParamList = {
-  RideDetails: { rideId: string; title?: string };
+  RideDetails: { rideId: string; title?: string; collectionName?: string; kind?: "ride" | "trek" };
   CreateRide: { editMode: boolean; rideId: string };
   UserDetail: { userId: string };
 };
@@ -168,7 +168,7 @@ type RideDetailsRouteProp = RouteProp<RootStackParamList, "RideDetails">;
 export default function RideDetails() {
   const navigation = useNavigation<any>();
   const route = useRoute<RideDetailsRouteProp>();
-  const { rideId } = route.params;
+  const { rideId, collectionName = "rides", kind = "ride" } = route.params;
   const insets = useSafeAreaInsets();
 
   // Track heald IDs to avoid loops
@@ -212,7 +212,7 @@ export default function RideDetails() {
   // ----------------------------------------------------------------
   useEffect(() => {
     if (!rideId) return;
-    const unsub = onSnapshot(doc(db, "rides", rideId), (snap) => {
+    const unsub = onSnapshot(doc(db, collectionName, rideId), (snap) => {
       if (snap.exists()) {
         setRide({ id: snap.id, ...snap.data() });
       } else {
@@ -230,7 +230,7 @@ export default function RideDetails() {
   useEffect(() => {
     if (!rideId) return;
     const q = query(
-      collection(db, "rides", rideId, "participants")
+      collection(db, collectionName, rideId, "participants")
       // orderBy("signedAt", "asc") // Removed to avoid missing index issues
     );
     const unsub = onSnapshot(q, (snapshot) => {
@@ -502,9 +502,9 @@ export default function RideDetails() {
         };
         const nextManual = [...manualParticipants];
         nextManual[index] = updatedEntry;
-        await updateDoc(doc(db, "rides", rideId), { manualParticipants: nextManual });
+        await updateDoc(doc(db, collectionName, rideId), { manualParticipants: nextManual });
       } else {
-        await updateDoc(doc(db, "rides", rideId, "participants", editTarget.id), {
+        await updateDoc(doc(db, collectionName, rideId, "participants", editTarget.id), {
           note: safeNote,
           ...(Object.keys(cleanServices).length > 0 ? { services: cleanServices } : {}),
         });
@@ -522,7 +522,7 @@ export default function RideDetails() {
     }
     setJoining(true);
     try {
-      const userRef = doc(db, "rides", rideId, "participants", userId!);
+      const userRef = doc(db, collectionName, rideId, "participants", userId!);
 
       // Prepare payload strictly according to firestore.rules
       // allowed keys: ['uid','name','displayName','nickname','note','createdAt','services']
@@ -640,7 +640,7 @@ export default function RideDetails() {
           onPress: async () => {
             try {
               if (userId) {
-                await deleteDoc(doc(db, "rides", rideId, "participants", userId));
+                await deleteDoc(doc(db, collectionName, rideId, "participants", userId));
                 Alert.alert("Fatto", "Non sei più tra i partecipanti.");
               }
             } catch (e) {
@@ -676,11 +676,11 @@ export default function RideDetails() {
                 }
                 const nextManual = [...manualParticipants];
                 nextManual.splice(index, 1);
-                await updateDoc(doc(db, "rides", rideId), {
+                await updateDoc(doc(db, collectionName, rideId), {
                   manualParticipants: nextManual,
                 });
               } else {
-                await deleteDoc(doc(db, "rides", rideId, "participants", p.id));
+                await deleteDoc(doc(db, collectionName, rideId, "participants", p.id));
               }
             } catch (e) {
               Alert.alert("Errore", "Impossibile rimuovere il partecipante.");
@@ -736,7 +736,7 @@ export default function RideDetails() {
       };
 
       const currentManual = ride.manualParticipants || [];
-      await updateDoc(doc(db, "rides", rideId), {
+      await updateDoc(doc(db, collectionName, rideId), {
         manualParticipants: [...currentManual, newEntry],
       });
       setManualModalVisible(false);
@@ -755,7 +755,7 @@ export default function RideDetails() {
           text: "Sì, Annulla",
           style: "destructive",
           onPress: async () => {
-            await updateDoc(doc(db, "rides", rideId), { status: "cancelled" });
+            await updateDoc(doc(db, collectionName, rideId), { status: "cancelled" });
             Alert.alert("Uscita Annullata");
             // Here you might trigger a notification function
             await sendCancellationNotification();
@@ -766,7 +766,7 @@ export default function RideDetails() {
   };
 
   const handleRestoreRide = async () => {
-    await updateDoc(doc(db, "rides", rideId), { status: "active" });
+    await updateDoc(doc(db, collectionName, rideId), { status: "active" });
     Alert.alert("Uscita Ripristinata");
   };
 
@@ -777,7 +777,7 @@ export default function RideDetails() {
         text: "Elimina",
         style: "destructive",
         onPress: async () => {
-          await deleteDoc(doc(db, "rides", rideId));
+          await deleteDoc(doc(db, collectionName, rideId));
           navigation.goBack();
         },
       },
@@ -866,7 +866,8 @@ export default function RideDetails() {
       ? ride.guidaNames.join(", ")
       : ride.guidaName || "Da assegnare";
 
-  const bikeCategory = getBikeCategoryLabel(ride);
+  const isTrek = ride.kind === "trek";
+  const bikeCategory = !isTrek ? getBikeCategoryLabel(ride) : "";
   const status = getRideStatus(ride); // active, cancelled, archived
 
   return (
@@ -890,7 +891,7 @@ export default function RideDetails() {
         showBack={true}
         rightAction={
           (isAdmin || isGuide) && (
-            <TouchableOpacity onPress={() => navigation.navigate("CreateRide", { editMode: true, rideId })}>
+            <TouchableOpacity onPress={() => navigation.navigate("CreateRide", { editMode: true, rideId, collectionName, kind })}>
               <Ionicons name="pencil" size={20} color="#1E293B" />
             </TouchableOpacity>
           )
@@ -912,11 +913,29 @@ export default function RideDetails() {
             {/* Title & Date removed from here, moved to Header */}
 
             <View style={styles.infoGrid}>
-              {/* Type */}
-              <View style={styles.infoRow}>
-                <Ionicons name="bicycle-outline" size={18} color={UI.colors.action} />
-                <Text style={styles.infoText}>{bikeCategory}</Text>
-              </View>
+              {/* Type - Conditionally Render */}
+              {!isTrek && (
+                <View style={styles.infoRow}>
+                  <Ionicons name="bicycle-outline" size={18} color={UI.colors.action} />
+                  <Text style={styles.infoText}>{bikeCategory}</Text>
+                </View>
+              )}
+              {isTrek && (
+                <>
+                  {ride.trek?.elevation && (
+                    <View style={styles.infoRow}>
+                      <Ionicons name="trending-up" size={18} color={UI.colors.action} />
+                      <Text style={styles.infoText}>Dislivello: <Text style={{ fontWeight: '600' }}>{ride.trek.elevation} m</Text></Text>
+                    </View>
+                  )}
+                  {ride.trek?.length && (
+                    <View style={styles.infoRow}>
+                      <Ionicons name="resize" size={18} color={UI.colors.action} />
+                      <Text style={styles.infoText}>Sviluppo: <Text style={{ fontWeight: '600' }}>{ride.trek.length} km</Text></Text>
+                    </View>
+                  )}
+                </>
+              )}
               {/* Location */}
               <View style={styles.infoRow}>
                 <Ionicons name="location-outline" size={18} color={UI.colors.action} />
@@ -943,9 +962,20 @@ export default function RideDetails() {
                 <Ionicons name="person-outline" size={18} color={UI.colors.action} />
                 <Text style={styles.infoText}>Guida: <Text style={{ fontWeight: '600' }}>{guideLabel}</Text></Text>
               </View>
+
             </View>
           </View>
         </View>
+
+        {/* MANDATORY GEAR */}
+        {isTrek && ride.trek?.mandatoryGear && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Attrezzatura Obbligatoria</Text>
+            <Text style={styles.descriptionText}>
+              {ride.trek.mandatoryGear}
+            </Text>
+          </View>
+        )}
 
         {/* DESCRIPTION */}
         {ride.description && (

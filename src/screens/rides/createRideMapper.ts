@@ -6,6 +6,7 @@ type MapperContext = {
   uid: string;
   dateTime: Date;
   isEdit: boolean;
+  kind?: "ride" | "trek";
 };
 
 const sanitizeCreatePayload = (raw: Record<string, any>) => {
@@ -66,7 +67,19 @@ export function mapCreateRideToFirestore(form: CreateRideForm, ctx: MapperContex
     difficulty: form.difficulty ? form.difficulty : null,
     guidaName: guidaName ?? null,
     guidaNames: guidaNames ?? null,
+    kind: ctx.kind ?? "ride",
   };
+
+  if (ctx.kind === "trek") {
+    const trek = {
+      elevation: form.elevation ? Number(form.elevation) : null,
+      length: form.length ? Number(form.length) : null,
+      mandatoryGear: form.mandatoryGear ? form.mandatoryGear.trim() : null,
+      difficulty: form.difficulty ? form.difficulty : null, // Redundant but okay
+    };
+    basePayload.trek = trek;
+    basePayload.bikes = []; // Force empty for treks
+  }
 
   const payload = sanitizeCreatePayload(basePayload);
   const extraServicesPayload = mapExtraServices(form.extraServices);

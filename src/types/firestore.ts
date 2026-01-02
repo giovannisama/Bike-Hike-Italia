@@ -20,6 +20,10 @@ export interface UserDoc {
   notificationsDisabled?: boolean;
   notificationsDisabledForCreatedRide?: boolean;
   notificationsDisabledForCancelledRide?: boolean;
+  notificationsDisabledForCreatedTrek?: boolean;
+  notificationsDisabledForCancelledTrek?: boolean;
+  notificationsDisabledForCreatedSocial?: boolean;
+  notificationsDisabledForCancelledSocial?: boolean;
   notificationsDisabledForPendingUser?: boolean;
   notificationsDisabledForBoardPost?: boolean;
   enabledSections?: string[];

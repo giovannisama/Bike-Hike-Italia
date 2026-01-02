@@ -269,6 +269,10 @@ service cloud.firestore {
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
           'notificationsDisabledForCancelledRide',
+          'notificationsDisabledForCreatedTrek',
+          'notificationsDisabledForCancelledTrek',
+          'notificationsDisabledForCreatedSocial',
+          'notificationsDisabledForCancelledSocial',
           'notificationsDisabledForPendingUser',
           'notificationsDisabledForBoardPost'
         ];
@@ -330,6 +334,10 @@ service cloud.firestore {
           && (!has('notificationsDisabled') || request.resource.data.notificationsDisabled is bool)
           && (!has('notificationsDisabledForCreatedRide') || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!has('notificationsDisabledForCancelledRide') || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!has('notificationsDisabledForCreatedTrek') || request.resource.data.notificationsDisabledForCreatedTrek is bool)
+          && (!has('notificationsDisabledForCancelledTrek') || request.resource.data.notificationsDisabledForCancelledTrek is bool)
+          && (!has('notificationsDisabledForCreatedSocial') || request.resource.data.notificationsDisabledForCreatedSocial is bool)
+          && (!has('notificationsDisabledForCancelledSocial') || request.resource.data.notificationsDisabledForCancelledSocial is bool)
           && (!has('notificationsDisabledForPendingUser') || request.resource.data.notificationsDisabledForPendingUser is bool)
           && (!has('notificationsDisabledForBoardPost') || request.resource.data.notificationsDisabledForBoardPost is bool);
       }
@@ -360,6 +368,10 @@ service cloud.firestore {
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
           && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedTrek']) || request.resource.data.notificationsDisabledForCreatedTrek is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledTrek']) || request.resource.data.notificationsDisabledForCancelledTrek is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedSocial']) || request.resource.data.notificationsDisabledForCreatedSocial is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledSocial']) || request.resource.data.notificationsDisabledForCancelledSocial is bool)
           && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool)
           && (!changed.hasAny(['notificationsDisabledForBoardPost']) || request.resource.data.notificationsDisabledForBoardPost is bool);
       }
@@ -371,6 +383,10 @@ service cloud.firestore {
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
           'notificationsDisabledForCancelledRide',
+          'notificationsDisabledForCreatedTrek',
+          'notificationsDisabledForCancelledTrek',
+          'notificationsDisabledForCreatedSocial',
+          'notificationsDisabledForCancelledSocial',
           'notificationsDisabledForPendingUser',
           'notificationsDisabledForBoardPost'
         ];
@@ -387,6 +403,10 @@ service cloud.firestore {
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)
           && (!changed.hasAny(['notificationsDisabledForCreatedRide']) || request.resource.data.notificationsDisabledForCreatedRide is bool)
           && (!changed.hasAny(['notificationsDisabledForCancelledRide']) || request.resource.data.notificationsDisabledForCancelledRide is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedTrek']) || request.resource.data.notificationsDisabledForCreatedTrek is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledTrek']) || request.resource.data.notificationsDisabledForCancelledTrek is bool)
+          && (!changed.hasAny(['notificationsDisabledForCreatedSocial']) || request.resource.data.notificationsDisabledForCreatedSocial is bool)
+          && (!changed.hasAny(['notificationsDisabledForCancelledSocial']) || request.resource.data.notificationsDisabledForCancelledSocial is bool)
           && (!changed.hasAny(['notificationsDisabledForPendingUser']) || request.resource.data.notificationsDisabledForPendingUser is bool)
           && (!changed.hasAny(['notificationsDisabledForBoardPost']) || request.resource.data.notificationsDisabledForBoardPost is bool);
       }

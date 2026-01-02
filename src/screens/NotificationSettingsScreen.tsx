@@ -17,6 +17,10 @@ const NotificationSettingsScreen: React.FC = () => {
   // toggle per singolo evento
   const [rideCreatedEnabled, setRideCreatedEnabled] = useState(true);
   const [rideCancelledEnabled, setRideCancelledEnabled] = useState(true);
+  const [trekCreatedEnabled, setTrekCreatedEnabled] = useState(true);
+  const [trekCancelledEnabled, setTrekCancelledEnabled] = useState(true);
+  const [socialCreatedEnabled, setSocialCreatedEnabled] = useState(true);
+  const [socialCancelledEnabled, setSocialCancelledEnabled] = useState(true);
   const [pendingUserEnabled, setPendingUserEnabled] = useState(true);
   const [boardPostEnabled, setBoardPostEnabled] = useState(true);
 
@@ -45,11 +49,19 @@ const NotificationSettingsScreen: React.FC = () => {
           // se i flag specifici non esistono → li consideriamo come "abilitati"
           const disabledCreated = data.notificationsDisabledForCreatedRide === true;
           const disabledCancelled = data.notificationsDisabledForCancelledRide === true;
+          const disabledTrekCreated = data.notificationsDisabledForCreatedTrek === true;
+          const disabledTrekCancelled = data.notificationsDisabledForCancelledTrek === true;
+          const disabledSocialCreated = data.notificationsDisabledForCreatedSocial === true;
+          const disabledSocialCancelled = data.notificationsDisabledForCancelledSocial === true;
           const disabledPending = data.notificationsDisabledForPendingUser === true;
           const disabledBoardPost = data.notificationsDisabledForBoardPost === true;
 
           setRideCreatedEnabled(!disabledCreated);
           setRideCancelledEnabled(!disabledCancelled);
+          setTrekCreatedEnabled(!disabledTrekCreated);
+          setTrekCancelledEnabled(!disabledTrekCancelled);
+          setSocialCreatedEnabled(!disabledSocialCreated);
+          setSocialCancelledEnabled(!disabledSocialCancelled);
           setPendingUserEnabled(!disabledPending);
           setBoardPostEnabled(!disabledBoardPost);
         }
@@ -205,6 +217,118 @@ const NotificationSettingsScreen: React.FC = () => {
     }
   };
 
+  // ------- toggle: nuovo trekking -------
+  const handleTrekCreatedToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = trekCreatedEnabled;
+    setTrekCreatedEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCreatedTrek: !value,
+      });
+    } catch (e) {
+      console.error("Error updating trekCreated notification setting", e);
+      setTrekCreatedEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per i nuovi eventi trekking."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: trekking annullato -------
+  const handleTrekCancelledToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = trekCancelledEnabled;
+    setTrekCancelledEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCancelledTrek: !value,
+      });
+    } catch (e) {
+      console.error("Error updating trekCancelled notification setting", e);
+      setTrekCancelledEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per i trekking annullati."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: nuovo evento social -------
+  const handleSocialCreatedToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = socialCreatedEnabled;
+    setSocialCreatedEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCreatedSocial: !value,
+      });
+    } catch (e) {
+      console.error("Error updating socialCreated notification setting", e);
+      setSocialCreatedEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per i nuovi eventi social."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: evento social annullato -------
+  const handleSocialCancelledToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = socialCancelledEnabled;
+    setSocialCancelledEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCancelledSocial: !value,
+      });
+    } catch (e) {
+      console.error("Error updating socialCancelled notification setting", e);
+      setSocialCancelledEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per gli eventi social annullati."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ------- toggle: nuovo utente in attesa (solo owner) -------
   const handlePendingUserToggle = async (value: boolean) => {
     if (saving) return;
@@ -305,7 +429,7 @@ const NotificationSettingsScreen: React.FC = () => {
             hitSlop={{ top: 6, bottom: 6 }}
           >
             <View style={styles.rowText}>
-              <Text style={styles.eventTitle}>Nuove uscite</Text>
+              <Text style={styles.eventTitle}>Ciclismo: Nuovi eventi</Text>
               <Text style={styles.eventSubtitle}>
                 Ricevi una notifica quando viene pubblicata una nuova uscita.
               </Text>
@@ -328,7 +452,7 @@ const NotificationSettingsScreen: React.FC = () => {
             hitSlop={{ top: 6, bottom: 6 }}
           >
             <View style={styles.rowText}>
-              <Text style={styles.eventTitle}>Uscite annullate</Text>
+              <Text style={styles.eventTitle}>Ciclismo: Eventi annullati</Text>
               <Text style={styles.eventSubtitle}>
                 Ricevi una notifica quando un&apos;uscita a cui potresti partecipare viene annullata.
               </Text>
@@ -337,6 +461,98 @@ const NotificationSettingsScreen: React.FC = () => {
               <Switch
                 value={rideCancelledEnabled}
                 onValueChange={handleRideCancelledToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleTrekCreatedToggle(!trekCreatedEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Trekking: Nuovi eventi</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando viene pubblicata una nuova uscita trekking.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={trekCreatedEnabled}
+                onValueChange={handleTrekCreatedToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleTrekCancelledToggle(!trekCancelledEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Trekking: Eventi annullati</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando un&apos;uscita trekking viene annullata.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={trekCancelledEnabled}
+                onValueChange={handleTrekCancelledToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleSocialCreatedToggle(!socialCreatedEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Social: Nuovi eventi</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando viene pubblicato un nuovo evento social.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={socialCreatedEnabled}
+                onValueChange={handleSocialCreatedToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleSocialCancelledToggle(!socialCancelledEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Social: Eventi annullati</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando un evento social viene annullato.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={socialCancelledEnabled}
+                onValueChange={handleSocialCancelledToggle}
                 disabled={eventSwitchDisabled}
                 trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
               />

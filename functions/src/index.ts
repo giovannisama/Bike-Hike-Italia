@@ -310,7 +310,7 @@ export const onTrekCreated = functions.firestore
 
     const { tokens: recipients, approvedUsersCount, activeUsersCount } =
       await fetchApprovedExpoTokens({
-        eventFlagField: "notificationsDisabledForCreatedRide",
+        eventFlagField: "notificationsDisabledForCreatedTrek",
         enabledSection: "trekking",
       });
 
@@ -385,7 +385,7 @@ export const onTrekUpdated = functions.firestore
 
     const { tokens: recipients, approvedUsersCount, activeUsersCount } =
       await fetchApprovedExpoTokens({
-        eventFlagField: "notificationsDisabledForCancelledRide",
+        eventFlagField: "notificationsDisabledForCancelledTrek",
         enabledSection: "trekking",
       });
 
@@ -447,7 +447,9 @@ export const onSocialEventCreated = functions.firestore
     }
 
     const { tokens: recipients, approvedUsersCount, activeUsersCount } =
-      await fetchApprovedExpoTokens();
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCreatedSocial",
+      });
 
     functions.logger.info(
       `[onSocialEventCreated] ${eventId} approved users=${approvedUsersCount}`
@@ -514,7 +516,9 @@ export const onSocialEventUpdated = functions.firestore
       : "Un evento è stato annullato.";
 
     const { tokens: recipients, approvedUsersCount, activeUsersCount } =
-      await fetchApprovedExpoTokens();
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCancelledSocial",
+      });
 
     functions.logger.info(
       `[onSocialEventUpdated] ${eventId} approved users=${approvedUsersCount}`

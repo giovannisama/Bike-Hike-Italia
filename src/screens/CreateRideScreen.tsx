@@ -20,7 +20,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
 import {
-  serverTimestamp,
   Timestamp,
   doc,
   getDoc,
@@ -41,24 +40,19 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import AndroidTimePicker from "../components/AndroidTimePicker";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
-import { splitGuideInput } from "../utils/guideHelpers";
 import type { RideDoc, UserDoc } from "../types/firestore";
 import type { RootStackParamList } from "../navigation/types";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  getCreateRideErrors,
+  validateCreateRide,
+  type CreateRideForm,
+  type ExtraServiceState,
+  type FieldErrors,
+} from "./rides/createRideValidation";
+import { mapCreateRideToFirestore } from "./rides/createRideMapper";
 
 // --- CONSTANTS ---
-
-
-
-type FieldErrors = {
-  title?: string;
-  meetingPoint?: string;
-  date?: string;
-  time?: string;
-  maxParticipants?: string;
-  link?: string;
-  bikes?: string;
-};
 
 const BIKE_TYPES = ["BDC", "Gravel", "MTB", "eBike", "Enduro"] as const;
 const DIFFICULTY_OPTIONS = [
@@ -69,11 +63,6 @@ const DIFFICULTY_OPTIONS = [
 ] as const;
 
 type ExtraServiceKey = "lunch" | "dinner" | "overnight";
-
-type ExtraServiceState = {
-  enabled: boolean;
-  label: string;
-};
 
 const EXTRA_SERVICE_KEYS: ExtraServiceKey[] = ["lunch", "dinner", "overnight"];
 
@@ -161,6 +150,7 @@ export default function CreateRideScreen() {
   // ---------- stato admin ----------
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // INVENTORY A: default state / initial values (unchanged)
   // ---------- campi uscita ----------
   const [title, setTitle] = useState("");
   const [guidaText, setGuidaText] = useState("");
@@ -429,73 +419,41 @@ export default function CreateRideScreen() {
     };
   }, [rideId, navigation]);
 
-  // ---------- validazione semplice ----------
-  // TODO: logica di validazione potrebbe essere estratta in helper riusabile/testabile separatamente.
+  // INVENTORY B: validazione (estratta in helper)
   const validate = useCallback(() => {
-    const t = title.trim();
-    const mp = meetingPoint.trim();
-    const errs: FieldErrors = {};
-
-    if (!t) {
-      errs.title = "Inserisci un titolo";
-    } else if (t.length > 120) {
-      errs.title = "Massimo 120 caratteri";
-    }
-
-    if (!mp) {
-      errs.meetingPoint = "Indica il luogo di ritrovo";
-    } else if (mp.length > 200) {
-      errs.meetingPoint = "Massimo 200 caratteri";
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      errs.date = "Seleziona una data valida";
-    }
-    if (!/^\d{2}:\d{2}$/.test(time)) {
-      errs.time = "Seleziona un orario valido";
-    }
-    const dt = parseDateTime();
-    if (!dt) {
-      errs.date = errs.date ?? "Data non valida";
-      errs.time = errs.time ?? "Ora non valida";
-    }
-
-    if (maxParticipants.trim() !== "") {
-      const num = Number(maxParticipants);
-      if (!Number.isFinite(num) || num < 0) {
-        errs.maxParticipants = "Inserisci un numero ≥ 0";
-      }
-    }
-
-    if (Array.isArray(bikes) && bikes.length > 20) {
-      errs.bikes = "Max 20 tipologie";
-    }
-
-    if (link.trim() && !/^((https?):\/\/|geo:)/i.test(link.trim())) {
-      errs.link = "Inserisci un URL valido (es. https://…)";
-    }
-
+    const form: CreateRideForm = {
+      title,
+      meetingPoint,
+      description,
+      bikes,
+      date,
+      time,
+      maxParticipants,
+      link,
+      difficulty,
+      guidaText,
+      extraServices,
+    };
+    const validation = validateCreateRide(form);
+    const errs = getCreateRideErrors(form);
     setErrors(errs);
-    return Object.keys(errs).length === 0;
-  }, [title, meetingPoint, date, time, maxParticipants, bikes, link]);
-
-  // ---------- helper pulizia payload ----------
-  function sanitizeCreatePayload(raw: any) {
-    const obj: Record<string, any> = { ...raw };
-    const trimIfString = (v: any) => (typeof v === "string" ? v.trim() : v);
-
-    Object.keys(obj).forEach((k) => {
-      obj[k] = trimIfString(obj[k]);
-    });
-
-    Object.keys(obj).forEach((k) => {
-      if (obj[k] === null || obj[k] === undefined) delete obj[k];
-    });
-
-    return obj;
-  }
+    return validation.ok;
+  }, [
+    title,
+    meetingPoint,
+    description,
+    bikes,
+    date,
+    time,
+    maxParticipants,
+    link,
+    difficulty,
+    guidaText,
+    extraServices,
+  ]);
 
   // ---------- salva ----------
+  // INVENTORY C: mapping payload + submit (estratto in helper)
   const onSave = async () => {
     if (!isAdmin) {
       setFeedback({ type: "error", message: "Solo Admin o Owner possono salvare." });
@@ -512,23 +470,6 @@ export default function CreateRideScreen() {
 
     const dt = parseDateTime();
     if (!dt) return;
-    const maxNum =
-      maxParticipants.trim() === ""
-        ? null
-        : Number.isNaN(Number(maxParticipants))
-          ? null
-          : Number(maxParticipants);
-
-    const extraServicesPayload: Record<string, any> = {};
-    EXTRA_SERVICE_KEYS.forEach((key) => {
-      const conf = extraServices[key];
-      if (conf?.enabled) {
-        extraServicesPayload[key] = {
-          enabled: true,
-          label: conf.label.trim() || null,
-        };
-      }
-    });
 
     if (servicesLocked) {
       const newlyEnabledKeys = EXTRA_SERVICE_KEYS.filter(
@@ -542,37 +483,24 @@ export default function CreateRideScreen() {
         return;
       }
     }
-
-    const names = splitGuideInput(guidaText);
-    const guidaName = names.length > 0 ? names[0] : null;
-    const guidaNames = names.length > 1 ? names : names.length === 1 ? [names[0]] : null;
-
-    // TODO: questa preparazione payload/save create/edit potrebbe vivere in helper riusabile (stessa logica, meno rumore nel component).
-    const basePayload: Record<string, any> = {
-      title: title.trim(),
-      meetingPoint: meetingPoint.trim(),
-      description: (description || "").trim() || null,
-      bikes: Array.isArray(bikes) ? bikes.slice(0, 20) : [],
-      dateTime: Timestamp.fromDate(dt),
-      date: Timestamp.fromDate(dt),
-      maxParticipants: maxNum,
-      createdBy: auth.currentUser.uid,
-      createdAt: serverTimestamp(),
-      status: "active",
-      archived: false,
-      participantsCount: 0,
-      link: link.trim() ? link.trim() : null,
-      difficulty: difficulty ? difficulty : null,
-      guidaName: guidaName ?? null,
-      guidaNames: guidaNames ?? null,
+    const form: CreateRideForm = {
+      title,
+      meetingPoint,
+      description,
+      bikes,
+      date,
+      time,
+      maxParticipants,
+      link,
+      difficulty,
+      guidaText,
+      extraServices,
     };
-
-    const payload = sanitizeCreatePayload(basePayload);
-    if (Object.keys(extraServicesPayload).length > 0) {
-      payload.extraServices = extraServicesPayload;
-    } else if (isEdit) {
-      payload.extraServices = null;
-    }
+    const payload = mapCreateRideToFirestore(form, {
+      uid: auth.currentUser.uid,
+      dateTime: dt,
+      isEdit,
+    });
 
     setSaving(true);
     try {

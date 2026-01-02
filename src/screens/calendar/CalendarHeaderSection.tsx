@@ -91,7 +91,8 @@ export function CalendarHeaderSection({
   // We derive a grid width that is ALWAYS a multiple of 7 and therefore cannot overflow.
 
   // Effective available width inside the red wrapper (already excludes the 16px margins).
-  const effectiveW = layoutDebug.outerWrapperW;
+  // FIX: Use passed gridWidth prop immediately if available to avoid async layout glitches (especially on Android).
+  const effectiveW = gridWidth > 0 ? gridWidth - 32 : layoutDebug.outerWrapperW;
 
   // Until measured, keep a conservative fallback.
   const fallbackCellW = 48;

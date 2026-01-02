@@ -72,7 +72,7 @@ export default function CalendarScreen() {
 
   const renderSocialItem = useCallback(
     (item: SocialCalendarEvent) => {
-      const status = item.status === "archived" ? "archived" : "active";
+      const status = item.status || "active";
       return (
         <TouchableOpacity
           style={[calendarStyles.rideCard, { marginBottom: 8 }]}

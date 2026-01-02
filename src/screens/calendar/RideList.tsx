@@ -144,7 +144,7 @@ export function RideList({
         const statusBadge = isArchived ? (
           <StatusBadge status="archived" />
         ) : (
-          <StatusBadge status="active" />
+          <StatusBadge status={item.status === "cancelled" ? "cancelled" : "active"} />
         );
 
         let dateLabel = null;

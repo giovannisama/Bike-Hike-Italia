@@ -16,6 +16,7 @@ export type EventSection = {
     permissionKey?: "ciclismo" | "trekking" | "bikeaut";
     onPress?: () => void;
     invisible?: boolean;
+    fullWidth?: boolean;
 };
 
 export function EventGridCard({ item, cardWidth }: { item: EventSection; cardWidth: number }) {

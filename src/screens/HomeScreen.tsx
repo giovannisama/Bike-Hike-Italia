@@ -251,6 +251,7 @@ export default function HomeScreen({ navigation }: any) {
       badge: null,
       enabled: false,
       permissionKey: "bikeaut",
+      fullWidth: true,
     },
     {
       id: "spacer-1",
@@ -380,7 +381,11 @@ export default function HomeScreen({ navigation }: any) {
         >
           <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
             {sections.map((item) => (
-              <EventGridCard key={item.id} item={item} cardWidth={cardWidth} />
+              <EventGridCard
+                key={item.id}
+                item={item}
+                cardWidth={item.fullWidth ? (gridWidth ?? 0) : cardWidth}
+              />
             ))}
           </View>
         </View>

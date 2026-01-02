@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Share,
+  Switch,
 } from "react-native";
 import { Screen, UI } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -84,6 +85,7 @@ export default function SocialDetailScreen() {
   const [joinSaving, setJoinSaving] = useState(false);
   const [isSavingJoinLeave, setIsSavingJoinLeave] = useState(false);
   const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ id: string; displayName?: string } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualName, setManualName] = useState("");
@@ -162,24 +164,33 @@ export default function SocialDetailScreen() {
     return [...registered, ...manual];
   }, [participants]);
 
-  useEffect(() => {
-    if (userParticipant?.services) {
-      setJoinServices({
-        lunch: userParticipant.services.lunch ?? null,
-        dinner: userParticipant.services.dinner ?? null,
-      });
-    }
-  }, [userParticipant?.services]);
-
   const legacyExtras = (event as any)?.extras ?? {};
+  const extraLunchEnabled = !!event?.extraServices?.lunch?.enabled || !!legacyExtras?.lunch;
+  const extraDinnerEnabled = !!event?.extraServices?.dinner?.enabled || !!legacyExtras?.dinner;
   const extrasEnabled = {
-    lunch: !!event?.extraServices?.lunch?.enabled || !!legacyExtras?.lunch,
-    dinner: !!event?.extraServices?.dinner?.enabled || !!legacyExtras?.dinner,
+    lunch: extraLunchEnabled,
+    dinner: extraDinnerEnabled,
   };
   const status = (event?.status as "active" | "cancelled" | "archived") ?? "active";
   const isInactive = status !== "active";
   const isCancelled = status === "cancelled";
-  const canModifyParticipation = !isCancelled;
+  const canModifyParticipation = status === "active";
+
+  const buildSelectionFromServices = useCallback(
+    (services?: ParticipantDoc["services"] | null) => {
+      return {
+        lunch: extraLunchEnabled ? (services?.lunch ?? "no") : null,
+        dinner: extraDinnerEnabled ? (services?.dinner ?? "no") : null,
+      };
+    },
+    [extraLunchEnabled, extraDinnerEnabled]
+  );
+
+  useEffect(() => {
+    if (userParticipant) {
+      setJoinServices(buildSelectionFromServices(userParticipant.services ?? null));
+    }
+  }, [userParticipant, buildSelectionFromServices]);
 
   const stats = useMemo(() => {
     const base = {
@@ -206,22 +217,40 @@ export default function SocialDetailScreen() {
   const dateLabel = dateObj ? format(dateObj, "EEE d MMMM yyyy", { locale: it }) : "";
   const timeLabel = dateObj ? format(dateObj, "HH:mm") : "";
 
-  const handleChoiceChange = useCallback(
-    async (key: "lunch" | "dinner", value: "yes" | "no") => {
-      if (isInactive) return;
-      setJoinServices((prev) => ({ ...prev, [key]: value }));
-      if (!eventId || !userParticipant || !userId) return;
-      try {
-        const currentServices = userParticipant.services ?? {};
-        await updateDoc(doc(db, "social_events", eventId, "participants", userParticipant.id), {
-          services: {
-            ...currentServices,
-            [key]: value,
-          },
-        });
-      } catch { }
+  const openJoinModal = useCallback(() => {
+    setEditTarget(null);
+    setNoteText("");
+    setJoinServices(buildSelectionFromServices());
+    setNoteModalVisible(true);
+  }, [buildSelectionFromServices]);
+
+  const closeNoteModal = useCallback(() => {
+    if (joinSaving || isSavingJoinLeave) return;
+    setNoteModalVisible(false);
+    setEditTarget(null);
+    setJoinServices(emptySelection());
+  }, [isSavingJoinLeave, joinSaving]);
+
+  const openEditModal = useCallback(
+    (target: ParticipantDoc) => {
+      if (!canModifyParticipation) return;
+      setEditTarget({ id: target.id, displayName: target.displayName });
+      setNoteText(target.note ?? "");
+      setJoinServices(buildSelectionFromServices(target.services ?? null));
+      setNoteModalVisible(true);
     },
-    [eventId, isInactive, userId, userParticipant]
+    [buildSelectionFromServices, canModifyParticipation]
+  );
+
+  const setServiceValue = useCallback(
+    (
+      key: "lunch" | "dinner",
+      nextValue: boolean,
+      setState: React.Dispatch<React.SetStateAction<Record<"lunch" | "dinner", Choice>>>
+    ) => {
+      setState((prev) => ({ ...prev, [key]: nextValue ? "yes" : "no" }));
+    },
+    []
   );
 
   const hasMissingChoices = useMemo(() => {
@@ -229,6 +258,28 @@ export default function SocialDetailScreen() {
     if (extrasEnabled.dinner && !joinServices.dinner) return true;
     return false;
   }, [joinServices, extrasEnabled]);
+
+  const handleUpdateParticipation = async () => {
+    if (!eventId || !editTarget) return;
+    if (!canModifyParticipation) return;
+    setJoinSaving(true);
+    setIsSavingJoinLeave(true);
+    try {
+      const safeNote = noteText ? noteText.trim().slice(0, 500) : null;
+      const cleanServices: Record<string, "yes" | "no"> = {};
+      if (joinServices.lunch) cleanServices.lunch = joinServices.lunch;
+      if (joinServices.dinner) cleanServices.dinner = joinServices.dinner;
+      await updateDoc(doc(db, "social_events", eventId, "participants", editTarget.id), {
+        note: safeNote,
+        ...(Object.keys(cleanServices).length > 0 ? { services: cleanServices } : {}),
+      });
+    } finally {
+      setJoinSaving(false);
+      setIsSavingJoinLeave(false);
+      setNoteModalVisible(false);
+      setEditTarget(null);
+    }
+  };
 
   const handleJoin = async () => {
     if (!eventId || !userId) return;
@@ -257,7 +308,7 @@ export default function SocialDetailScreen() {
       if (joinServices.dinner) cleanServices.dinner = joinServices.dinner;
       if (snap.exists()) {
         const updatePayload: any = {};
-        if (safeNote !== null) updatePayload.note = safeNote;
+        updatePayload.note = safeNote;
         if (Object.keys(cleanServices).length > 0) updatePayload.services = cleanServices;
         await updateDoc(userRef, updatePayload);
       } else {
@@ -270,12 +321,18 @@ export default function SocialDetailScreen() {
           source: "self",
         });
       }
+      Alert.alert("Partecipazione confermata", "Ti sei iscritto all'uscita!");
     } finally {
       setJoinSaving(false);
       setIsSavingJoinLeave(false);
       setNoteModalVisible(false);
       setJoinServices(emptySelection());
     }
+  };
+
+  const handleSaveParticipation = async () => {
+    if (editTarget) return handleUpdateParticipation();
+    return handleJoin();
   };
 
   const handleLeave = async () => {
@@ -286,33 +343,50 @@ export default function SocialDetailScreen() {
       Alert.alert("Evento annullato", "Le iscrizioni sono disabilitate.");
       return;
     }
-    setJoinSaving(true);
-    setIsSavingJoinLeave(true);
-    try {
-      await deleteDoc(doc(db, "social_events", eventId, "participants", userId));
-      setJoinServices(emptySelection());
-    } catch (err: any) {
-      console.error("[social_events] leave failed", err);
-      if (err?.code === "permission-denied") {
-        Alert.alert("Errore", "Permessi insufficienti.");
-      } else {
-        Alert.alert("Errore", err?.message ?? "Impossibile annullare iscrizione.");
-      }
-    } finally {
-      setJoinSaving(false);
-      setIsSavingJoinLeave(false);
-    }
+    const displayName = userParticipant?.displayName || "te";
+    Alert.alert(
+      "Rimuovere partecipante?",
+      `Confermi la rimozione di ${displayName} dall’evento?`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Rimuovi",
+          style: "destructive",
+          onPress: async () => {
+            setJoinSaving(true);
+            setIsSavingJoinLeave(true);
+            try {
+              await deleteDoc(doc(db, "social_events", eventId, "participants", userId));
+              setJoinServices(emptySelection());
+              Alert.alert("Fatto", "Non sei più tra i partecipanti.");
+            } catch (err: any) {
+              console.error("[social_events] leave failed", err);
+              if (err?.code === "permission-denied") {
+                Alert.alert("Errore", "Permessi insufficienti.");
+              } else {
+                Alert.alert("Errore", err?.message ?? "Impossibile annullare iscrizione.");
+              }
+            } finally {
+              setJoinSaving(false);
+              setIsSavingJoinLeave(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleAddManual = () => {
+    if (!canModifyParticipation) return;
     setManualName("");
     setManualNote("");
-    setManualServices(emptySelection());
+    setManualServices(buildSelectionFromServices());
     setManualModalVisible(true);
   };
 
   const handleConfirmManual = async () => {
     if (!eventId) return;
+    if (!canModifyParticipation) return;
     if (!manualName.trim()) {
       Alert.alert("Errore", "Inserisci almeno il nome.");
       return;
@@ -349,16 +423,32 @@ export default function SocialDetailScreen() {
 
   const handleRemoveParticipant = async (id: string) => {
     if (!eventId || !canEdit) return;
-    try {
-      await deleteDoc(doc(db, "social_events", eventId, "participants", id));
-    } catch (err: any) {
-      console.error("[social_events] remove participant failed", err);
-      if (err?.code === "permission-denied") {
-        Alert.alert("Errore", "Permessi insufficienti.");
-      } else {
-        Alert.alert("Errore", err?.message ?? "Impossibile rimuovere il partecipante.");
-      }
-    }
+    if (!canModifyParticipation) return;
+    const target = participants.find((p) => p.id === id);
+    const displayName = target?.displayName || "partecipante";
+    Alert.alert(
+      "Rimuovere partecipante?",
+      `Confermi la rimozione di ${displayName} dall’evento?`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Rimuovi",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, "social_events", eventId, "participants", id));
+            } catch (err: any) {
+              console.error("[social_events] remove participant failed", err);
+              if (err?.code === "permission-denied") {
+                Alert.alert("Errore", "Permessi insufficienti.");
+              } else {
+                Alert.alert("Errore", err?.message ?? "Impossibile rimuovere il partecipante.");
+              }
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCancelEvent = async () => {
@@ -630,7 +720,7 @@ export default function SocialDetailScreen() {
                 ) : (
                   <Pressable
                     style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
-                    onPress={() => setNoteModalVisible(true)}
+                    onPress={openJoinModal}
                     disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
                   >
                     {joinSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'evento</Text>}
@@ -639,9 +729,46 @@ export default function SocialDetailScreen() {
               </View>
             )}
 
+            {userParticipant && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>La tua iscrizione</Text>
+                  {canModifyParticipation && (
+                    <Pressable onPress={() => openEditModal(userParticipant)} hitSlop={10} style={styles.editLink}>
+                      <Text style={styles.editLinkText}>Modifica iscrizione</Text>
+                    </Pressable>
+                  )}
+                </View>
+                <View style={styles.selfCard}>
+                  <View style={styles.selfRow}>
+                    <Text style={styles.selfLabel}>Nota</Text>
+                    <Text style={styles.selfValue} numberOfLines={2}>
+                      {userParticipant.note ? userParticipant.note : "—"}
+                    </Text>
+                  </View>
+                  {(extrasEnabled.lunch || extrasEnabled.dinner) && (
+                    <View style={styles.selfRow}>
+                      <Text style={styles.selfLabel}>Servizi extra</Text>
+                      <View style={styles.selfServices}>
+                        {EXTRA_KEYS.filter((k) => extrasEnabled[k]).map((key) => {
+                          const val = userParticipant.services?.[key] === "yes" ? "Sì" : "No";
+                          const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                          return (
+                            <Text key={key} style={styles.selfValue} numberOfLines={1}>
+                              {label}: {val}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Partecipanti ({orderedParticipants.length})</Text>
-              {canEdit && (
+              {canEdit && canModifyParticipation && (
                 <Pressable onPress={handleAddManual} style={styles.addManualBtn}>
                   <Ionicons name="add-circle" size={20} color={UI.colors.action} />
                   <Text style={styles.addManualText}>Aggiungi</Text>
@@ -685,15 +812,22 @@ export default function SocialDetailScreen() {
                       <Text style={styles.participantSub}>Registrato manualmente</Text>
                     )}
                   </View>
-                  {(canEdit || p.uid === userId) && (
-                    <Pressable
-                      onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
-                      style={{ padding: 4 }}
-                      disabled={!canModifyParticipation}
-                    >
-                      <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                    </Pressable>
-                  )}
+                  <View style={styles.participantActions}>
+                    {canEdit && canModifyParticipation && (
+                      <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
+                        <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                      </Pressable>
+                    )}
+                    {(canEdit || p.uid === userId) && (
+                      <Pressable
+                        onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
+                        style={{ padding: 4 }}
+                        disabled={!canModifyParticipation}
+                      >
+                        <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
               ))
             )}
@@ -740,7 +874,7 @@ export default function SocialDetailScreen() {
         visible={noteModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setNoteModalVisible(false)}
+        onRequestClose={closeNoteModal}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -754,8 +888,10 @@ export default function SocialDetailScreen() {
             bounces={false}
           >
             <View style={[styles.modalCard, { gap: 12 }]}>
-              <Text style={styles.modalTitle}>Partecipa all'Evento</Text>
-              <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
+              <Text style={styles.modalTitle}>{editTarget ? "Modifica iscrizione" : "Partecipa all'Evento"}</Text>
+              <Text style={styles.modalSubtitle}>
+                {editTarget ? "Aggiorna nota e servizi extra." : "Vuoi aggiungere una nota per la guida?"}
+              </Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="Es. Arrivo in ritardo, sono vegano..."
@@ -765,42 +901,41 @@ export default function SocialDetailScreen() {
                 numberOfLines={3}
               />
               {EXTRA_KEYS.map((key) => {
-                const cfg = event?.extraServices?.[key];
-                if (!cfg?.enabled) return null;
-                const label = cfg.label || SERVICE_LABELS[key];
-                const currentVal = joinServices[key];
+                if (!extrasEnabled[key]) return null;
+                const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                const isOn = joinServices[key] === "yes";
                 return (
-                  <View key={key} style={styles.serviceRow}>
-                    <Text style={styles.serviceLabel}>{label}</Text>
-                    <View style={styles.serviceToggles}>
-                      <TouchableOpacity
-                        onPress={() => setJoinServices((p) => ({ ...p, [key]: p[key] === "no" ? null : "no" }))}
-                        style={[styles.choiceBtn, currentVal === "no" && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === "no" && styles.choiceTextSelected]}>NO</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setJoinServices((p) => ({ ...p, [key]: p[key] === "yes" ? null : "yes" }))}
-                        style={[styles.choiceBtn, currentVal === "yes" && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === "yes" && styles.choiceTextSelected]}>SI</Text>
-                      </TouchableOpacity>
+                  <View key={key} style={styles.toggleRow}>
+                    <Pressable
+                      onPress={() => setServiceValue(key, !isOn, setJoinServices)}
+                      hitSlop={10}
+                      style={styles.toggleLabelPress}
+                    >
+                      <Text style={styles.toggleLabel}>{label}</Text>
+                    </Pressable>
+                    <View style={styles.toggleSwitchWrap}>
+                      <Switch
+                        value={isOn}
+                        onValueChange={(nextValue) => setServiceValue(key, nextValue, setJoinServices)}
+                        trackColor={{ false: "#CBD5E1", true: UI.colors.action }}
+                        ios_backgroundColor="#CBD5E1"
+                      />
                     </View>
                   </View>
                 );
               })}
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  onPress={() => setNoteModalVisible(false)}
+                  onPress={closeNoteModal}
                   style={styles.modalActionSecondary}
                 >
                   <Text style={styles.modalActionSecondaryText}>Annulla</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={handleJoin}
+                  onPress={handleSaveParticipation}
                   style={styles.modalActionPrimary}
                 >
-                  <Text style={styles.modalActionPrimaryText}>Conferma</Text>
+                  <Text style={styles.modalActionPrimaryText}>{editTarget ? "Salva" : "Conferma"}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -842,26 +977,25 @@ export default function SocialDetailScreen() {
                 onChangeText={setManualNote}
               />
               {EXTRA_KEYS.map((key) => {
-                const cfg = event?.extraServices?.[key];
-                if (!cfg?.enabled) return null;
-                const label = cfg.label || SERVICE_LABELS[key];
-                const currentVal = manualServices[key];
+                if (!extrasEnabled[key]) return null;
+                const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                const isOn = manualServices[key] === "yes";
                 return (
-                  <View key={key} style={styles.serviceRow}>
-                    <Text style={styles.serviceLabel}>{label}</Text>
-                    <View style={styles.serviceToggles}>
-                      <TouchableOpacity
-                        onPress={() => setManualServices((p) => ({ ...p, [key]: p[key] === "no" ? null : "no" }))}
-                        style={[styles.choiceBtn, currentVal === "no" && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === "no" && styles.choiceTextSelected]}>NO</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => setManualServices((p) => ({ ...p, [key]: p[key] === "yes" ? null : "yes" }))}
-                        style={[styles.choiceBtn, currentVal === "yes" && styles.choiceBtnSelected]}
-                      >
-                        <Text style={[styles.choiceText, currentVal === "yes" && styles.choiceTextSelected]}>SI</Text>
-                      </TouchableOpacity>
+                  <View key={key} style={styles.toggleRow}>
+                    <Pressable
+                      onPress={() => setServiceValue(key, !isOn, setManualServices)}
+                      hitSlop={10}
+                      style={styles.toggleLabelPress}
+                    >
+                      <Text style={styles.toggleLabel}>{label}</Text>
+                    </Pressable>
+                    <View style={styles.toggleSwitchWrap}>
+                      <Switch
+                        value={isOn}
+                        onValueChange={(nextValue) => setServiceValue(key, nextValue, setManualServices)}
+                        trackColor={{ false: "#CBD5E1", true: UI.colors.action }}
+                        ios_backgroundColor="#CBD5E1"
+                      />
                     </View>
                   </View>
                 );
@@ -927,6 +1061,13 @@ const styles = StyleSheet.create({
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1E293B" },
   descriptionText: { fontSize: 16, lineHeight: 24, color: "#475569" },
+  editLink: { padding: 4 },
+  editLinkText: { color: UI.colors.action, fontWeight: "700", fontSize: 13 },
+  selfCard: { backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#e2e8f0", gap: 10 },
+  selfRow: { flexDirection: "row", gap: 10 },
+  selfLabel: { fontSize: 14, fontWeight: "700", color: "#475569", width: 120 },
+  selfValue: { flex: 1, fontSize: 14, color: "#334155", fontWeight: "500" },
+  selfServices: { flex: 1, gap: 4 },
 
   // Participants
   addManualBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
@@ -937,6 +1078,8 @@ const styles = StyleSheet.create({
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
   participantSub: { fontSize: 12, color: "#94a3b8" },
   emptyText: { color: "#94a3b8", fontStyle: "italic", marginTop: 4 },
+  participantActions: { gap: 6, alignItems: "center" },
+  editIconBtn: { padding: 4 },
 
   // Buttons
   bigButton: {
@@ -1012,14 +1155,10 @@ const styles = StyleSheet.create({
   modalActionPrimaryText: { color: "#fff", fontWeight: "800" },
 
   // Services
-  serviceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, backgroundColor: "#f8fafc", padding: 10, borderRadius: 12 },
-  serviceLabel: { fontSize: 14, fontWeight: "600", color: "#334155", flex: 1 },
-  serviceToggles: { flexDirection: "row", gap: 8 },
-  choiceBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
-  choiceBtnSelected: { backgroundColor: UI.colors.primary, borderColor: UI.colors.primary },
-  choiceBtnDisabled: { opacity: 0.6 },
-  choiceText: { fontSize: 13, fontWeight: "700", color: "#64748b" },
-  choiceTextSelected: { color: "#fff" },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#f8fafc", padding: 12, borderRadius: 12, marginTop: 10 },
+  toggleLabelPress: { flex: 1 },
+  toggleLabel: { fontSize: 14, fontWeight: "600", color: "#334155" },
+  toggleSwitchWrap: { width: 52, alignItems: "flex-end" },
 
   // Summary
   summaryCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginTop: 12, borderWidth: 1, borderColor: "#e2e8f0" },

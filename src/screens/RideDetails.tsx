@@ -15,6 +15,7 @@ import {
   Linking, // ADDED
   Modal, // ADDED
   TextInput, // ADDED
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -192,6 +193,7 @@ export default function RideDetails() {
   const [joining, setJoining] = useState(false);
 
   const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ id: string; type: "user" | "manual"; displayName?: string } | null>(null);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [showAllParticipants, setShowAllParticipants] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -363,6 +365,7 @@ export default function RideDetails() {
   }, [participants, manualParticipants, userId]);
 
   const userIsParticipant = participants.some((p) => p.id === userId);
+  const selfParticipant = useMemo(() => participants.find((p) => p.id === userId) ?? null, [participants, userId]);
   const totalCount = allParticipants.length;
   const isFull =
     typeof ride?.maxParticipants === "number" &&
@@ -426,11 +429,92 @@ export default function RideDetails() {
     if (joinSaving) return;
     setNoteModalVisible(false);
     setJoinServices(emptySelection());
+    setEditTarget(null);
+    setNoteText("");
   }, [joinSaving]);
+
+  const buildSelectionFromServices = useCallback(
+    (services?: RideServiceResponseMap | null): RideServiceSelectionMap => {
+      return {
+        lunch: ride?.extraServices?.lunch?.enabled ? (services?.lunch ?? "no") : null,
+        dinner: ride?.extraServices?.dinner?.enabled ? (services?.dinner ?? "no") : null,
+        overnight: ride?.extraServices?.overnight?.enabled ? (services?.overnight ?? "no") : null,
+      };
+    },
+    [ride?.extraServices]
+  );
+
+  const openJoinModal = useCallback(() => {
+    setEditTarget(null);
+    setNoteText("");
+    setJoinServices(buildSelectionFromServices());
+    setNoteModalVisible(true);
+  }, [buildSelectionFromServices]);
+
+  const openEditModal = useCallback(
+    (target: { id: string; type: "user" | "manual"; note?: string | null; services?: RideServiceResponseMap | null; displayName?: string }) => {
+      if (isArchived || isCancelled) return;
+      setEditTarget({ id: target.id, type: target.type, displayName: target.displayName });
+      setNoteText(target.note ?? "");
+      setJoinServices(buildSelectionFromServices(target.services ?? null));
+      setNoteModalVisible(true);
+    },
+    [buildSelectionFromServices, isArchived, isCancelled]
+  );
+
+  const setServiceValue = useCallback(
+    (
+      key: RideServiceKey,
+      nextValue: boolean,
+      setState: React.Dispatch<React.SetStateAction<RideServiceSelectionMap>>
+    ) => {
+      setState((prev) => ({ ...prev, [key]: nextValue ? "yes" : "no" }));
+    },
+    []
+  );
 
   // ----------------------------------------------------------------
   // ACTIONS
   // ----------------------------------------------------------------
+  const handleUpdateParticipation = async () => {
+    if (!editTarget) return;
+    if (isArchived || isCancelled) return;
+    setJoinSaving(true);
+    try {
+      const safeNote = noteText ? noteText.trim().slice(0, 500) : null;
+      const cleanServices: RideServiceResponseMap = {};
+      SERVICE_KEYS.forEach((key) => {
+        const val = joinServices[key];
+        if (val) cleanServices[key] = val;
+      });
+      if (editTarget.type === "manual") {
+        const index = Number(editTarget.id.replace("manual_", ""));
+        if (!Number.isFinite(index) || index < 0 || index >= manualParticipants.length) return;
+        const current = manualParticipants[index];
+        const base =
+          typeof current === "string"
+            ? { name: current }
+            : { ...current };
+        const updatedEntry = {
+          ...base,
+          note: safeNote,
+          services: Object.keys(cleanServices).length > 0 ? cleanServices : null,
+        };
+        const nextManual = [...manualParticipants];
+        nextManual[index] = updatedEntry;
+        await updateDoc(doc(db, "rides", rideId), { manualParticipants: nextManual });
+      } else {
+        await updateDoc(doc(db, "rides", rideId, "participants", editTarget.id), {
+          note: safeNote,
+          ...(Object.keys(cleanServices).length > 0 ? { services: cleanServices } : {}),
+        });
+      }
+    } finally {
+      setJoinSaving(false);
+      closeNoteModal();
+    }
+  };
+
   const handleJoin = async () => {
     if (!profile?.approved) {
       Alert.alert("Attenzione", "Il tuo profilo deve essere approvato per partecipare.");
@@ -480,14 +564,9 @@ export default function RideDetails() {
 
       if (isUpdate) {
         // --- UPDATE ---
-        const updatePayload: any = {};
-        if (safeName) updatePayload.name = safeName;
-        if (profile?.displayName) updatePayload.displayName = profile.displayName.slice(0, 120);
-        if ((profile as any)?.nickname) updatePayload.nickname = (profile as any).nickname.slice(0, 120);
-
-        // Always send note if we have it, or explicit null? 
-        // For update, implicit is fine, but let's be safe if user added a note.
-        if (safeNote !== null) updatePayload.note = safeNote;
+        const updatePayload: any = {
+          note: safeNote,
+        };
 
         // services (filter nulls to be clean, though rules allow null)
         if (joinServices && Object.values(joinServices).some(v => v !== null)) {
@@ -543,14 +622,20 @@ export default function RideDetails() {
     }
   }; // Explicitly close handleJoin
 
+  const handleSaveParticipation = async () => {
+    if (editTarget) return handleUpdateParticipation();
+    return handleJoin();
+  };
+
   const handleLeave = async () => {
+    if (isArchived || isCancelled) return;
     Alert.alert(
-      "Annulla iscrizione",
-      "Vuoi davvero ritirare la tua partecipazione?", // Added missing message arg
+      "Rimuovere partecipante?",
+      "Confermi la rimozione della tua iscrizione dall’evento?",
       [
-        { text: "No", style: "cancel" },
+        { text: "Annulla", style: "cancel" },
         {
-          text: "Sì, ritirati",
+          text: "Rimuovi",
           style: "destructive",
           onPress: async () => {
             try {
@@ -571,22 +656,45 @@ export default function RideDetails() {
   const handleRemoveParticipant = async (p: any) => {
     // RESTRICTION: Only Admin or Owner (isAdmin includes Owner permissions)
     if (!isAdmin) return;
-    if (p.type === "manual") {
-      // Remove from manual array
-      const newManual = manualParticipants.filter((n: string) => n !== p.displayName);
-      await updateDoc(doc(db, "rides", rideId), {
-        manualParticipants: newManual,
-      });
-    } else {
-      // Remove doc
-      await deleteDoc(doc(db, "rides", rideId, "participants", p.id));
-    }
+    if (isArchived || isCancelled) return;
+    const displayName = p.displayName || "partecipante";
+    Alert.alert(
+      "Rimuovere partecipante?",
+      `Confermi la rimozione di ${displayName} dall’evento?`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Rimuovi",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (p.type === "manual") {
+                const index = Number(String(p.id).replace("manual_", ""));
+                if (!Number.isFinite(index) || index < 0 || index >= manualParticipants.length) {
+                  Alert.alert("Errore", "Partecipante manuale non trovato.");
+                  return;
+                }
+                const nextManual = [...manualParticipants];
+                nextManual.splice(index, 1);
+                await updateDoc(doc(db, "rides", rideId), {
+                  manualParticipants: nextManual,
+                });
+              } else {
+                await deleteDoc(doc(db, "rides", rideId, "participants", p.id));
+              }
+            } catch (e) {
+              Alert.alert("Errore", "Impossibile rimuovere il partecipante.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleAddManual = () => {
     setManualName("");
     setManualNote("");
-    setManualServices(emptySelection());
+    setManualServices(buildSelectionFromServices());
     setManualModalVisible(true);
   };
 
@@ -902,7 +1010,7 @@ export default function RideDetails() {
                 canJoin ? (
                   <Pressable
                     style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
-                    onPress={() => setNoteModalVisible(true)}
+                    onPress={openJoinModal}
                     disabled={joining}
                   >
                     {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'uscita</Text>}
@@ -915,6 +1023,47 @@ export default function RideDetails() {
                   </View>
                 )
               )}
+            </View>
+          )}
+
+          {selfParticipant && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>La tua iscrizione</Text>
+                {!isArchived && !isCancelled && (
+                  <Pressable
+                    onPress={() => openEditModal({ ...selfParticipant, type: "user" })}
+                    hitSlop={10}
+                    style={styles.editLink}
+                  >
+                    <Text style={styles.editLinkText}>Modifica iscrizione</Text>
+                  </Pressable>
+                )}
+              </View>
+              <View style={styles.selfCard}>
+                <View style={styles.selfRow}>
+                  <Text style={styles.selfLabel}>Nota</Text>
+                  <Text style={styles.selfValue} numberOfLines={2}>
+                    {selfParticipant.note ? selfParticipant.note : "—"}
+                  </Text>
+                </View>
+                {ride?.extraServices && (
+                  <View style={styles.selfRow}>
+                    <Text style={styles.selfLabel}>Servizi extra</Text>
+                    <View style={styles.selfServices}>
+                      {SERVICE_KEYS.filter((k) => ride.extraServices?.[k]?.enabled).map((key) => {
+                        const val = selfParticipant.services?.[key] === "yes" ? "Sì" : "No";
+                        const label = ride.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                        return (
+                          <Text key={key} style={styles.selfValue} numberOfLines={1}>
+                            {label}: {val}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
@@ -976,12 +1125,27 @@ export default function RideDetails() {
                   {/* Show generic label if manual and nothing else */}
                   {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
                 </View>
-                {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
-                {(isAdmin || p.isMe) && (
-                  <TouchableOpacity onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))} style={{ padding: 4 }}>
-                    <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                  </TouchableOpacity>
-                )}
+                <View style={styles.participantActions}>
+                  {isAdmin && !isArchived && !isCancelled && (
+                    <Pressable
+                      onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
+                      hitSlop={10}
+                      style={styles.editIconBtn}
+                    >
+                      <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                    </Pressable>
+                  )}
+                  {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
+                  {(isAdmin || p.isMe) && (
+                    <TouchableOpacity
+                      onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
+                      style={{ padding: 4 }}
+                      disabled={isArchived || isCancelled}
+                    >
+                      <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))
           )}
@@ -994,7 +1158,7 @@ export default function RideDetails() {
           visible={noteModalVisible}
           transparent
           animationType="fade"
-          onRequestClose={() => setNoteModalVisible(false)}
+          onRequestClose={closeNoteModal}
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1008,8 +1172,10 @@ export default function RideDetails() {
               bounces={false}
             >
               <View style={[styles.modalCard, { gap: 12 }]}>
-                <Text style={styles.modalTitle}>Partecipa all'Uscita</Text>
-                <Text style={styles.modalSubtitle}>Vuoi aggiungere una nota per la guida?</Text>
+                <Text style={styles.modalTitle}>{editTarget ? "Modifica iscrizione" : "Partecipa all'Uscita"}</Text>
+                <Text style={styles.modalSubtitle}>
+                  {editTarget ? "Aggiorna nota e servizi extra." : "Vuoi aggiungere una nota per la guida?"}
+                </Text>
                 <TextInput
                   style={styles.modalInput}
                   placeholder="Es. Arrivo in ritardo, sono vegano..."
@@ -1022,39 +1188,39 @@ export default function RideDetails() {
                   const cfg = ride.extraServices?.[key];
                   if (!cfg?.enabled) return null;
                   const label = cfg.label || SERVICE_LABELS[key];
-                  const currentVal = joinServices[key];
+                  const isOn = joinServices[key] === "yes";
                   return (
-                    <View key={key} style={styles.serviceRow}>
-                      <Text style={styles.serviceLabel}>{label}</Text>
-                      <View style={styles.serviceToggles}>
-                        <TouchableOpacity
-                          onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
-                          style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
-                        >
-                          <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => setJoinServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
-                          style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
-                        >
-                          <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
-                        </TouchableOpacity>
+                    <View key={key} style={styles.toggleRow}>
+                      <Pressable
+                        onPress={() => setServiceValue(key, !isOn, setJoinServices)}
+                        hitSlop={10}
+                        style={styles.toggleLabelPress}
+                      >
+                        <Text style={styles.toggleLabel}>{label}</Text>
+                      </Pressable>
+                      <View style={styles.toggleSwitchWrap}>
+                        <Switch
+                          value={isOn}
+                          onValueChange={(nextValue) => setServiceValue(key, nextValue, setJoinServices)}
+                          trackColor={{ false: "#CBD5E1", true: UI.colors.action }}
+                          ios_backgroundColor="#CBD5E1"
+                        />
                       </View>
                     </View>
                   );
                 })}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
-                    onPress={() => setNoteModalVisible(false)}
+                    onPress={closeNoteModal}
                     style={styles.modalActionSecondary}
                   >
                     <Text style={styles.modalActionSecondaryText}>Annulla</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={handleJoin}
+                    onPress={handleSaveParticipation}
                     style={styles.modalActionPrimary}
                   >
-                    <Text style={styles.modalActionPrimaryText}>Conferma</Text>
+                    <Text style={styles.modalActionPrimaryText}>{editTarget ? "Salva" : "Conferma"}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1099,23 +1265,23 @@ export default function RideDetails() {
                   const cfg = ride.extraServices?.[key];
                   if (!cfg?.enabled) return null;
                   const label = cfg.label || SERVICE_LABELS[key];
-                  const currentVal = manualServices[key];
+                  const isOn = manualServices[key] === "yes";
                   return (
-                    <View key={key} style={styles.serviceRow}>
-                      <Text style={styles.serviceLabel}>{label}</Text>
-                      <View style={styles.serviceToggles}>
-                        <TouchableOpacity
-                          onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'no' ? null : 'no' }))}
-                          style={[styles.choiceBtn, currentVal === 'no' && styles.choiceBtnSelected]}
-                        >
-                          <Text style={[styles.choiceText, currentVal === 'no' && styles.choiceTextSelected]}>NO</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => setManualServices(p => ({ ...p, [key]: p[key] === 'yes' ? null : 'yes' }))}
-                          style={[styles.choiceBtn, currentVal === 'yes' && styles.choiceBtnSelected]}
-                        >
-                          <Text style={[styles.choiceText, currentVal === 'yes' && styles.choiceTextSelected]}>SI</Text>
-                        </TouchableOpacity>
+                    <View key={key} style={styles.toggleRow}>
+                      <Pressable
+                        onPress={() => setServiceValue(key, !isOn, setManualServices)}
+                        hitSlop={10}
+                        style={styles.toggleLabelPress}
+                      >
+                        <Text style={styles.toggleLabel}>{label}</Text>
+                      </Pressable>
+                      <View style={styles.toggleSwitchWrap}>
+                        <Switch
+                          value={isOn}
+                          onValueChange={(nextValue) => setServiceValue(key, nextValue, setManualServices)}
+                          trackColor={{ false: "#CBD5E1", true: UI.colors.action }}
+                          ios_backgroundColor="#CBD5E1"
+                        />
                       </View>
                     </View>
                   );
@@ -1208,6 +1374,13 @@ const styles = StyleSheet.create({
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1E293B" },
   descriptionText: { fontSize: 16, lineHeight: 24, color: "#475569" },
+  editLink: { padding: 4 },
+  editLinkText: { color: UI.colors.action, fontWeight: "700", fontSize: 13 },
+  selfCard: { backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#e2e8f0", gap: 10 },
+  selfRow: { flexDirection: "row", gap: 10 },
+  selfLabel: { fontSize: 14, fontWeight: "700", color: "#475569", width: 120 },
+  selfValue: { flex: 1, fontSize: 14, color: "#334155", fontWeight: "500" },
+  selfServices: { flex: 1, gap: 4 },
 
   // Participants
   addManualBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
@@ -1218,6 +1391,8 @@ const styles = StyleSheet.create({
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
   participantSub: { fontSize: 12, color: "#94a3b8" },
   emptyText: { color: "#94a3b8", fontStyle: "italic", marginTop: 4 },
+  participantActions: { gap: 6, alignItems: "center" },
+  editIconBtn: { padding: 4 },
 
   // Buttons
   bigButton: {
@@ -1293,13 +1468,10 @@ const styles = StyleSheet.create({
   modalActionPrimaryText: { color: "#fff", fontWeight: "800" },
 
   // Services
-  serviceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, backgroundColor: "#f8fafc", padding: 10, borderRadius: 12 },
-  serviceLabel: { fontSize: 14, fontWeight: "600", color: "#334155", flex: 1 },
-  serviceToggles: { flexDirection: "row", gap: 8 },
-  choiceBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
-  choiceBtnSelected: { backgroundColor: UI.colors.primary, borderColor: UI.colors.primary },
-  choiceText: { fontSize: 13, fontWeight: "700", color: "#64748b" },
-  choiceTextSelected: { color: "#fff" },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#f8fafc", padding: 12, borderRadius: 12, marginTop: 10 },
+  toggleLabelPress: { flex: 1 },
+  toggleLabel: { fontSize: 14, fontWeight: "600", color: "#334155" },
+  toggleSwitchWrap: { width: 52, alignItems: "flex-end" },
 
   // Summary
   summaryCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginTop: 12, borderWidth: 1, borderColor: "#e2e8f0" },

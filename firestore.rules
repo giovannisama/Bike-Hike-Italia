@@ -610,12 +610,13 @@ service cloud.firestore {
 
         allow update: if
           canReadRides()
-          && request.auth.uid == uid
+          && (request.auth.uid == uid || isAdmin() || isOwner())
           && parentRideIsBookable()
           && validParticipantUpdatePartial();
 
         allow delete: if
           canReadRides()
+          && parentRideIsBookable()
           && (
             request.auth.uid == uid
             || isAdmin()
@@ -653,15 +654,10 @@ service cloud.firestore {
           let added   = diff.addedKeys();
           let removed = diff.removedKeys();
 
-          let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
+          let allowed = ['note','services'];
 
           return changed.union(added).union(removed).hasOnly(allowed)
-            && (!(changed.hasAny(['uid']) || added.hasAny(['uid'])) || request.resource.data.uid == resource.data.uid)
-            && (!(changed.hasAny(['name']) || added.hasAny(['name'])) || (request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 120))
-            && (!(changed.hasAny(['displayName']) || added.hasAny(['displayName'])) || (request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120)))
-            && (!(changed.hasAny(['nickname']) || added.hasAny(['nickname'])) || (request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120)))
             && (!(changed.hasAny(['note']) || added.hasAny(['note'])) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
-            && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time))
             && (!(changed.hasAny(['services']) || added.hasAny(['services'])) || validServiceResponses(request.resource.data.services));
         }
       }
@@ -832,12 +828,13 @@ service cloud.firestore {
 
       match /participants/{uid} {
         allow read: if isActiveUser();
-        allow create: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
-        allow update: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipant(uid);
-        allow delete: if isActiveUser() && socialEventNotCancelled(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid));
+        allow create: if isActiveUser() && socialEventIsEditable(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipantCreate(uid);
+        allow update: if isActiveUser() && socialEventIsEditable(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid)) && validSocialParticipantUpdate(uid);
+        allow delete: if isActiveUser() && socialEventIsEditable(eventId) && (isAdmin() || isOwner() || isSelfSocialParticipant(uid));
 
-        function socialEventNotCancelled(id) {
-          return get(/databases/$(database)/documents/social_events/$(id)).data.status != "cancelled";
+        function socialEventIsEditable(id) {
+          let ev = get(/databases/$(database)/documents/social_events/$(id)).data;
+          return ev.status != "cancelled" && ev.status != "archived";
         }
 
         function isSelfSocialParticipant(pid) {
@@ -849,15 +846,36 @@ service cloud.firestore {
             );
         }
 
-        function validSocialParticipant(targetUid) {
-          return (request.resource.data.uid is string && request.resource.data.uid == targetUid)
-            && (!request.resource.data.keys().hasAny(['note']) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
-            && (!request.resource.data.keys().hasAny(['services']) || validSocialServiceResponses(request.resource.data.services))
-            && (!request.resource.data.keys().hasAny(['extrasChoice']) || (
-              request.resource.data.extrasChoice is map
-              && (!request.resource.data.extrasChoice.keys().hasAny(['lunch']) || (request.resource.data.extrasChoice.lunch in ['yes','no']))
-              && (!request.resource.data.extrasChoice.keys().hasAny(['dinner']) || (request.resource.data.extrasChoice.dinner in ['yes','no']))
-            ));
+        function validSocialParticipantCreate(targetUid) {
+          let data = request.resource.data;
+          let allowed = ['uid','displayName','name','note','services','extrasChoice','joinedAt','createdAt','source'];
+          return data.keys().hasOnly(allowed)
+            && (data.uid is string && data.uid == targetUid)
+            && (!data.keys().hasAny(['displayName']) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 120))
+            && (!data.keys().hasAny(['name']) || data.name == null || (data.name is string && data.name.size() <= 120))
+            && (!data.keys().hasAny(['note']) || (data.note == null || (data.note is string && data.note.size() <= 500)))
+            && (!data.keys().hasAny(['services']) || validSocialServiceResponses(data.services))
+            && (!data.keys().hasAny(['extrasChoice']) || (
+              data.extrasChoice is map
+              && (!data.extrasChoice.keys().hasAny(['lunch']) || (data.extrasChoice.lunch in ['yes','no']))
+              && (!data.extrasChoice.keys().hasAny(['dinner']) || (data.extrasChoice.dinner in ['yes','no']))
+            ))
+            && (!data.keys().hasAny(['joinedAt']) || data.joinedAt is timestamp || data.joinedAt == request.time)
+            && (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp || data.createdAt == request.time)
+            && (!data.keys().hasAny(['source']) || data.source == null || (data.source is string && data.source.size() <= 40));
+        }
+
+        function validSocialParticipantUpdate(targetUid) {
+          let diff = request.resource.data.diff(resource.data);
+          let changed = diff.changedKeys();
+          let added   = diff.addedKeys();
+          let removed = diff.removedKeys();
+          let allowed = ['note','services'];
+
+          return changed.union(added).union(removed).hasOnly(allowed)
+            && request.resource.data.uid == resource.data.uid
+            && (!changed.hasAny(['note']) && !added.hasAny(['note']) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
+            && (!changed.hasAny(['services']) && !added.hasAny(['services']) || validSocialServiceResponses(request.resource.data.services));
         }
 
         function validSocialServiceResponses(val) {

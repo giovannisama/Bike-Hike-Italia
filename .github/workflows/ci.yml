@@ -33,3 +33,38 @@ jobs:
       - name: Audit (non-blocking)
         run: npm audit --production
         continue-on-error: true
+
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect functions changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            functions:
+              - 'functions/**'
+
+      - name: Setup Node
+        if: steps.filter.outputs.functions == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install dependencies
+        if: steps.filter.outputs.functions == 'true'
+        run: npm ci
+        working-directory: functions
+
+      - name: Typecheck
+        if: steps.filter.outputs.functions == 'true'
+        run: |
+          node -e "const pkg=require('./package.json');process.exit(pkg.scripts&&pkg.scripts.typecheck?0:1)" \
+            && npm run typecheck \
+            || npx tsc --noEmit
+        working-directory: functions

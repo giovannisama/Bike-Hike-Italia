@@ -201,7 +201,7 @@ export const onRideCreated = functions.firestore
 
     const results = await sendExpoPushNotification({
       to: recipients,
-      title: "Nuova uscita disponibile",
+      title: "Ciclismo: Nuova uscita pubblicata",
       body,
       data: { type: "ride", rideId },
     });
@@ -268,7 +268,7 @@ export const onRideUpdated = functions.firestore
 
     const results = await sendExpoPushNotification({
       to: recipients,
-      title: "Uscita annullata",
+      title: "Ciclismo: Uscita annullata",
       body,
       data: { type: "rideCancelled", rideId },
     });
@@ -276,6 +276,144 @@ export const onRideUpdated = functions.firestore
     results.forEach((result, index) => {
       functions.logger.info(
         `[onRideUpdated] ${rideId} cancel chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
+  });
+
+// -----------------------------
+// 3) Trigger su nuova "trek"
+// -----------------------------
+export const onTrekCreated = functions.firestore
+  .document("treks/{trekId}")
+  .onCreate(async (snapshot, context) => {
+    const trekId = context.params.trekId;
+    const data = snapshot.data();
+
+    const title =
+      typeof data?.title === "string" && data.title.trim().length > 0
+        ? data.title
+        : "Uscita";
+
+    const dateValue = data?.dateTime ?? data?.date;
+    let dateLabel: string | null = null;
+    if (dateValue?.toDate) {
+      try {
+        dateLabel = dateValue.toDate().toLocaleDateString("it-IT", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch {
+        dateLabel = null;
+      }
+    }
+
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } =
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCreatedRide",
+        enabledSection: "trekking",
+      });
+
+    functions.logger.info(
+      `[onTrekCreated] ${trekId} approved users=${approvedUsersCount}`
+    );
+    functions.logger.info(
+      `[onTrekCreated] ${trekId} tokens collected=${recipients.length}`
+    );
+    functions.logger.info(
+      `[onTrekCreated] ${trekId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`
+    );
+
+    if (!recipients.length) {
+      functions.logger.info(`[onTrekCreated] ${trekId} no recipients`);
+      return;
+    }
+
+    const body = dateLabel
+      ? `È stata pubblicata una nuova uscita: ${title} (${dateLabel})`
+      : `È stata pubblicata una nuova uscita: ${title}`;
+
+    functions.logger.info(
+      `[onTrekCreated] ${trekId} sending push to ${recipients.length} tokens`
+    );
+
+    const results = await sendExpoPushNotification({
+      to: recipients,
+      title: "Trekking: Nuova uscita pubblicata",
+      body,
+      data: { type: "trek", trekId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onTrekCreated] ${trekId} chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
+  });
+
+// -----------------------------
+// 3) Trigger su aggiornamento trek (cancellazione)
+// -----------------------------
+export const onTrekUpdated = functions.firestore
+  .document("treks/{trekId}")
+  .onUpdate(async (change, context) => {
+    const trekId = context.params.trekId;
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (!before || !after) {
+      functions.logger.info(`[onTrekUpdated] ${trekId} missing snapshot data`);
+      return;
+    }
+
+    const prevStatus = typeof before.status === "string" ? before.status : "active";
+    const nextStatus = typeof after.status === "string" ? after.status : "active";
+
+    // Trigger solo quando lo stato passa a "cancelled"
+    if (prevStatus === "cancelled" || nextStatus !== "cancelled") {
+      return;
+    }
+
+    const title =
+      typeof after.title === "string" && after.title.trim().length > 0
+        ? after.title
+        : null;
+
+    const body = title
+      ? `L'uscita "${title}" è stata annullata.`
+      : "Un'uscita è stata annullata.";
+
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } =
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCancelledRide",
+        enabledSection: "trekking",
+      });
+
+    functions.logger.info(
+      `[onTrekUpdated] ${trekId} cancellation approved users=${approvedUsersCount}`
+    );
+    functions.logger.info(
+      `[onTrekUpdated] ${trekId} cancellation tokens collected=${recipients.length}`
+    );
+    functions.logger.info(
+      `[onTrekUpdated] ${trekId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`
+    );
+
+    if (!recipients.length) {
+      functions.logger.info(`[onTrekUpdated] ${trekId} cancellation no recipients`);
+      return;
+    }
+
+    const results = await sendExpoPushNotification({
+      to: recipients,
+      title: "Trekking: Uscita annullata",
+      body,
+      data: { type: "trekCancelled", trekId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onTrekUpdated] ${trekId} cancel chunk ${index} status=${result.status} ok=${result.ok}`
       );
     });
   });
@@ -332,7 +470,7 @@ export const onSocialEventCreated = functions.firestore
 
     const results = await sendExpoPushNotification({
       to: recipients,
-      title: "Nuovo evento social",
+      title: "Social: Nuovo evento pubblicato",
       body,
       data: { type: "socialEvent", eventId },
     });
@@ -395,7 +533,7 @@ export const onSocialEventUpdated = functions.firestore
 
     const results = await sendExpoPushNotification({
       to: recipients,
-      title: "Evento annullato",
+      title: "Social: Evento annullato",
       body,
       data: { type: "socialEventCancelled", eventId },
     });
@@ -556,7 +694,7 @@ export const onUserCreated = functions.firestore
 
     const results = await sendExpoPushNotification({
       to: ownerTokens,
-      title: "Nuova registrazione in attesa",
+      title: "Nuovo utente in attesa",
       body,
       data: { type: "pendingUser", uid },
     });

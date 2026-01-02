@@ -2,6 +2,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { Screen, UI } from "./Screen";
 import { PrimaryButton } from "./Button";
+import { error as logError } from "../utils/logger";
 
 type AppErrorBoundaryState = {
   hasError: boolean;
@@ -15,9 +16,10 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, AppError
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
-    if (__DEV__) {
-      console.error("[AppErrorBoundary] render error", error, info);
-    }
+    logError("AppErrorBoundary render error", {
+      message: error instanceof Error ? error.message : "Unknown error",
+      stack: info.componentStack,
+    });
   }
 
   handleReset = () => {

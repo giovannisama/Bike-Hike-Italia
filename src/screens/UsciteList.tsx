@@ -84,6 +84,105 @@ function ParticipantsBadge({ count, max }: { count?: number; max?: number | null
   );
 }
 
+type RideListItemProps = {
+  item: Ride;
+  displayCount: number;
+  onPress: (rideId: string, title: string) => void;
+  onSubscribe: (rideId: string) => void;
+  onUnsubscribe: (rideId: string) => void;
+};
+
+const RideListItem = React.memo(function RideListItem({
+  item,
+  displayCount,
+  onPress,
+  onSubscribe,
+  onUnsubscribe,
+}: RideListItemProps) {
+  useEffect(() => {
+    onSubscribe(item.id);
+    return () => onUnsubscribe(item.id);
+  }, [item.id, onSubscribe, onUnsubscribe]);
+
+  const isCancelled = item.status === "cancelled";
+  const dateLabel = item.date
+    ? format(item.date.toDate(), "EEE d MMMM", { locale: it })
+    : "";
+  const timeLabel = item.dateTime
+    ? format(item.dateTime.toDate(), "HH:mm")
+    : "";
+
+  const guideSummary = deriveGuideSummary({ guidaNames: item.guidaNames, guidaName: item.guidaName });
+  const guideLabel = guideSummary?.main ? String(guideSummary.main) : "";
+
+  const categoryLabel = getBikeCategoryLabel(item);
+
+  const handlePress = useCallback(() => {
+    onPress(item.id, item.title);
+  }, [item.id, item.title, onPress]);
+
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.95 }]}
+      >
+        {/* Header Card: Category + Status */}
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.categoryBadge}>
+            <Ionicons name="bicycle" size={14} color="#0F172A" />
+            <Text style={styles.categoryText}>{categoryLabel}</Text>
+          </View>
+          {isCancelled ? (
+            <StatusBadge status="cancelled" />
+          ) : (
+            item.difficulty && (
+              <DifficultyBadge level={item.difficulty} />
+            )
+          )}
+        </View>
+
+        {/* Title */}
+        <Text style={[styles.cardTitle, isCancelled && styles.titleCancelled]}>
+          {item.title}
+        </Text>
+
+        {/* Info Row: Date/Time + Location */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoItem}>
+            <Ionicons name="calendar-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText}>{dateLabel} • {timeLabel}</Text>
+          </View>
+        </View>
+        <View style={styles.infoRow}>
+          <View style={styles.infoItem}>
+            <Ionicons name="location-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText} numberOfLines={1}>{item.meetingPoint}</Text>
+          </View>
+        </View>
+
+        {/* Guide row */}
+        {guideLabel ? (
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Ionicons name="person-outline" size={16} color="#64748B" />
+              <Text style={styles.infoText}>Guide: {guideLabel}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Footer: Participants */}
+        <View style={styles.cardFooter}>
+          <ParticipantsBadge count={displayCount} max={item.maxParticipants} />
+          <View style={styles.chevronBox}>
+            <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+});
+
 const matchesBikeFilter = (
   ride: Ride,
   filter: "Tutte" | "MTBGravel" | "BDC" | "Enduro"
@@ -219,6 +318,13 @@ export default function UsciteList() {
     subsRef.current.set(rideId, unsub);
   }, [canReadRides, fetchCountForRide]);
 
+  const unsubscribeFor = useCallback((rideId: string) => {
+    const unsub = subsRef.current.get(rideId);
+    if (!unsub) return;
+    try { unsub(); } catch { }
+    subsRef.current.delete(rideId);
+  }, []);
+
   // Clean subs
   useEffect(() => {
     return () => {
@@ -275,88 +381,103 @@ export default function UsciteList() {
     return () => unsub();
   }, [profileLoading, canSeeCiclismo, canReadRides]);
 
+  const handleOpenRide = useCallback((rideId: string, title: string) => {
+    navigation.navigate("RideDetails", { rideId, title });
+  }, [navigation]);
+
   const renderItem = useCallback(({ item }: { item: Ride }) => {
-    const isCancelled = item.status === "cancelled";
-    const dateLabel = item.date
-      ? format(item.date.toDate(), "EEE d MMMM", { locale: it })
-      : "";
-    const timeLabel = item.dateTime
-      ? format(item.dateTime.toDate(), "HH:mm")
-      : "";
-
-    // Subscription logic for accurate count
-    subscribeFor(item.id);
-
     const manualCount = item.manualParticipants?.length || 0;
     const realSelfCount = counts[item.id] ?? item.participantsCountSelf ?? 0;
     const displayCount = (item.participantsCountTotal ?? (realSelfCount + manualCount)) || 0;
 
-    const guideSummary = deriveGuideSummary({ guidaNames: item.guidaNames, guidaName: item.guidaName });
-    const guideLabel = guideSummary?.main ? String(guideSummary.main) : "";
-
-    const categoryLabel = getBikeCategoryLabel(item);
-
     return (
-      <View style={styles.card}>
+      <RideListItem
+        item={item}
+        displayCount={displayCount}
+        onPress={handleOpenRide}
+        onSubscribe={subscribeFor}
+        onUnsubscribe={unsubscribeFor}
+      />
+    );
+  }, [counts, handleOpenRide, subscribeFor, unsubscribeFor]);
+
+  const listHeader = useMemo(() => (
+    <View style={styles.headerBlock}>
+      {/* Search Bar */}
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={18} color="#94a3b8" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Cerca uscita..."
+          placeholderTextColor="#9ca3af"
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+        {searchText.length > 0 && (
+          <Pressable onPress={() => { setSearchText(""); Keyboard.dismiss(); }} style={styles.searchClear} hitSlop={10}>
+            <Ionicons name="close-circle" size={18} color="#94a3b8" />
+          </Pressable>
+        )}
+      </View>
+
+      {/* Tabs (Active/Archived) */}
+      <View style={styles.segmented}>
         <Pressable
-          onPress={() => navigation.navigate("RideDetails", { rideId: item.id, title: item.title })}
-          style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.95 }]}
+          style={[styles.segmentedTab, filterType === "active" && styles.segmentedTabActive]}
+          onPress={() => setFilterType("active")}
         >
-          {/* Header Card: Category + Status */}
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.categoryBadge}>
-              <Ionicons name="bicycle" size={14} color="#0F172A" />
-              <Text style={styles.categoryText}>{categoryLabel}</Text>
-            </View>
-            {isCancelled ? (
-              <StatusBadge status="cancelled" />
-            ) : (
-              item.difficulty && (
-                <DifficultyBadge level={item.difficulty} />
-              )
-            )}
-          </View>
-
-          {/* Title */}
-          <Text style={[styles.cardTitle, isCancelled && styles.titleCancelled]}>
-            {item.title}
+          <Text style={[styles.segmentedText, filterType === "active" && styles.segmentedTextActive]}>
+            Attive
           </Text>
-
-          {/* Info Row: Date/Time + Location */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Ionicons name="calendar-outline" size={16} color="#64748B" />
-              <Text style={styles.infoText}>{dateLabel} • {timeLabel}</Text>
-            </View>
-          </View>
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Ionicons name="location-outline" size={16} color="#64748B" />
-              <Text style={styles.infoText} numberOfLines={1}>{item.meetingPoint}</Text>
-            </View>
-          </View>
-
-          {/* Guide row */}
-          {guideLabel ? (
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="person-outline" size={16} color="#64748B" />
-                <Text style={styles.infoText}>Guide: {guideLabel}</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {/* Footer: Participants */}
-          <View style={styles.cardFooter}>
-            <ParticipantsBadge count={displayCount} max={item.maxParticipants} />
-            <View style={styles.chevronBox}>
-              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
-            </View>
-          </View>
+        </Pressable>
+        <Pressable
+          style={[styles.segmentedTab, filterType === "archived" && styles.segmentedTabActive]}
+          onPress={() => setFilterType("archived")}
+        >
+          <Text style={[styles.segmentedText, filterType === "archived" && styles.segmentedTextActive]}>
+            Archiviate
+          </Text>
         </Pressable>
       </View>
-    );
-  }, [counts, navigation, subscribeFor, activeCategory]);
+
+      {/* Category Filters */}
+      <View style={styles.chipRow}>
+        {(["MTBGravel", "BDC", "Enduro"] as const).map((cat) => {
+          const isActive = activeCategory === cat;
+          const label = cat === "MTBGravel" ? "MTB/Gravel" : cat === "BDC" ? "Bici da Corsa" : cat;
+          return (
+            <Pressable
+              key={cat}
+              onPress={() => setActiveCategory(isActive ? "Tutte" : cat)}
+              style={[
+                styles.chip,
+                { flex: 1 },
+                isActive && styles.chipActive
+              ]}
+            >
+              <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Results Meta */}
+      <View style={styles.resultsMeta}>
+        {activeCategory !== "Tutte" ? (
+          <TouchableOpacity onPress={() => setActiveCategory("Tutte")} hitSlop={10}>
+            <Text style={styles.resetLink}>Mostra tutte</Text>
+          </TouchableOpacity>
+        ) : (
+          <View />
+        )}
+        <Text style={styles.resultsCount}>
+          {filteredRides.length} {filteredRides.length === 1 ? "uscita" : "uscite"}
+        </Text>
+      </View>
+    </View>
+  ), [activeCategory, filterType, filteredRides.length, searchText]);
 
   if (profileLoading) return <Screen useNativeHeader={true}><ActivityIndicator style={{ marginTop: 50 }} /></Screen>;
   if (!canSeeCiclismo) return <AccessDenied title="Sezione Riservata" message="Non hai i permessi per visualizzare il calendario bici." />;
@@ -396,85 +517,7 @@ export default function UsciteList() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
-          ListHeaderComponent={
-            <View style={styles.headerBlock}>
-              {/* Search Bar */}
-              <View style={styles.searchRow}>
-                <Ionicons name="search" size={18} color="#94a3b8" />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Cerca uscita..."
-                  placeholderTextColor="#9ca3af"
-                  value={searchText}
-                  onChangeText={setSearchText}
-                />
-                {searchText.length > 0 && (
-                  <Pressable onPress={() => { setSearchText(""); Keyboard.dismiss(); }} style={styles.searchClear} hitSlop={10}>
-                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
-                  </Pressable>
-                )}
-              </View>
-
-              {/* Tabs (Active/Archived) */}
-              <View style={styles.segmented}>
-                <Pressable
-                  style={[styles.segmentedTab, filterType === "active" && styles.segmentedTabActive]}
-                  onPress={() => setFilterType("active")}
-                >
-                  <Text style={[styles.segmentedText, filterType === "active" && styles.segmentedTextActive]}>
-                    Attive
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.segmentedTab, filterType === "archived" && styles.segmentedTabActive]}
-                  onPress={() => setFilterType("archived")}
-                >
-                  <Text style={[styles.segmentedText, filterType === "archived" && styles.segmentedTextActive]}>
-                    Archiviate
-                  </Text>
-                </Pressable>
-              </View>
-
-              {/* Category Filters */}
-              <View style={styles.chipRow}>
-                {(["MTBGravel", "BDC", "Enduro"] as const).map((cat) => {
-                  const isActive = activeCategory === cat;
-                  const label = cat === "MTBGravel" ? "MTB/Gravel" : cat === "BDC" ? "Bici da Corsa" : cat;
-                  return (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setActiveCategory(isActive ? "Tutte" : cat)}
-                      style={[
-                        styles.chip,
-                        { flex: 1 },
-                        isActive && styles.chipActive
-                      ]}
-                    >
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]} numberOfLines={1} adjustsFontSizeToFit>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {/* Results Meta */}
-              <View style={styles.resultsMeta}>
-                {activeCategory !== "Tutte" ? (
-                  <TouchableOpacity onPress={() => setActiveCategory("Tutte")} hitSlop={10}>
-                    <Text style={styles.resetLink}>Mostra tutte</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View />
-                )}
-                <Text style={styles.resultsCount}>
-                  {filteredRides.length} {filteredRides.length === 1 ? "uscita" : "uscite"}
-                </Text>
-              </View>
-
-
-            </View>
-          }
+          ListHeaderComponent={listHeader}
           ListEmptyComponent={
             <View style={styles.emptyBox}>
               {loading ? (

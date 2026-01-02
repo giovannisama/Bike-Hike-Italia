@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { Platform, PermissionsAndroid } from "react-native";
+import { info, warn, error } from "../utils/logger";
 
 /**
  * Richiede permessi, configura il canale (Android),
@@ -35,10 +36,10 @@ async function ensureAndroidNotificationPermission(): Promise<boolean> {
       }
     );
 
-    if (__DEV__) console.log("[registerPushToken] POST_NOTIFICATIONS:", granted);
+    info("POST_NOTIFICATIONS permission result", { granted });
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
-    console.warn("[registerPushToken] Errore richiesta POST_NOTIFICATIONS:", err);
+    warn("POST_NOTIFICATIONS permission error");
     // In caso di errore consideriamo il permesso non concesso
     return false;
   }
@@ -58,35 +59,29 @@ async function ensureAndroidNotificationChannel() {
       enableVibrate: true,
       showBadge: true,
     });
-    if (__DEV__) console.log("[registerPushToken] Canale 'default' configurato");
+    info("Android notification channel configured", { channel: "default" });
   } catch (err) {
-    console.warn("[registerPushToken] Errore configurazione canale Android:", err);
+    warn("Android notification channel setup error");
   }
 }
 
 export async function registerPushToken() {
   try {
     if (!Device.isDevice) {
-      if (__DEV__) {
-        console.log("Le notifiche push richiedono un dispositivo reale.");
-      }
+      info("Push notifications require a physical device");
       return;
     }
 
     // 1) Permessi Android 13+
     const androidOk = await ensureAndroidNotificationPermission();
     if (!androidOk) {
-      if (__DEV__) {
-        console.log("[registerPushToken] Permesso notifiche Android non concesso");
-      }
-      return;
-    }
+    info("Android notification permission not granted");
+    return;
+  }
 
     // 2) Permessi generali Expo
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    if (__DEV__) {
-      console.log("[registerPushToken] Stato permessi iniziale (Expo):", existingStatus);
-    }
+    info("Expo notification permission status", { status: existingStatus });
 
     let finalStatus = existingStatus;
     if (existingStatus !== "granted") {
@@ -94,9 +89,7 @@ export async function registerPushToken() {
       finalStatus = status;
     }
     if (finalStatus !== "granted") {
-      if (__DEV__) {
-        console.log("[registerPushToken] Permesso notifiche non concesso (Expo)");
-      }
+      info("Expo notification permission not granted");
       return;
     }
 
@@ -111,9 +104,7 @@ export async function registerPushToken() {
       (Constants?.manifest2 as any)?.extra?.eas?.projectId ||
       (Constants?.manifest as any)?.extra?.eas?.projectId;
 
-    if (__DEV__) {
-      console.log("[registerPushToken] projectId Expo:", projectId);
-    }
+    info("Expo projectId resolved", { hasProjectId: !!projectId });
 
     // 5) Ottieni il token push da Expo
     let tokenData: Notifications.ExpoPushToken;
@@ -121,29 +112,22 @@ export async function registerPushToken() {
       if (projectId) {
         tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       } else {
-        console.warn(
-          "[registerPushToken] projectId non trovato nel manifest. " +
-          "Procedo senza specificarlo (fallback)."
-        );
+        warn("Expo projectId missing; fallback without projectId");
         // @ts-ignore overload senza parametri
         tokenData = await Notifications.getExpoPushTokenAsync();
       }
     } catch (err) {
-      console.error("[registerPushToken] Errore getExpoPushTokenAsync:", err);
+      error("getExpoPushTokenAsync failed");
       return;
     }
 
     const expoPushToken = tokenData.data; // es. "ExponentPushToken[xxxxxxxxxxxxxx]"
-    if (__DEV__) {
-      console.log("[registerPushToken] Expo token:", expoPushToken);
-    }
+    info("Expo push token obtained");
 
     // 6) Salva nel profilo utente (deduplicato e limitato)
     const user = auth.currentUser;
     if (!user) {
-      if (__DEV__) {
-        console.log("[registerPushToken] Nessun utente loggato, salto salvataggio token.");
-      }
+      info("No authenticated user; skip saving push token");
       return;
     }
 
@@ -179,16 +163,9 @@ export async function registerPushToken() {
       { merge: true }
     );
 
-    if (__DEV__) {
-      console.log(
-        "[registerPushToken] Token salvato su Firestore per utente:",
-        user.uid,
-        "tokens totali:",
-        normalized.length
-      );
-    }
+    info("Expo push token saved", { tokenCount: normalized.length });
   } catch (e) {
-    console.error("Errore registerPushToken:", e);
+    error("registerPushToken failed");
   }
 }
 

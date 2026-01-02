@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import Constants from "expo-constants";
+import { info, warn, error as logError } from "../utils/logger";
 
 // 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
 const FALLBACK_EXPO_PROJECT_ID = "e74521c0-d040-4137-a8d1-0d535e353f2d";
@@ -27,18 +28,13 @@ function resolveExpoProjectId(): string | null {
       null;
 
     if (!resolved) {
-      console.warn(
-        "[pushNotifications] impossibile risolvere l'Expo projectId (nessun valore trovato)."
-      );
+      warn("Expo projectId not resolved");
       return null;
     }
 
     return resolved;
   } catch (err) {
-    console.warn(
-      "[pushNotifications] errore risolvendo l'Expo projectId:",
-      err
-    );
+    warn("Expo projectId resolution error");
     return null;
   }
 }
@@ -47,9 +43,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   // NOTE: usata da NotificationSettingsScreen; salva i token con arrayUnion (non limita il numero).
   // Il flusso alternativo in notifications/registerPushToken.ts deduplica e limita i token.
   if (!Device.isDevice) {
-    if (__DEV__) {
-      console.log("[pushNotifications] push supportate solo su dispositivo reale");
-    }
+    info("Push notifications require a physical device");
     return null;
   }
 
@@ -57,16 +51,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   if (appOwnership === "expo") {
     // Evita di salvare token di Expo Go → niente notifiche duplicate in dev
     if (__DEV__) {
-      console.log(
-        "[pushNotifications] esecuzione dentro Expo Go; salto registrazione token per evitare duplicati."
-      );
+      info("Expo Go detected; skip push token registration");
     }
     return null;
   }
 
-  if (__DEV__) {
-    console.log("[pushNotifications] Platform:", Platform.OS, "ownership:", appOwnership);
-  }
+  info("Push registration context", { platform: Platform.OS, ownership: appOwnership });
 
   // Permessi
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -78,41 +68,30 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   if (finalStatus !== "granted") {
-    if (__DEV__) {
-      console.log("[pushNotifications] permessi push non concessi");
-    }
+    info("Push permission not granted");
     return null;
   }
 
   // Risolviamo il projectId di Expo/EAS
   const projectId = resolveExpoProjectId();
   if (!projectId) {
-    console.warn(
-      "[pushNotifications] nessun projectId valido; impossibile richiedere il token push."
-    );
+    warn("No valid projectId; cannot request push token");
     return null;
   }
 
-  if (__DEV__) {
-    console.log("[pushNotifications] usando projectId:", projectId);
-  }
+  info("Using Expo projectId", { hasProjectId: true });
 
   // Ottieni token Expo
   let tokenResponse: Notifications.ExpoPushToken;
   try {
     tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
-  } catch (error) {
-    console.error(
-      "[pushNotifications] errore in getExpoPushTokenAsync:",
-      error
-    );
+  } catch (err) {
+    logError("getExpoPushTokenAsync failed");
     return null;
   }
 
   const token = tokenResponse.data;
-  if (__DEV__) {
-    console.log("[pushNotifications] Expo push token ottenuto:", token);
-  }
+  info("Expo push token obtained");
 
   // Solo Android: canale di default
   if (Platform.OS === "android") {
@@ -123,14 +102,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#FF231F7C",
       });
-      if (__DEV__) {
-        console.log("[pushNotifications] canale Android 'default' configurato");
-      }
-    } catch (error) {
-      console.warn(
-        "[pushNotifications] errore configurando il canale Android:",
-        error
-      );
+      info("Android notification channel configured", { channel: "default" });
+    } catch (err) {
+      warn("Android notification channel setup error");
     }
   }
 
@@ -142,24 +116,12 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       await updateDoc(userRef, {
         expoPushTokens: arrayUnion(token),
       });
-      if (__DEV__) {
-        console.log(
-          "[pushNotifications] token salvato per l'utente",
-          currentUser.uid
-        );
-      }
-    } catch (error) {
-      console.error(
-        "[pushNotifications] impossibile salvare il token su Firestore:",
-        error
-      );
+      info("Push token saved for current user");
+    } catch (err) {
+      logError("Failed to save push token to Firestore");
     }
   } else {
-    if (__DEV__) {
-      console.warn(
-        "[pushNotifications] nessun utente autenticato; non salvo il token su Firestore"
-      );
-    }
+    warn("No authenticated user; skip saving push token");
   }
 
   return token;
@@ -168,9 +130,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 export async function setNotificationsDisabled(disabled: boolean): Promise<void> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
-    console.warn(
-      "[pushNotifications] nessun utente autenticato; impossibile aggiornare notificationsDisabled"
-    );
+    warn("No authenticated user; cannot update notificationsDisabled");
     return;
   }
 
@@ -180,19 +140,9 @@ export async function setNotificationsDisabled(disabled: boolean): Promise<void>
   };
   try {
     await updateDoc(userRef, payload);
-    if (__DEV__) {
-      console.log(
-        "[pushNotifications] notificationsDisabled aggiornato a",
-        disabled,
-        "per utente",
-        currentUser.uid
-      );
-    }
-  } catch (error) {
-    console.error(
-      "[pushNotifications] errore aggiornando notificationsDisabled:",
-      error
-    );
-    throw error;
+    info("notificationsDisabled updated", { disabled });
+  } catch (err) {
+    logError("Failed to update notificationsDisabled");
+    throw err;
   }
 }

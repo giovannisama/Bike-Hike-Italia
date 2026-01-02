@@ -94,6 +94,60 @@ const normalize = (value: string) =>
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1529429617124-aee3183d15ab?auto=format&fit=crop&w=800&q=80";
 
+type BoardListItemProps = {
+  item: BoardItem;
+  canEdit: boolean;
+  onPress: (postId: string, title: string | null) => void;
+};
+
+const BoardListItem = React.memo(function BoardListItem({ item, canEdit, onPress }: BoardListItemProps) {
+  const dateObj = item.createdAt;
+  const day = dateObj ? dateObj.toLocaleDateString("it-IT", { day: "2-digit" }) : "--";
+  const monthShort = dateObj ? dateObj.toLocaleDateString("it-IT", { month: "short" }).toUpperCase().replace(".", "") : "";
+  const year = dateObj ? dateObj.getFullYear() : "----";
+
+  const descriptionText = item.hasDescription && item.description ? item.description.trim() : "";
+  const imageUri = item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl || PLACEHOLDER;
+
+  const handlePress = useCallback(() => {
+    onPress(item.id, item.title);
+  }, [item.id, item.title, onPress]);
+
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.7 }]}
+      >
+        <View style={styles.dateColumn}>
+          <Text style={styles.dateTopLine} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{`${day} ${monthShort}`}</Text>
+          <Text style={styles.dateYear} numberOfLines={1}>{year}</Text>
+          <View style={{ height: 8 }} />
+          {item.hasImage ? (
+            <Image source={{ uri: imageUri }} style={styles.cardThumb} resizeMode="cover" />
+          ) : (
+            <View style={styles.cardThumbPlaceholder}>
+              <Ionicons name="newspaper-outline" size={20} color="#94A3B8" />
+            </View>
+          )}
+        </View>
+
+        <View style={{ flex: 1, paddingLeft: 4 }}>
+          <View style={styles.cardHeader}>
+            {item.hasTitle && item.title ? (
+              <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+            ) : (
+              canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
+            )}
+            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" style={{ marginTop: 2 }} />
+          </View>
+          <Text numberOfLines={3} style={styles.cardSnippet}>{descriptionText}</Text>
+        </View>
+      </Pressable>
+    </View>
+  );
+});
+
 // Removed local ACTION_GREEN -> using UI.colors.action
 
 export default function BoardScreen({ navigation, route }: any) {
@@ -161,8 +215,8 @@ export default function BoardScreen({ navigation, route }: any) {
 
   useFocusEffect(
     useCallback(() => {
-      saveBoardLastSeen();
-    }, [])
+      if (userId) saveBoardLastSeen(userId);
+    }, [userId])
   );
 
   const handleEdit = useCallback((item: BoardItem) => {
@@ -189,12 +243,12 @@ export default function BoardScreen({ navigation, route }: any) {
     }
   }, [route.params?.editPostId, items, handleEdit, navigation]);
 
-  const resetCompose = () => {
+  const resetCompose = useCallback(() => {
     setEditor(createEmptyEditorState());
     setComposeOpen(false);
-  };
+  }, []);
 
-  const handlePickImage = async () => {
+  const handlePickImage = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permesso negato", "Serve accesso alla galleria per caricare immagini.");
@@ -213,11 +267,11 @@ export default function BoardScreen({ navigation, route }: any) {
         includeImage: true
       }));
     }
-  };
+  }, []);
 
   const editorPreviewUri = editor.image ? editor.image.uri : null;
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!userId) return;
     if (editor.includeTitle && !editor.title.trim()) { Alert.alert("Titolo mancante", "Inserisci un titolo o disabilitalo."); return; }
     if (editor.includeDescription && !editor.description.trim()) { Alert.alert("Descrizione mancante", "Inserisci una descrizione o disabilitala."); return; }
@@ -271,54 +325,103 @@ export default function BoardScreen({ navigation, route }: any) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [editor, resetCompose, userId]);
+
+  const handleOpenPost = useCallback((postId: string, title: string | null) => {
+    navigation.navigate("BoardPostDetail", { postId, title });
+  }, [navigation]);
 
   const renderItem = useCallback(
-    ({ item }: { item: BoardItem }) => {
-      const dateObj = item.createdAt;
-      const day = dateObj ? dateObj.toLocaleDateString("it-IT", { day: "2-digit" }) : "--";
-      const monthShort = dateObj ? dateObj.toLocaleDateString("it-IT", { month: "short" }).toUpperCase().replace(".", "") : "";
-      const year = dateObj ? dateObj.getFullYear() : "----";
+    ({ item }: { item: BoardItem }) => (
+      <BoardListItem item={item} canEdit={canEdit} onPress={handleOpenPost} />
+    ),
+    [canEdit, handleOpenPost]
+  );
 
-      const descriptionText = item.hasDescription && item.description ? item.description.trim() : "";
-      const imageUri = item.imageBase64 ? `data:image/jpeg;base64,${item.imageBase64}` : item.imageUrl || PLACEHOLDER;
+  const listHeader = useMemo(() => (
+    <View style={styles.headerBlock}>
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
+        <View style={{ flex: 1, position: "relative" }}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Cerca news..."
+            placeholderTextColor="#9ca3af"
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.trim().length > 0 && (
+            <Pressable onPress={() => { setSearch(""); Keyboard.dismiss(); }} hitSlop={10} style={styles.searchClear}>
+              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+            </Pressable>
+          )}
+        </View>
+      </View>
 
-      return (
-        <View style={styles.card}>
+      <View style={styles.filterRow}>
+        <View style={styles.segmented}>
           <Pressable
-            onPress={() => navigation.navigate("BoardPostDetail", { postId: item.id, title: item.title })}
-            style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.7 }]}
+            onPress={() => setFilter("active")}
+            style={[styles.segmentedTab, filter === "active" && styles.segmentedTabActive]}
           >
-            <View style={styles.dateColumn}>
-              <Text style={styles.dateTopLine} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{`${day} ${monthShort}`}</Text>
-              <Text style={styles.dateYear} numberOfLines={1}>{year}</Text>
-              <View style={{ height: 8 }} />
-              {item.hasImage ? (
-                <Image source={{ uri: imageUri }} style={styles.cardThumb} resizeMode="cover" />
-              ) : (
-                <View style={styles.cardThumbPlaceholder}>
-                  <Ionicons name="newspaper-outline" size={20} color="#94A3B8" />
-                </View>
-              )}
-            </View>
-
-            <View style={{ flex: 1, paddingLeft: 4 }}>
-              <View style={styles.cardHeader}>
-                {item.hasTitle && item.title ? (
-                  <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-                ) : (
-                  canEdit && <Text style={styles.cardTitleMuted}>News senza titolo</Text>
-                )}
-                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" style={{ marginTop: 2 }} />
-              </View>
-              <Text numberOfLines={3} style={styles.cardSnippet}>{descriptionText}</Text>
-            </View>
+            <Text style={[styles.segmentedText, filter === "active" && styles.segmentedTextActive]}>
+              Attive
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setFilter("archived")}
+            style={[styles.segmentedTab, filter === "archived" && styles.segmentedTabActive]}
+          >
+            <Text style={[styles.segmentedText, filter === "archived" && styles.segmentedTextActive]}>
+              Archiviate
+            </Text>
           </Pressable>
         </View>
-      );
-    },
-    [canEdit, navigation]
-  );
+      </View>
+
+      {composeOpen && canEdit && (
+        <View style={styles.composeCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.composeTitle}>{editor.id ? "Modifica news" : "Crea nuova news"}</Text>
+            <Pressable onPress={resetCompose} hitSlop={10}><Ionicons name="close-circle" size={24} color="#94A3B8" /></Pressable>
+          </View>
+          <View style={styles.composeOptions}>
+            <Text style={styles.composeSubtitle}>Come vuoi comporre la news?</Text>
+            <View style={styles.composeToggleRow}>
+              <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeTitle: !prev.includeTitle }))} style={[styles.composeToggle, editor.includeTitle ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                <Text style={[styles.composeToggleText, editor.includeTitle && styles.composeToggleTextActive]}>Titolo</Text>
+              </Pressable>
+              <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeImage: !prev.includeImage }))} style={[styles.composeToggle, editor.includeImage ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                <Text style={[styles.composeToggleText, editor.includeImage && styles.composeToggleTextActive]}>Immagine</Text>
+              </Pressable>
+              <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeDescription: !prev.includeDescription }))} style={[styles.composeToggle, editor.includeDescription ? styles.composeToggleActive : styles.composeToggleInactive]}>
+                <Text style={[styles.composeToggleText, editor.includeDescription && styles.composeToggleTextActive]}>Descrizione</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {editor.includeTitle && (
+            <TextInput style={styles.composeInput} placeholder="Titolo" value={editor.title} onChangeText={(v) => setEditor((p) => ({ ...p, title: v }))} placeholderTextColor="#9ca3af" />
+          )}
+          {editor.includeDescription && (
+            <TextInput style={styles.composeDescriptionInput} placeholder="Descrizione" value={editor.description} onChangeText={(v) => setEditor((p) => ({ ...p, description: v }))} placeholderTextColor="#9ca3af" multiline numberOfLines={10} textAlignVertical="top" scrollEnabled />
+          )}
+          {editor.includeImage && (
+            <Pressable onPress={handlePickImage} style={styles.imagePicker}>
+              {editorPreviewUri ? <Image source={{ uri: editorPreviewUri }} style={styles.imagePreview} resizeMode="cover" /> : (
+                <View style={{ alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Text style={{ fontWeight: "700", color: UI.colors.primary }}>Seleziona immagine</Text>
+                  <Text style={{ color: "#64748b", fontSize: 12 }}>Dalla libreria del dispositivo</Text>
+                </View>
+              )}
+            </Pressable>
+          )}
+          <PrimaryButton label={editor.id ? "Salva modifiche" : "Pubblica"} onPress={handleSave} loading={saving} disabled={saving} />
+        </View>
+      )}
+    </View>
+  ), [canEdit, composeOpen, editor, editorPreviewUri, filter, handlePickImage, handleSave, resetCompose, saving, search]);
 
   return (
     <Screen useNativeHeader={true} scroll={false} keyboardShouldPersistTaps="handled" avoidKeyboard={false} backgroundColor="#FDFCF8">
@@ -355,90 +458,7 @@ export default function BoardScreen({ navigation, route }: any) {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 16, paddingTop: 8 }}
-          ListHeaderComponent={
-            <View style={styles.headerBlock}>
-              <View style={styles.searchRow}>
-                <Ionicons name="search" size={18} color="#94a3b8" style={{ marginRight: 8 }} />
-                <View style={{ flex: 1, position: "relative" }}>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Cerca news..."
-                    placeholderTextColor="#9ca3af"
-                    value={search}
-                    onChangeText={setSearch}
-                    returnKeyType="search"
-                  />
-                  {search.trim().length > 0 && (
-                    <Pressable onPress={() => { setSearch(""); Keyboard.dismiss(); }} hitSlop={10} style={styles.searchClear}>
-                      <Ionicons name="close-circle" size={18} color="#94a3b8" />
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-
-              <View style={styles.filterRow}>
-                <View style={styles.segmented}>
-                  <Pressable
-                    onPress={() => setFilter("active")}
-                    style={[styles.segmentedTab, filter === "active" && styles.segmentedTabActive]}
-                  >
-                    <Text style={[styles.segmentedText, filter === "active" && styles.segmentedTextActive]}>
-                      Attive
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setFilter("archived")}
-                    style={[styles.segmentedTab, filter === "archived" && styles.segmentedTabActive]}
-                  >
-                    <Text style={[styles.segmentedText, filter === "archived" && styles.segmentedTextActive]}>
-                      Archiviate
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              {composeOpen && canEdit && (
-                <View style={styles.composeCard}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.composeTitle}>{editor.id ? "Modifica news" : "Crea nuova news"}</Text>
-                    <Pressable onPress={resetCompose} hitSlop={10}><Ionicons name="close-circle" size={24} color="#94A3B8" /></Pressable>
-                  </View>
-                  <View style={styles.composeOptions}>
-                    <Text style={styles.composeSubtitle}>Come vuoi comporre la news?</Text>
-                    <View style={styles.composeToggleRow}>
-                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeTitle: !prev.includeTitle }))} style={[styles.composeToggle, editor.includeTitle ? styles.composeToggleActive : styles.composeToggleInactive]}>
-                        <Text style={[styles.composeToggleText, editor.includeTitle && styles.composeToggleTextActive]}>Titolo</Text>
-                      </Pressable>
-                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeImage: !prev.includeImage }))} style={[styles.composeToggle, editor.includeImage ? styles.composeToggleActive : styles.composeToggleInactive]}>
-                        <Text style={[styles.composeToggleText, editor.includeImage && styles.composeToggleTextActive]}>Immagine</Text>
-                      </Pressable>
-                      <Pressable onPress={() => setEditor((prev) => ({ ...prev, includeDescription: !prev.includeDescription }))} style={[styles.composeToggle, editor.includeDescription ? styles.composeToggleActive : styles.composeToggleInactive]}>
-                        <Text style={[styles.composeToggleText, editor.includeDescription && styles.composeToggleTextActive]}>Descrizione</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {editor.includeTitle && (
-                    <TextInput style={styles.composeInput} placeholder="Titolo" value={editor.title} onChangeText={(v) => setEditor((p) => ({ ...p, title: v }))} placeholderTextColor="#9ca3af" />
-                  )}
-                  {editor.includeDescription && (
-                    <TextInput style={styles.composeDescriptionInput} placeholder="Descrizione" value={editor.description} onChangeText={(v) => setEditor((p) => ({ ...p, description: v }))} placeholderTextColor="#9ca3af" multiline numberOfLines={10} textAlignVertical="top" scrollEnabled />
-                  )}
-                  {editor.includeImage && (
-                    <Pressable onPress={handlePickImage} style={styles.imagePicker}>
-                      {editorPreviewUri ? <Image source={{ uri: editorPreviewUri }} style={styles.imagePreview} resizeMode="cover" /> : (
-                        <View style={{ alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          <Text style={{ fontWeight: "700", color: UI.colors.primary }}>Seleziona immagine</Text>
-                          <Text style={{ color: "#64748b", fontSize: 12 }}>Dalla libreria del dispositivo</Text>
-                        </View>
-                      )}
-                    </Pressable>
-                  )}
-                  <PrimaryButton label={editor.id ? "Salva modifiche" : "Pubblica"} onPress={handleSave} loading={saving} disabled={saving} />
-                </View>
-              )}
-            </View>
-          }
+          ListHeaderComponent={listHeader}
           ListEmptyComponent={
             profileLoading || loading ? (
               <View style={styles.loadingBox}><ActivityIndicator /><Text style={{ marginTop: 8 }}>Carico la bacheca…</Text></View>

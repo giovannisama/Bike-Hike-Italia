@@ -58,11 +58,17 @@ service cloud.firestore {
       return canReadRides();
     }
 
-    function isAdminOrOwner() {
-      return isAdmin() || isOwner();
-    }
-
     function has(k) { return request.resource.data.keys().hasAny([k]); }
+
+    function validExpoPushTokens(val) {
+      return val is list
+        && val.size() <= 5
+        && (val.size() == 0 || (val[0] is string && val[0].size() > 0 && val[0].size() <= 255))
+        && (val.size() < 2 || (val[1] is string && val[1].size() > 0 && val[1].size() <= 255))
+        && (val.size() < 3 || (val[2] is string && val[2].size() > 0 && val[2].size() <= 255))
+        && (val.size() < 4 || (val[3] is string && val[3].size() > 0 && val[3].size() <= 255))
+        && (val.size() < 5 || (val[4] is string && val[4].size() > 0 && val[4].size() <= 255));
+    }
 
     function roleIsOneOf(target) {
       return target == null
@@ -88,7 +94,8 @@ service cloud.firestore {
       allow update: if
         request.auth != null &&
         request.auth.uid == uid &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(["expoPushTokens"]);
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(["expoPushTokens"]) &&
+        validExpoPushTokens(request.resource.data.expoPushTokens);
 
       allow update: if isAuthed() && (
         (isOwner() && validUserUpdateAdmin()) ||
@@ -178,7 +185,8 @@ service cloud.firestore {
           && roleMatches(request.resource.data.role, '(?i)^member$')
           && request.resource.data.approved == false
           && (!has('disabled') || request.resource.data.disabled == false)
-          && request.resource.data.createdAt is timestamp
+          && (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time)
+          && request.resource.data.createdAt == request.time
           && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
           && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
           && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null)
@@ -388,7 +396,8 @@ service cloud.firestore {
       function boardAllowedKeys() {
         return [
           'title','description','createdAt','createdBy','archived','archivedAt',
-          'imageUrl','imageStoragePath','imageBase64'
+          'imageUrl','imageStoragePath','imageBase64',
+          'updatedAt','updatedBy'
         ];
       }
 
@@ -418,6 +427,8 @@ service cloud.firestore {
           && (!data.keys().hasAny(['description']) || nonEmptyString(data.description, 3000))
           && (!data.keys().hasAny(['createdAt']) || timestampOrServer(data.createdAt))
           && (!data.keys().hasAny(['createdBy']) || stringOrNull(data.createdBy, 200))
+          && (!data.keys().hasAny(['updatedAt']) || timestampOrServer(data.updatedAt))
+          && (!data.keys().hasAny(['updatedBy']) || stringOrNull(data.updatedBy, 200))
           && (!data.keys().hasAny(['archived']) || data.archived is bool)
           && (!data.keys().hasAny(['archivedAt']) || timestampOrServer(data.archivedAt))
           && (!data.keys().hasAny(['imageUrl']) || data.imageUrl == null || (data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() <= 2048))
@@ -462,7 +473,7 @@ service cloud.firestore {
           'title','meetingPoint','description','bikes',
           'date','dateTime',
           'maxParticipants','participantsCount','participantsCountSelf','participantsCountTotal',
-          'createdBy','createdAt',
+          'createdBy','createdAt','updatedBy','updatedAt',
           'status','archived','archiveYear','archiveMonth',
           'guidaName','guidaNames','link','difficulty',
           'manualParticipants','extraServices','serviceStats'
@@ -549,6 +560,8 @@ service cloud.firestore {
           && (!has('difficulty') || request.resource.data.difficulty == null || request.resource.data.difficulty is string)
           && (!has('manualParticipants') || validManualParticipants(request.resource.data.manualParticipants))
           && (!has('extraServices') || validExtraServices(request.resource.data.extraServices))
+          && (!has('updatedAt') || request.resource.data.updatedAt is timestamp || request.resource.data.updatedAt == request.time)
+          && (!has('updatedBy') || request.resource.data.updatedBy == null || request.resource.data.updatedBy is string)
           && (!has('serviceStats') || validServiceStats(request.resource.data.serviceStats));
       }
 
@@ -574,6 +587,8 @@ service cloud.firestore {
           && (!(changed.hasAny(['archiveMonth']) || added.hasAny(['archiveMonth'])) || (request.resource.data.archiveMonth == null || (request.resource.data.archiveMonth is int && request.resource.data.archiveMonth >= 1 && request.resource.data.archiveMonth <= 12)))
           && (!(changed.hasAny(['createdBy']) || added.hasAny(['createdBy'])) || request.resource.data.createdBy is string)
           && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || request.resource.data.createdAt is timestamp)
+          && (!(changed.hasAny(['updatedAt']) || added.hasAny(['updatedAt'])) || request.resource.data.updatedAt is timestamp || request.resource.data.updatedAt == request.time)
+          && (!(changed.hasAny(['updatedBy']) || added.hasAny(['updatedBy'])) || request.resource.data.updatedBy == null || request.resource.data.updatedBy is string)
           && (!(changed.hasAny(['guidaName']) || added.hasAny(['guidaName'])) || (request.resource.data.guidaName == null || request.resource.data.guidaName is string))
           && (!(changed.hasAny(['guidaNames']) || added.hasAny(['guidaNames'])) || (request.resource.data.guidaNames == null || request.resource.data.guidaNames is list))
           && (!(changed.hasAny(['link']) || added.hasAny(['link'])) || (request.resource.data.link == null || request.resource.data.link is string))
@@ -657,7 +672,68 @@ service cloud.firestore {
     // -----------------------
     match /app_content/informazioni {
       allow read: if isAuthed();
-      allow write: if isOwner();
+      allow create: if isOwner() && validInfoCreate();
+      allow update: if isOwner() && validInfoUpdate();
+
+      function infoAllowedKeys() {
+        return ['items','updatedAt','updatedBy'];
+      }
+
+      function validInfoItem(item) {
+        return item is map
+          && item.keys().hasOnly(['id','label','value','type','section'])
+          && item.id is string && item.id.size() > 0 && item.id.size() <= 40
+          && item.label is string && item.label.size() > 0 && item.label.size() <= 160
+          && item.value is string && item.value.size() > 0 && item.value.size() <= 600
+          && (item.type in ['text','phone','whatsapp','email','iban','address','vat'])
+          && (item.section in ['Associazione','Contatti','Dati Fiscali']);
+      }
+
+      function validInfoItems(items) {
+        return items is list
+          && items.size() > 0
+          && items.size() <= 20
+          && validInfoItem(items[0])
+          && (items.size() < 2 || validInfoItem(items[1]))
+          && (items.size() < 3 || validInfoItem(items[2]))
+          && (items.size() < 4 || validInfoItem(items[3]))
+          && (items.size() < 5 || validInfoItem(items[4]))
+          && (items.size() < 6 || validInfoItem(items[5]))
+          && (items.size() < 7 || validInfoItem(items[6]))
+          && (items.size() < 8 || validInfoItem(items[7]))
+          && (items.size() < 9 || validInfoItem(items[8]))
+          && (items.size() < 10 || validInfoItem(items[9]))
+          && (items.size() < 11 || validInfoItem(items[10]))
+          && (items.size() < 12 || validInfoItem(items[11]))
+          && (items.size() < 13 || validInfoItem(items[12]))
+          && (items.size() < 14 || validInfoItem(items[13]))
+          && (items.size() < 15 || validInfoItem(items[14]))
+          && (items.size() < 16 || validInfoItem(items[15]))
+          && (items.size() < 17 || validInfoItem(items[16]))
+          && (items.size() < 18 || validInfoItem(items[17]))
+          && (items.size() < 19 || validInfoItem(items[18]))
+          && (items.size() < 20 || validInfoItem(items[19]));
+      }
+
+      function validInfoCreate() {
+        return request.resource.data.keys().hasOnly(infoAllowedKeys())
+          && request.resource.data.keys().hasAll(['items'])
+          && validInfoItems(request.resource.data.items)
+          && (!request.resource.data.keys().hasAny(['updatedAt']) || request.resource.data.updatedAt is timestamp || request.resource.data.updatedAt == request.time)
+          && (!request.resource.data.keys().hasAny(['updatedBy']) || request.resource.data.updatedBy == null || request.resource.data.updatedBy is string);
+      }
+
+      function validInfoUpdate() {
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added   = diff.addedKeys();
+        let removed = diff.removedKeys();
+        return changed.union(added).union(removed).hasOnly(infoAllowedKeys())
+          && !removed.hasAny(['items'])
+          && (!changed.hasAny(['items']) && !added.hasAny(['items']) || validInfoItems(request.resource.data.items))
+          && (!changed.hasAny(['updatedAt']) && !added.hasAny(['updatedAt']) || request.resource.data.updatedAt is timestamp || request.resource.data.updatedAt == request.time)
+          && (!changed.hasAny(['updatedBy']) && !added.hasAny(['updatedBy']) || request.resource.data.updatedBy == null || request.resource.data.updatedBy is string);
+      }
     }
 
     // -----------------------
@@ -665,18 +741,73 @@ service cloud.firestore {
     // -----------------------
     match /social_events/{eventId} {
       allow read: if canReadRides();
-      allow create: if (isAdmin() || isOwner()) && validSocialEvent();
-      allow update: if (isAdmin() || isOwner()) && validSocialEvent();
+      allow create: if (isAdmin() || isOwner()) && validSocialCreate();
+      allow update: if (isAdmin() || isOwner()) && validSocialUpdate();
       allow delete: if (isAdmin() || isOwner());
 
-      function validSocialEvent() {
-        return (!has('status') || (request.resource.data.status in ['active','cancelled','archived']))
-          && (!has('extraServices') || validSocialExtraServices(request.resource.data.extraServices))
-          && (!has('extras') || (
-            request.resource.data.extras is map
-            && (!request.resource.data.extras.keys().hasAny(['lunch']) || request.resource.data.extras.lunch is bool)
-            && (!request.resource.data.extras.keys().hasAny(['dinner']) || request.resource.data.extras.dinner is bool)
+      function socialAllowedKeys() {
+        return [
+          'title','meetingPlaceText','meetingMapUrl','organizerName','description',
+          'startAt','status',
+          'createdAt','createdBy','updatedAt','updatedBy',
+          'cancelledAt','cancelledBy','archivedAt',
+          'participantsCount',
+          'extraServices','extras'
+        ];
+      }
+
+      function nonEmptyString(val, maxLen) {
+        return val is string && val.size() > 0 && val.size() <= maxLen;
+      }
+
+      function stringOrNull(val, maxLen) {
+        return val == null || (val is string && val.size() <= maxLen);
+      }
+
+      function timestampOrServer(val) {
+        return val is timestamp || val == request.time;
+      }
+
+      function validSocialPayload(data) {
+        return (!data.keys().hasAny(['title']) || nonEmptyString(data.title, 160))
+          && (!data.keys().hasAny(['meetingPlaceText']) || nonEmptyString(data.meetingPlaceText, 200))
+          && (!data.keys().hasAny(['meetingMapUrl']) || data.meetingMapUrl == null || (data.meetingMapUrl is string && data.meetingMapUrl.size() > 0 && data.meetingMapUrl.size() <= 2048))
+          && (!data.keys().hasAny(['organizerName']) || data.organizerName == null || (data.organizerName is string && data.organizerName.size() <= 120))
+          && (!data.keys().hasAny(['description']) || data.description == null || (data.description is string && data.description.size() <= 4000))
+          && (!data.keys().hasAny(['startAt']) || data.startAt is timestamp)
+          && (!data.keys().hasAny(['status']) || (data.status in ['active','cancelled','archived']))
+          && (!data.keys().hasAny(['createdAt']) || timestampOrServer(data.createdAt))
+          && (!data.keys().hasAny(['updatedAt']) || timestampOrServer(data.updatedAt))
+          && (!data.keys().hasAny(['createdBy']) || stringOrNull(data.createdBy, 200))
+          && (!data.keys().hasAny(['updatedBy']) || stringOrNull(data.updatedBy, 200))
+          && (!data.keys().hasAny(['cancelledAt']) || timestampOrServer(data.cancelledAt))
+          && (!data.keys().hasAny(['cancelledBy']) || stringOrNull(data.cancelledBy, 200))
+          && (!data.keys().hasAny(['archivedAt']) || timestampOrServer(data.archivedAt))
+          && (!data.keys().hasAny(['participantsCount']) || (data.participantsCount is int && data.participantsCount >= 0))
+          && (!data.keys().hasAny(['extraServices']) || validSocialExtraServices(data.extraServices))
+          && (!data.keys().hasAny(['extras']) || (
+            data.extras is map
+            && (!data.extras.keys().hasAny(['lunch']) || data.extras.lunch is bool)
+            && (!data.extras.keys().hasAny(['dinner']) || data.extras.dinner is bool)
           ));
+      }
+
+      function validSocialCreate() {
+        let data = request.resource.data;
+        return validSocialPayload(data)
+          && data.keys().hasOnly(socialAllowedKeys())
+          && data.keys().hasAll(['title','meetingPlaceText','startAt','status','createdAt','createdBy'])
+          && data.createdBy is string && data.createdBy.size() > 0 && data.createdBy.size() <= 200
+          && (data.createdAt is timestamp || data.createdAt == request.time);
+      }
+
+      function validSocialUpdate() {
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added   = diff.addedKeys();
+        let removed = diff.removedKeys();
+        return changed.union(added).union(removed).hasOnly(socialAllowedKeys())
+          && validSocialPayload(request.resource.data);
       }
 
       function validSocialExtraServices(val) {
@@ -756,8 +887,33 @@ service cloud.firestore {
           && request.resource.data.name.size() <= 200
           && (!has('payload') || request.resource.data.payload == null || request.resource.data.payload is map)
           && (!has('uid') || request.resource.data.uid == null || (request.resource.data.uid is string && request.resource.data.uid.size() > 0 && request.resource.data.uid.size() <= 128))
-          && request.resource.data.createdAt is timestamp
+          && (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time)
           && request.resource.data.createdAt == request.time;
+      }
+    }
+
+    // -----------------------
+    // /notifications/{notificationId}
+    // -----------------------
+    match /notifications/{notificationId} {
+      allow read: if false;
+      allow create: if (isAdmin() || isOwner()) && validNotificationCreate();
+      allow update, delete: if false;
+
+      function notificationAllowedKeys() {
+        return ['type','rideId','title','createdAt','read','target'];
+      }
+
+      function validNotificationCreate() {
+        return request.resource.data.keys().hasOnly(notificationAllowedKeys())
+          && request.resource.data.type is string
+          && request.resource.data.type.size() > 0
+          && request.resource.data.type.size() <= 80
+          && (!has('rideId') || (request.resource.data.rideId is string && request.resource.data.rideId.size() > 0 && request.resource.data.rideId.size() <= 80))
+          && (!has('title') || (request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 200))
+          && request.resource.data.createdAt is timestamp
+          && (request.resource.data.read is bool)
+          && (!has('target') || (request.resource.data.target is string && request.resource.data.target.size() > 0 && request.resource.data.target.size() <= 80));
       }
     }
 

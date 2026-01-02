@@ -197,9 +197,6 @@ export default function SocialEditScreen() {
         onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
           if (event.type !== "set" || !selectedDate) return;
           const next = new Date(selectedDate);
-          if (mode === "time") {
-            next.setSeconds(0, 0);
-          }
           applyPickerValue(mode, next);
         },
       });

@@ -25,7 +25,7 @@ export default function App() {
   // 1) Ascolta lo stato di autenticazione
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      const isAnonymous = !!(firebaseUser as any)?.isAnonymous;
+      const isAnonymous = !!firebaseUser?.isAnonymous;
       const hasNoProviders = (firebaseUser?.providerData?.length ?? 0) === 0;
       const isNotPasswordProvider =
         !!firebaseUser && firebaseUser.providerData?.[0]?.providerId !== "password";

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import type { FirestoreTimestamp } from "../types/firestore";
 import { toDateSafe, toMillisSafe } from "../utils/firestoreDate";
+import { info } from "../utils/logger";
 
 type SocialEvent = {
   id: string;
@@ -33,6 +34,16 @@ type SocialEvent = {
   participantsCount?: number | null;
 };
 
+const normalizeForSearch = (value?: string) =>
+  (value || "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 function ParticipantsBadge({ count }: { count?: number }) {
   const safeCount = typeof count === "number" && !Number.isNaN(count) ? count : 0;
   return (
@@ -42,6 +53,61 @@ function ParticipantsBadge({ count }: { count?: number }) {
     </View>
   );
 }
+
+type SocialListItemProps = {
+  item: SocialEvent;
+  onPress: (eventId: string) => void;
+};
+
+const SocialListItem = React.memo(function SocialListItem({ item, onPress }: SocialListItemProps) {
+  const dt = toDateSafe(item.startAt);
+  const dateLabel = dt ? format(dt, "EEE d MMM • HH:mm", { locale: it }) : "Data da definire";
+
+  const handlePress = useCallback(() => {
+    onPress(item.id);
+  }, [item.id, onPress]);
+
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.95 }]}
+      >
+        <Text style={styles.cardTitle}>{item.title || "Evento social"}</Text>
+
+        <View style={styles.infoRow}>
+          <View style={styles.infoItem}>
+            <Ionicons name="calendar-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText}>{dateLabel}</Text>
+          </View>
+        </View>
+        <View style={styles.infoRow}>
+          <View style={styles.infoItem}>
+            <Ionicons name="location-outline" size={16} color="#64748B" />
+            <Text style={styles.infoText} numberOfLines={1}>
+              {item.meetingPlaceText || "Luogo da definire"}
+            </Text>
+          </View>
+        </View>
+        {!!item.organizerName && (
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Ionicons name="person-outline" size={16} color="#64748B" />
+              <Text style={styles.infoText}>Organizzatore: {item.organizerName}</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.cardFooter}>
+          <ParticipantsBadge count={item.participantsCount ?? 0} />
+          <View style={styles.chevronBox}>
+            <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+});
 
 export default function SocialListScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -92,19 +158,7 @@ export default function SocialListScreen() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        if (__DEV__) console.log("[social_events] list docs", snap.size);
-        if (snap.size > 0) {
-          const first = snap.docs[0];
-          const data = first.data() as any;
-          if (__DEV__) {
-            console.log("[social_events] first doc", {
-              id: first.id,
-              status: data?.status,
-              startAt: data?.startAt,
-              startAtType: data?.startAt?.constructor?.name,
-            });
-          }
-        }
+        if (__DEV__ && snap.empty) info("social_events empty snapshot", { filterType });
         const next: SocialEvent[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
@@ -126,18 +180,7 @@ export default function SocialListScreen() {
           );
           getDocs(debugQ)
             .then((debugSnap) => {
-              if (__DEV__) {
-                console.log("[social_events] debug docs", debugSnap.size);
-                debugSnap.forEach((docSnap) => {
-                  const data = docSnap.data() as any;
-                  console.log("[social_events] debug item", {
-                    id: docSnap.id,
-                    status: data?.status,
-                    startAt: data?.startAt,
-                    startAtType: data?.startAt?.constructor?.name,
-                  });
-                });
-              }
+              if (__DEV__) info("social_events debug snapshot", { size: debugSnap.size });
             })
             .catch((err) => {
               console.error("[social_events] debug failed", err);
@@ -163,15 +206,7 @@ export default function SocialListScreen() {
   }, [filterType]);
 
   const canCreate = isAdmin || isOwner;
-  const normalizeForSearch = (value?: string) =>
-    (value || "")
-      .toString()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9\s]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
+
   const filteredItems = useMemo(() => {
     if (!searchText.trim()) return items;
     const needle = normalizeForSearch(searchText);
@@ -183,56 +218,72 @@ export default function SocialListScreen() {
     });
   }, [items, searchText]);
 
-  const renderItem = ({ item }: { item: SocialEvent }) => {
-    const dt = toDateSafe(item.startAt);
-    const dateLabel = dt ? format(dt, "EEE d MMM • HH:mm", { locale: it }) : "Data da definire";
-    return (
-      <View style={styles.card}>
-        <Pressable
-          onPress={() => navigation.navigate("SocialDetail", { eventId: item.id })}
-          style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.95 }]}
-        >
-          <Text style={styles.cardTitle}>{item.title || "Evento social"}</Text>
+  const handleOpenDetail = useCallback((eventId: string) => {
+    navigation.navigate("SocialDetail", { eventId });
+  }, [navigation]);
 
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Ionicons name="calendar-outline" size={16} color="#64748B" />
-              <Text style={styles.infoText}>{dateLabel}</Text>
-            </View>
-          </View>
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Ionicons name="location-outline" size={16} color="#64748B" />
-              <Text style={styles.infoText} numberOfLines={1}>
-                {item.meetingPlaceText || "Luogo da definire"}
-              </Text>
-            </View>
-          </View>
-          {!!item.organizerName && (
-            <View style={styles.infoRow}>
-              <View style={styles.infoItem}>
-                <Ionicons name="person-outline" size={16} color="#64748B" />
-                <Text style={styles.infoText}>Organizzatore: {item.organizerName}</Text>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.cardFooter}>
-            <ParticipantsBadge count={item.participantsCount ?? 0} />
-            <View style={styles.chevronBox}>
-              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
-            </View>
-          </View>
-        </Pressable>
-      </View>
-    );
-  };
+  const renderItem = useCallback(({ item }: { item: SocialEvent }) => (
+    <SocialListItem item={item} onPress={handleOpenDetail} />
+  ), [handleOpenDetail]);
 
   const empty = useMemo(() => (
     <View style={styles.emptyBox}>
       <Text style={styles.emptyText}>Nessun evento social disponibile.</Text>
     </View>
   ), []);
+
+  const listHeader = useMemo(() => (
+    <View style={styles.headerBlock}>
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={18} color="#94a3b8" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Cerca evento..."
+          placeholderTextColor="#9ca3af"
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+        {searchText.length > 0 && (
+          <Pressable
+            onPress={() => {
+              setSearchText("");
+              Keyboard.dismiss();
+            }}
+            style={styles.searchClear}
+            hitSlop={10}
+          >
+            <Ionicons name="close-circle" size={18} color="#94a3b8" />
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.segmented}>
+        <Pressable
+          style={[styles.segmentedTab, filterType === "active" && styles.segmentedTabActive]}
+          onPress={() => setFilterType("active")}
+        >
+          <Text style={[styles.segmentedText, filterType === "active" && styles.segmentedTextActive]}>
+            Attivi
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.segmentedTab, filterType === "archived" && styles.segmentedTabActive]}
+          onPress={() => setFilterType("archived")}
+        >
+          <Text style={[styles.segmentedText, filterType === "archived" && styles.segmentedTextActive]}>
+            Archiviati
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.resultsMeta}>
+        <View />
+        <Text style={styles.resultsCount}>
+          {filteredItems.length} {filteredItems.length === 1 ? "evento" : "eventi"}
+        </Text>
+      </View>
+    </View>
+  ), [filterType, filteredItems.length, searchText]);
 
   return (
     <Screen useNativeHeader scroll={false} backgroundColor="#FDFCF8">
@@ -258,58 +309,7 @@ export default function SocialListScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <View style={styles.searchRow}>
-              <Ionicons name="search" size={18} color="#94a3b8" />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Cerca evento..."
-                placeholderTextColor="#9ca3af"
-                value={searchText}
-                onChangeText={setSearchText}
-              />
-              {searchText.length > 0 && (
-                <Pressable
-                  onPress={() => {
-                    setSearchText("");
-                    Keyboard.dismiss();
-                  }}
-                  style={styles.searchClear}
-                  hitSlop={10}
-                >
-                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
-                </Pressable>
-              )}
-            </View>
-
-            <View style={styles.segmented}>
-              <Pressable
-                style={[styles.segmentedTab, filterType === "active" && styles.segmentedTabActive]}
-                onPress={() => setFilterType("active")}
-              >
-                <Text style={[styles.segmentedText, filterType === "active" && styles.segmentedTextActive]}>
-                  Attivi
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.segmentedTab, filterType === "archived" && styles.segmentedTabActive]}
-                onPress={() => setFilterType("archived")}
-              >
-                <Text style={[styles.segmentedText, filterType === "archived" && styles.segmentedTextActive]}>
-                  Archiviati
-                </Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.resultsMeta}>
-              <View />
-              <Text style={styles.resultsCount}>
-                {filteredItems.length} {filteredItems.length === 1 ? "evento" : "eventi"}
-              </Text>
-            </View>
-          </View>
-        }
+        ListHeaderComponent={listHeader}
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyBox}>

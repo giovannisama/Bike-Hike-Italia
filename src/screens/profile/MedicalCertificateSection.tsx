@@ -54,6 +54,7 @@ const CERT_TYPES: { value: MedicalCertificateType; label: string }[] = [
 
 const DATE_INPUT_FORMAT = "yyyy-MM-dd";
 const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DateTimePickerAny = DateTimePicker as unknown as React.ComponentType<any>;
 
 const formatDate = (date: Date | null | undefined) => {
   if (!date) return "";
@@ -791,12 +792,12 @@ export function MedicalCertificateSection({ showToast, hookProps }: MedicalCerti
                   </Text>
                 </Pressable>
               </View>
-              <DateTimePicker
+              <DateTimePickerAny
                 value={iosPickerDate}
                 mode="date"
                 display={isIos ? "spinner" : "default"}
                 preferredDatePickerStyle={isIos ? "spinner" : undefined}
-                onChange={(_event, date) => {
+                onChange={(_event: DateTimePickerEvent, date: Date | undefined) => {
                   if (date) setIosPickerDate(date);
                 }}
                 locale="it-IT"

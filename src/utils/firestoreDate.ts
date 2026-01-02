@@ -2,7 +2,7 @@ import type { FirestoreTimestamp } from "../types/firestore";
 
 type FirestoreTimestampLike =
   | FirestoreTimestamp
-  | { seconds: number; nanoseconds?: number; toDate?: () => Date; toMillis?: () => number };
+  | { seconds: number; nanoseconds?: number; toDate?: () => Date };
 
 export type FirestoreDateInput =
   | FirestoreTimestampLike
@@ -41,11 +41,14 @@ export function toMillisSafe(value: FirestoreDateInput): number | null {
   try {
     if (value == null) return null;
 
-    // Explicit check for toMillis function
     const v = value as any;
     if (v && typeof v.toMillis === "function") {
-      const millis = v.toMillis();
-      return Number.isFinite(millis) ? millis : null;
+      try {
+        const millis = v.toMillis();
+        return Number.isFinite(millis) ? millis : null;
+      } catch {
+        return null;
+      }
     }
 
     if (typeof v?.seconds === "number") {

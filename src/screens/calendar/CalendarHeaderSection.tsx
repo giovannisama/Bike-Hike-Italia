@@ -252,7 +252,7 @@ export function CalendarHeaderSection({
             <Calendar
               key={`cal-${visibleMonth}`}
               current={visibleMonth}
-              renderArrow={(direction) => {
+              renderArrow={(direction: "left" | "right") => {
                 const iconName = direction === "left" ? "chevron-back" : "chevron-forward";
                 if (direction === "left") {
                   return (
@@ -382,7 +382,7 @@ export function CalendarHeaderSection({
                 textMonthFontWeight: "700",
                 textDayHeaderFontWeight: "600",
               }}
-              dayComponent={({ date, state, marking }) => {
+              dayComponent={({ date, state, marking }: { date?: DateData; state?: string; marking?: any }) => {
                 if (!date) {
                   return (
                     <View
@@ -474,7 +474,7 @@ export function CalendarHeaderSection({
                             gap: 2,
                           }}
                         >
-                          {(dots.length > 0 ? dots : [{ color: UI.colors.action }]).map((dot, idx) => (
+                          {(dots.length > 0 ? dots : [{ color: UI.colors.action }]).map((dot: { color: string }, idx: number) => (
                             <View
                               key={idx}
                               style={{

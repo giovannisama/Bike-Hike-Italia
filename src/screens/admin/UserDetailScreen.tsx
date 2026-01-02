@@ -1,6 +1,6 @@
 // src/screens/admin/UserDetailScreen.tsx
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, Switch, Pressable, Platform } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, TextInput, Switch, Pressable, Platform, ScrollView, KeyboardAvoidingView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useRoute, useNavigation } from "@react-navigation/native";
@@ -567,15 +567,15 @@ export default function UserDetailScreen() {
   const statusLabel = isSelfDeleted ? "Eliminato" : status?.statusLabel ?? "In attesa";
   return (
     <Screen
-      useNativeHeader={false}
+      useNativeHeader={true}
       title={undefined}
-      scroll={true}
+      scroll={false}
       keyboardShouldPersistTaps="handled"
       backgroundColor="#FDFCF8"
-      disableHero={true}
     >
       <ScreenHeader
-        title="Dettaglio Utente"
+        title="DETTAGLIO UTENTE"
+        subtitle="Gestisci profilo e permessi"
         rightAction={
           canEditProfile && !editMode ? (
             <TouchableOpacity
@@ -589,260 +589,267 @@ export default function UserDetailScreen() {
         }
       />
 
-      <View style={styles.profileHeader}>
-        <Text style={styles.profileName}>{fullName()}</Text>
-        <View style={styles.badgeRow}>
-          <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
-            <Text style={styles.badgeText}>{roleLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.badge,
-              isSelfDeleted
-                ? styles.badgeDanger
-                : statusKey === "disabled"
-                  ? styles.badgeMuted
-                  : statusKey === "active"
-                    ? styles.badgeSuccess
-                    : styles.badgePending,
-            ]}
-          >
-            <Text style={styles.badgeText}>{statusLabel}</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.container}>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dati profilo</Text>
-          <View style={styles.card}>
-            {!editMode ? (
-              <>
-                <InfoRow
-                  label="Nome completo"
-                  value={
-                    isSelfDeleted
-                      ? "—"
-                      : `${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"
-                  }
-                />
-                <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
-                <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
-                <InfoRow label="Email" value={user.email || "—"} />
-                {isSelfDeleted && (
-                  <InfoRow
-                    label="Eliminato il"
-                    value={user.selfDeletedAt?.toDate?.() ? user.selfDeletedAt.toDate().toLocaleString() : "—"}
-                  />
-                )}
-              </>
-            ) : (
-              <>
-                <LabeledInput
-                  ref={firstNameRef}
-                  label="Nome"
-                  value={fFirstName}
-                  placeholder="Mario"
-                  returnKeyType="next"
-                  onSubmitEditing={() => lastNameRef.current?.focus()}
-                  onChangeText={handleFirstNameChange}
-                />
-                <LabeledInput
-                  ref={lastNameRef}
-                  label="Cognome"
-                  value={fLastName}
-                  placeholder="Rossi"
-                  returnKeyType="next"
-                  onSubmitEditing={() => displayNameRef.current?.focus()}
-                  onChangeText={handleLastNameChange}
-                />
-                <LabeledInput
-                  ref={displayNameRef}
-                  label="Display Name"
-                  value={fDisplayName}
-                  placeholder="Rossi, Mario"
-                  returnKeyType="next"
-                  onSubmitEditing={() => nicknameRef.current?.focus()}
-                  onChangeText={handleDisplayNameChange}
-                />
-                <LabeledInput
-                  ref={nicknameRef}
-                  label="Nickname"
-                  value={fNickname}
-                  placeholder="SuperBiker"
-                  returnKeyType="done"
-                  onChangeText={handleNicknameChange}
-                />
-              </>
-            )}
-          </View>
-        </View>
-
-        {isCurrentOwner && !editMode && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Visibilità sezioni</Text>
-            <View style={styles.card}>
-              {(
-                [
-                  { key: "ciclismo", label: "Ciclismo" },
-                  { key: "trekking", label: "Trekking" },
-                  { key: "bikeaut", label: "Bike Aut" },
-                ] as Array<{ key: EnabledSectionKey; label: string }>
-              ).map((item) => {
-                const enabled = enabledSectionsDraft.includes(item.key);
-                const disabledToggle = !canEditVisibility || visibilitySaving;
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={({ pressed }) => [
-                      styles.settingRow,
-                      pressed && styles.rowPressed,
-                    ]}
-                    onPress={() => toggleSection(item.key)}
-                    disabled={disabledToggle}
-                  >
-                    <View style={styles.rowText}>
-                      <Text style={styles.toggleLabel}>{item.label}</Text>
-                    </View>
-                    <View style={styles.switchWrapper} pointerEvents="none">
-                      <Switch
-                        value={enabled}
-                        onValueChange={() => { }}
-                        disabled={disabledToggle}
-                        trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
-                        thumbColor={enabled ? UI.colors.action : "#fff"}
-                      />
-                    </View>
-                  </Pressable>
-                );
-              })}
-              <View style={styles.visibilitySpacer} />
-              <Button
-                title={visibilitySaving ? "Salvataggio…" : "Salva visibilità"}
-                onPress={saveVisibility}
-                disabled={!isVisibilityDirty || visibilitySaving}
-              />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+      >
+        <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+          <View style={styles.profileHeader}>
+            <Text style={styles.profileName}>{fullName()}</Text>
+            <View style={styles.badgeRow}>
+              <View style={[styles.badge, user?.role === "owner" ? styles.badgeOwner : state.isAdmin ? styles.badgeAdmin : styles.badgeMember]}>
+                <Text style={styles.badgeText}>{roleLabel}</Text>
+              </View>
+              <View
+                style={[
+                  styles.badge,
+                  isSelfDeleted
+                    ? styles.badgeDanger
+                    : statusKey === "disabled"
+                      ? styles.badgeMuted
+                      : statusKey === "active"
+                        ? styles.badgeSuccess
+                        : styles.badgePending,
+                ]}
+              >
+                <Text style={styles.badgeText}>{statusLabel}</Text>
+              </View>
             </View>
           </View>
-        )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Azioni</Text>
-          <View style={styles.card}>
-            {editMode ? (
-              <View style={styles.actionGroup}>
-                <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
-                <Button title="Annulla" onPress={cancelEdit} variant="secondary" />
-              </View>
-            ) : (
-              <>
-                {isSelfDeleted ? (
-                  <Text style={styles.selfDeletedNote}>
-                    Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
-                  </Text>
-                ) : isCurrentOwner ? (
+          <View style={styles.container}>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Dati profilo</Text>
+              <View style={styles.card}>
+                {!editMode ? (
                   <>
-                    <View style={styles.actionGroup}>
-                      {canApprove && (
-                        <Button
-                          title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
-                          onPress={handleApprove}
-                          disabled={!!actionLoading}
-                        />
-                      )}
-                      {canReject && (
-                        <Button
-                          title={actionLoading === "reject" ? "Rifiuto…" : "Rifiuta"}
-                          onPress={handleReject}
-                          disabled={!!actionLoading}
-                          variant="secondary"
-                          danger
-                        />
-                      )}
-                      {canActivate && (
-                        <Button
-                          title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
-                          onPress={handleActivate}
-                          disabled={!!actionLoading}
-                        />
-                      )}
-                      {canDeactivate && (
-                        <Button
-                          title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
-                          onPress={handleDeactivate}
-                          disabled={!!actionLoading}
-                          danger
-                        />
-                      )}
-                    </View>
-
-                    {canChangeRole && (
-                      <View style={styles.roleBlock}>
-                        <Text style={styles.subSectionTitle}>Ruolo</Text>
-                        <View style={styles.roleRow}>
-                          {(["owner", "admin", "member"] as UserRole[]).map((role) => {
-                            const isCurrent = role === currentRole;
-                            const allowed = availableRoleTargets.includes(role);
-                            const disabled = isCurrent || !allowed || !!actionLoading;
-                            return (
-                              <TouchableOpacity
-                                key={`role-pill-${role}`}
-                                onPress={() => handleChangeRole(role)}
-                                disabled={disabled}
-                                accessibilityRole="button"
-                                style={[
-                                  styles.rolePill,
-                                  isCurrent && styles.rolePillActive,
-                                  disabled && !isCurrent && styles.rolePillDisabled,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.rolePillText,
-                                    isCurrent && styles.rolePillTextActive,
-                                  ]}
-                                >
-                                  {ROLE_LABELS[role]}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    )}
-
-                    {!canChangeRole && !canEditProfile && !canApprove && !canActivate && !canDeactivate && (
-                      <Text style={styles.ownerOnlyNote}>
-                        Nessuna azione disponibile per questo profilo.
-                      </Text>
-                    )}
-
-                    {!editMode && canDelete && (
-                      <>
-                        <View style={styles.actionDivider} />
-                        <Text style={styles.subSectionTitle}>Eliminazione</Text>
-                        <Text style={styles.dangerNote}>Azione irreversibile.</Text>
-                        <Button
-                          title={actionLoading === "delete" ? "Eliminazione…" : "Elimina definitivamente"}
-                          onPress={handleDelete}
-                          disabled={!!actionLoading}
-                          danger
-                        />
-                      </>
+                    <InfoRow
+                      label="Nome completo"
+                      value={
+                        isSelfDeleted
+                          ? "—"
+                          : `${user.firstName || "—"} ${user.lastName || ""}`.trim() || user.displayName || "—"
+                      }
+                    />
+                    <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
+                    <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
+                    <InfoRow label="Email" value={user.email || "—"} />
+                    {isSelfDeleted && (
+                      <InfoRow
+                        label="Eliminato il"
+                        value={user.selfDeletedAt?.toDate?.() ? user.selfDeletedAt.toDate().toLocaleString() : "—"}
+                      />
                     )}
                   </>
                 ) : (
-                  <Text style={styles.ownerOnlyNote}>
-                    Solo un Owner può modificare o approvare altri utenti.
-                  </Text>
+                  <>
+                    <LabeledInput
+                      ref={firstNameRef}
+                      label="Nome"
+                      value={fFirstName}
+                      placeholder="Mario"
+                      returnKeyType="next"
+                      onSubmitEditing={() => lastNameRef.current?.focus()}
+                      onChangeText={handleFirstNameChange}
+                    />
+                    <LabeledInput
+                      ref={lastNameRef}
+                      label="Cognome"
+                      value={fLastName}
+                      placeholder="Rossi"
+                      returnKeyType="next"
+                      onSubmitEditing={() => displayNameRef.current?.focus()}
+                      onChangeText={handleLastNameChange}
+                    />
+                    <LabeledInput
+                      ref={displayNameRef}
+                      label="Display Name"
+                      value={fDisplayName}
+                      placeholder="Rossi, Mario"
+                      returnKeyType="next"
+                      onSubmitEditing={() => nicknameRef.current?.focus()}
+                      onChangeText={handleDisplayNameChange}
+                    />
+                    <LabeledInput
+                      ref={nicknameRef}
+                      label="Nickname"
+                      value={fNickname}
+                      placeholder="SuperBiker"
+                      returnKeyType="done"
+                      onChangeText={handleNicknameChange}
+                    />
+                  </>
                 )}
-              </>
-            )}
-          </View>
-        </View>
+              </View>
+            </View>
 
-      </View>
+            {isCurrentOwner && !editMode && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Visibilità sezioni</Text>
+                <View style={styles.card}>
+                  {(
+                    [
+                      { key: "ciclismo", label: "Ciclismo" },
+                      { key: "trekking", label: "Trekking" },
+                      { key: "bikeaut", label: "Bike Aut" },
+                    ] as Array<{ key: EnabledSectionKey; label: string }>
+                  ).map((item) => {
+                    const enabled = enabledSectionsDraft.includes(item.key);
+                    const disabledToggle = !canEditVisibility || visibilitySaving;
+                    return (
+                      <Pressable
+                        key={item.key}
+                        style={({ pressed }) => [
+                          styles.settingRow,
+                          pressed && styles.rowPressed,
+                        ]}
+                        onPress={() => toggleSection(item.key)}
+                        disabled={disabledToggle}
+                      >
+                        <View style={styles.rowText}>
+                          <Text style={styles.toggleLabel}>{item.label}</Text>
+                        </View>
+                        <View style={styles.switchWrapper} pointerEvents="none">
+                          <Switch
+                            value={enabled}
+                            onValueChange={() => { }}
+                            disabled={disabledToggle}
+                            trackColor={{ false: "#E2E8F0", true: "#86EFAC" }}
+                            thumbColor={enabled ? UI.colors.action : "#fff"}
+                          />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                  <View style={styles.visibilitySpacer} />
+                  <Button
+                    title={visibilitySaving ? "Salvataggio…" : "Salva visibilità"}
+                    onPress={saveVisibility}
+                    disabled={!isVisibilityDirty || visibilitySaving}
+                  />
+                </View>
+              </View>
+            )}
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Azioni</Text>
+              <View style={styles.card}>
+                {editMode ? (
+                  <View style={styles.actionGroup}>
+                    <Button title={actionLoading === "edit" ? "Salvataggio…" : "Salva"} onPress={saveEdit} disabled={!!actionLoading} />
+                    <Button title="Annulla" onPress={cancelEdit} variant="secondary" />
+                  </View>
+                ) : (
+                  <>
+                    {isSelfDeleted ? (
+                      <Text style={styles.selfDeletedNote}>
+                        Questo account è stato eliminato dall'utente. Puoi rimuoverlo definitivamente dall'archivio se necessario.
+                      </Text>
+                    ) : isCurrentOwner ? (
+                      <>
+                        <View style={styles.actionGroup}>
+                          {canApprove && (
+                            <Button
+                              title={actionLoading === "approve" ? "Approvazione…" : "Approva"}
+                              onPress={handleApprove}
+                              disabled={!!actionLoading}
+                            />
+                          )}
+                          {canReject && (
+                            <Button
+                              title={actionLoading === "reject" ? "Rifiuto…" : "Rifiuta"}
+                              onPress={handleReject}
+                              disabled={!!actionLoading}
+                              variant="secondary"
+                              danger
+                            />
+                          )}
+                          {canActivate && (
+                            <Button
+                              title={actionLoading === "activate" ? "Attivazione…" : "Attiva"}
+                              onPress={handleActivate}
+                              disabled={!!actionLoading}
+                            />
+                          )}
+                          {canDeactivate && (
+                            <Button
+                              title={actionLoading === "deactivate" ? "Disattivazione…" : "Disattiva"}
+                              onPress={handleDeactivate}
+                              disabled={!!actionLoading}
+                              danger
+                            />
+                          )}
+                        </View>
+
+                        {canChangeRole && (
+                          <View style={styles.roleBlock}>
+                            <Text style={styles.subSectionTitle}>Ruolo</Text>
+                            <View style={styles.roleRow}>
+                              {(["owner", "admin", "member"] as UserRole[]).map((role) => {
+                                const isCurrent = role === currentRole;
+                                const allowed = availableRoleTargets.includes(role);
+                                const disabled = isCurrent || !allowed || !!actionLoading;
+                                return (
+                                  <TouchableOpacity
+                                    key={`role-pill-${role}`}
+                                    onPress={() => handleChangeRole(role)}
+                                    disabled={disabled}
+                                    accessibilityRole="button"
+                                    style={[
+                                      styles.rolePill,
+                                      isCurrent && styles.rolePillActive,
+                                      disabled && !isCurrent && styles.rolePillDisabled,
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.rolePillText,
+                                        isCurrent && styles.rolePillTextActive,
+                                      ]}
+                                    >
+                                      {ROLE_LABELS[role]}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        )}
+
+                        {!canChangeRole && !canEditProfile && !canApprove && !canActivate && !canDeactivate && (
+                          <Text style={styles.ownerOnlyNote}>
+                            Nessuna azione disponibile per questo profilo.
+                          </Text>
+                        )}
+
+                        {!editMode && canDelete && (
+                          <>
+                            <View style={styles.actionDivider} />
+                            <Text style={styles.subSectionTitle}>Eliminazione</Text>
+                            <Text style={styles.dangerNote}>Azione irreversibile.</Text>
+                            <Button
+                              title={actionLoading === "delete" ? "Eliminazione…" : "Elimina definitivamente"}
+                              onPress={handleDelete}
+                              disabled={!!actionLoading}
+                              danger
+                            />
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.ownerOnlyNote}>
+                        Solo un Owner può modificare o approvare altri utenti.
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            </View>
+
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen >
   );
 }

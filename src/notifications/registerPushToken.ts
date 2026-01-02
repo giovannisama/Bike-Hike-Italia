@@ -10,6 +10,7 @@ import {
 import { auth, db } from "../firebase";
 import { Platform, PermissionsAndroid } from "react-native";
 import { info, warn, error } from "../utils/logger";
+import { captureExceptionSafe } from "../utils/observability";
 
 /**
  * Richiede permessi, configura il canale (Android),
@@ -69,6 +70,13 @@ export async function registerPushToken() {
   try {
     if (!Device.isDevice) {
       info("Push notifications require a physical device");
+      return;
+    }
+
+    if (Platform.OS === "android" && Constants.appOwnership === "expo") {
+      if (__DEV__) {
+        info("Expo Go Android: remote push disabled in Expo Go SDK>=53. Use a development build.");
+      }
       return;
     }
 
@@ -166,6 +174,11 @@ export async function registerPushToken() {
     info("Expo push token saved", { tokenCount: normalized.length });
   } catch (e) {
     error("registerPushToken failed");
+    if (!__DEV__) {
+      const code = (e as any)?.code;
+      const tag = code ? String(code) : "unknown";
+      captureExceptionSafe(new Error(`registerPushToken failed: ${tag}`));
+    }
   }
 }
 

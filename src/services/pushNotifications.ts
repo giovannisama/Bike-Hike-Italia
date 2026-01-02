@@ -6,6 +6,7 @@ import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import Constants from "expo-constants";
 import { info, warn, error as logError } from "../utils/logger";
+import { captureExceptionSafe } from "../utils/observability";
 
 // 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
 const FALLBACK_EXPO_PROJECT_ID = "e74521c0-d040-4137-a8d1-0d535e353f2d";
@@ -87,6 +88,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
   } catch (err) {
     logError("getExpoPushTokenAsync failed");
+    if (!__DEV__) {
+      captureExceptionSafe(new Error("pushNotifications token request failed"));
+    }
     return null;
   }
 
@@ -119,6 +123,14 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       info("Push token saved for current user");
     } catch (err) {
       logError("Failed to save push token to Firestore");
+      if (!__DEV__) {
+        const code = (err as any)?.code;
+        const tag = code ? String(code) : "unknown";
+        if (tag === "permission-denied" || tag === "unavailable") {
+          captureExceptionSafe(new Error(`firestore ${tag}`));
+        }
+        captureExceptionSafe(new Error(`pushNotifications save token failed: ${tag}`));
+      }
     }
   } else {
     warn("No authenticated user; skip saving push token");
@@ -143,6 +155,14 @@ export async function setNotificationsDisabled(disabled: boolean): Promise<void>
     info("notificationsDisabled updated", { disabled });
   } catch (err) {
     logError("Failed to update notificationsDisabled");
+    if (!__DEV__) {
+      const code = (err as any)?.code;
+      const tag = code ? String(code) : "unknown";
+      if (tag === "permission-denied" || tag === "unavailable") {
+        captureExceptionSafe(new Error(`firestore ${tag}`));
+      }
+      captureExceptionSafe(new Error(`pushNotifications update notificationsDisabled failed: ${tag}`));
+    }
     throw err;
   }
 }

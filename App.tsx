@@ -3,6 +3,9 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
 import { registerPushToken } from "./src/notifications/registerPushToken";
+import * as Sentry from "sentry-expo";
+import Constants from "expo-constants";
+import { addBreadcrumbSafe } from "./src/utils/observability";
 import { auth } from "./src/firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import useCurrentProfile from "./src/hooks/useCurrentProfile";
@@ -17,6 +20,24 @@ const AppTheme = {
   ...DefaultTheme,
   colors: { ...DefaultTheme.colors, background: "#ffffff" },
 };
+
+const APP_VERSION =
+  Constants.expoConfig?.version ??
+  (Constants as any)?.manifest?.version ??
+  "unknown";
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+const SENTRY_ENV =
+  process.env.EXPO_PUBLIC_SENTRY_ENV ?? (__DEV__ ? "development" : "production");
+
+Sentry.init({
+  dsn: SENTRY_DSN || undefined,
+  enabled: !__DEV__ && !!SENTRY_DSN,
+  enableInExpoDevelopment: false,
+  tracesSampleRate: 0,
+  sendDefaultPii: false,
+  release: APP_VERSION,
+  environment: SENTRY_ENV,
+});
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -70,7 +91,22 @@ export default function App() {
   // 3) Navigator
   return (
     <AppErrorBoundary>
-      <NavigationContainer theme={AppTheme} ref={navRef}>
+      <NavigationContainer
+        theme={AppTheme}
+        ref={navRef}
+        onReady={() => {
+          const route = navRef.getCurrentRoute();
+          if (route?.name) {
+            addBreadcrumbSafe({ category: "navigation", message: route.name, level: "info" });
+          }
+        }}
+        onStateChange={() => {
+          const route = navRef.getCurrentRoute();
+          if (route?.name) {
+            addBreadcrumbSafe({ category: "navigation", message: route.name, level: "info" });
+          }
+        }}
+      >
         <RootNavigator user={user} profile={profile} />
       </NavigationContainer>
     </AppErrorBoundary>

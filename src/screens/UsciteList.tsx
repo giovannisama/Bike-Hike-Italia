@@ -153,7 +153,7 @@ const RideListItem = React.memo(function RideListItem({
           {isCancelled ? (
             <StatusBadge status="cancelled" />
           ) : (
-            item.difficulty && (
+            item.difficulty && kind !== "trek" && (
               <DifficultyBadge level={item.difficulty} />
             )
           )}
@@ -184,6 +184,16 @@ const RideListItem = React.memo(function RideListItem({
             <View style={styles.infoItem}>
               <Ionicons name="person-outline" size={16} color="#64748B" />
               <Text style={styles.infoText}>Guide: {guideLabel}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Trekking Difficulty Text Row */}
+        {kind === "trek" && item.difficulty ? (
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <Ionicons name="stats-chart-outline" size={16} color="#64748B" />
+              <Text style={styles.infoText}>Difficoltà: {item.difficulty}</Text>
             </View>
           </View>
         ) : null}

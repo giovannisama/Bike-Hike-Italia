@@ -563,15 +563,25 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       byDay.get(key)!.hasSocial = true;
     }
 
-    const colorFor = (r: Ride) => r.kind === "trek" ? UI.colors.eventTrekking : UI.colors.eventCycling;
-
     byDay.forEach((entry, day) => {
-      const rideDots = entry.rides.length > 0
-        ? [{ color: colorFor(entry.rides[0]) }]
-        : [];
-      const dots = entry.hasSocial
-        ? [...rideDots, { color: UI.colors.eventSocial }]
-        : rideDots;
+      const dots: any[] = [];
+
+      const hasCycling = entry.rides.some(r => r.kind !== "trek");
+      const hasTrekking = entry.rides.some(r => r.kind === "trek");
+
+      // 1. Cycling
+      if (hasCycling) {
+        dots.push({ color: UI.colors.eventCycling });
+      }
+      // 2. Trekking
+      if (hasTrekking) {
+        dots.push({ color: UI.colors.eventTrekking });
+      }
+      // 3. Social
+      if (entry.hasSocial) {
+        dots.push({ color: UI.colors.eventSocial });
+      }
+
       out[day] = {
         marked: dots.length > 0,
         dots,
@@ -594,8 +604,20 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
   const listForSelected = useMemo(() => {
     const key = selectedDay;
-    // Just filter ridesVisible by day
-    return ridesVisible.filter((r) => toLocalISODate(r.dateTime || r.date) === key);
+    const dayRides = ridesVisible.filter((r) => toLocalISODate(r.dateTime || r.date) === key);
+
+    // Sort: Cycling First, then Trekking. Secondary sort by Time.
+    dayRides.sort((a, b) => {
+      const isTrekA = a.kind === "trek";
+      const isTrekB = b.kind === "trek";
+      if (isTrekA !== isTrekB) return isTrekA ? 1 : -1; // Ride (false) comes before Trek (true)
+
+      const da = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
+      const db = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
+      return da - db;
+    });
+
+    return dayRides;
   }, [ridesVisible, selectedDay]);
 
   const socialForSelectedDay = useMemo(() => {
@@ -619,6 +641,11 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     // Return visible rides, sorted
     const list = [...ridesVisible];
     list.sort((a, b) => {
+      // Keep search results time-sorted? Or grouped?
+      // "Elenco degli eventi per giorno" implies day view specifically.
+      // Search results might span multiple days, so pure time sort is often better.
+      // But if consistency is desired, we can group.
+      // Let's stick to TIME primarily for global search to avoid confusing date jumps.
       const da = (a.dateTime || a.date)?.toDate()?.getTime() ?? 0;
       const db = (b.dateTime || b.date)?.toDate()?.getTime() ?? 0;
       return da - db;
@@ -769,7 +796,13 @@ export function useCalendarScreen(): UseCalendarScreenResult {
 
   const openRide = useCallback(
     (ride: Ride) => {
-      navigation.navigate("RideDetails", { rideId: ride.id, title: ride.title });
+      const isTrek = ride.kind === "trek";
+      navigation.navigate("RideDetails", {
+        rideId: ride.id,
+        title: ride.title,
+        collectionName: isTrek ? "treks" : "rides",
+        kind: isTrek ? "trek" : "ride",
+      });
     },
     [navigation]
   );

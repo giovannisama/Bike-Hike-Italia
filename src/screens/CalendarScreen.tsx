@@ -11,8 +11,9 @@ import {
   StyleSheet,
   DeviceEventEmitter,
   Platform,
+  ScrollView,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DateData } from "react-native-calendars";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,6 +30,24 @@ import { RideList } from "./calendar/RideList";
 import { StatusBadge } from "./calendar/StatusBadge";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import { calendarStyles } from "./calendar/styles";
+
+// Helper for Social Icon (matches RideList style)
+const CategoryIcon = ({ name, color }: { name: any; color: string }) => (
+  <View
+    style={{
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderColor: color,
+      borderWidth: 1,
+      marginRight: 12,
+    }}
+  >
+    <MaterialCommunityIcons name={name} size={20} color={color} />
+  </View>
+);
 
 export default function CalendarScreen() {
   const navigation = useNavigation<any>();
@@ -75,9 +94,12 @@ export default function CalendarScreen() {
       const status = item.status || "active";
       return (
         <TouchableOpacity
-          style={[calendarStyles.rideCard, { marginBottom: 8 }]}
+          style={[calendarStyles.rideCard, { marginBottom: 8, alignItems: "flex-start" }]}
           onPress={() => navigation.navigate("SocialDetail", { eventId: item.id })}
         >
+          {/* LEFT ICON */}
+          <CategoryIcon name="account-group-outline" color={UI.colors.eventSocial} />
+
           <View style={{ flex: 1 }}>
             <View style={{ marginBottom: 8, alignSelf: "flex-start" }}>
               <StatusBadge status={status} />
@@ -89,7 +111,6 @@ export default function CalendarScreen() {
               Organizzatore: {item.organizerName || "—"}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
       );
     },
@@ -253,26 +274,70 @@ export default function CalendarScreen() {
                         : calendar.selectedDayLabel}
                     </Text>
                   </View>
-                  {(calendar.isFilteredView || rideLists.forSelectedDay.length > 0 || socialItems.length === 0) && (
-                    <>
-                      <View
-                        style={{
-                          paddingHorizontal: 16,
-                          paddingTop: 16,
-                          paddingBottom: 8,
-                          backgroundColor: "#F9FAFB",
-                        }}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
-                          Eventi in programma
-                        </Text>
-                      </View>
+
+                  {/* DAY VIEW CONTENT */}
+                  {!calendar.isFilteredView ? (
+                    <View style={{ flex: 1 }}>
+                      <ScrollView contentContainerStyle={{ paddingBottom: 32 + bottomInset }}>
+                        {/* CICLISMO GROUP */}
+                        {rideLists.forSelectedDay.some(r => r.kind !== "trek") && (
+                          <View>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Ciclismo</Text>
+                            </View>
+                            <RideList
+                              data={rideLists.forSelectedDay.filter(r => r.kind !== "trek")}
+                              onSelect={actions.openRide}
+                              contentContainerStyle={{ paddingHorizontal: 16 }}
+                              indicatorInsets={indicatorInsets}
+                              scrollEnabled={false}
+                            />
+                          </View>
+                        )}
+
+                        {/* TREKKING GROUP */}
+                        {rideLists.forSelectedDay.some(r => r.kind === "trek") && (
+                          <View>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Trekking</Text>
+                            </View>
+                            <RideList
+                              data={rideLists.forSelectedDay.filter(r => r.kind === "trek")}
+                              onSelect={actions.openRide}
+                              contentContainerStyle={{ paddingHorizontal: 16 }}
+                              indicatorInsets={indicatorInsets}
+                              scrollEnabled={false}
+                            />
+                          </View>
+                        )}
+
+                        {/* SOCIAL GROUP */}
+                        {socialItems.length > 0 && (
+                          <View>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Social</Text>
+                            </View>
+                            <View style={{ paddingHorizontal: 16 }}>
+                              {socialItems.map((item) => (
+                                <View key={item.id}>{renderSocialItem(item)}</View>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+
+                        {/* EMPTY STATE */}
+                        {rideLists.forSelectedDay.length === 0 && socialItems.length === 0 && (
+                          <View style={{ padding: 32, alignItems: "center" }}>
+                            <Text style={{ color: "#64748B" }}>Nessuna uscita per questo giorno.</Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  ) : (
+                    /* FILTERED VIEW (Search) */
+                    <View style={{ flex: 1 }}>
                       <RideList
-                        data={
-                          calendar.isFilteredView
-                            ? rideLists.filtered
-                            : rideLists.forSelectedDay
-                        }
+                        data={rideLists.filtered}
                         onSelect={actions.openRide}
                         contentContainerStyle={{
                           paddingTop: 8,
@@ -280,46 +345,9 @@ export default function CalendarScreen() {
                           paddingBottom: 32 + bottomInset,
                         }}
                         indicatorInsets={indicatorInsets}
-                        emptyMessage={
-                          calendar.isFilteredView
-                            ? "Nessun evento corrispondente ai filtri impostati."
-                            : "Nessuna uscita per questo giorno."
-                        }
-                        showDate={calendar.isFilteredView}
-                        listFooterComponent={
-                          !calendar.isFilteredView && socialItems.length > 0 ? (
-                            <View style={{ paddingTop: 16 }}>
-                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
-                                Social
-                              </Text>
-                              <View style={{ marginTop: 8 }}>
-                                {socialItems.map((item) => (
-                                  <View key={item.id}>{renderSocialItem(item)}</View>
-                                ))}
-                              </View>
-                            </View>
-                          ) : null
-                        }
+                        emptyMessage="Nessun evento corrispondente ai filtri impostati."
+                        showDate={true}
                       />
-                    </>
-                  )}
-                  {!calendar.isFilteredView && rideLists.forSelectedDay.length === 0 && socialItems.length > 0 && (
-                    <View
-                      style={{
-                        paddingHorizontal: 16,
-                        paddingTop: 16,
-                        paddingBottom: 8,
-                        backgroundColor: "#F9FAFB",
-                      }}
-                    >
-                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>
-                        Social
-                      </Text>
-                      <View style={{ marginTop: 8 }}>
-                        {socialItems.map((item) => (
-                          <View key={item.id}>{renderSocialItem(item)}</View>
-                        ))}
-                      </View>
                     </View>
                   )}
                 </View>

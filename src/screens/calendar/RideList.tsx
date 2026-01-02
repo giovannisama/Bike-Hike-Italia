@@ -9,7 +9,7 @@ import {
   Pressable,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons"; // ADDED
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"; // ADDED
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Ride } from "./types";
@@ -19,6 +19,24 @@ import { getDifficultyMeta } from "../../utils/rideDifficulty";
 import { deriveGuideSummary } from "../../utils/guideHelpers";
 import { StatusBadge } from "./StatusBadge";
 import { DifficultyBadge } from "./DifficultyBadge"; // ADDED
+
+// Helper to render the circle icon matching Home Screen style
+const CategoryIcon = ({ name, color }: { name: any; color: string }) => (
+  <View
+    style={{
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderColor: color,
+      borderWidth: 1,
+      marginRight: 0,
+    }}
+  >
+    <MaterialCommunityIcons name={name} size={20} color={color} />
+  </View>
+);
 
 
 
@@ -111,6 +129,7 @@ export type RideListProps = {
   onClearFilters?: () => void;
   showDate?: boolean;
   listFooterComponent?: React.ReactElement | null;
+  scrollEnabled?: boolean;
 };
 
 export function RideList({
@@ -123,11 +142,13 @@ export function RideList({
   onClearFilters,
   showDate,
   listFooterComponent,
+  scrollEnabled = true,
 }: RideListProps) {
   return (
     <FlatList
       ref={listRef}
       style={{ flex: 1 }}
+      scrollEnabled={scrollEnabled}
       data={data}
       keyExtractor={(item) => item.id}
       ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -145,8 +166,13 @@ export function RideList({
         const bikeCategoryRaw = !isTrek ? getBikeCategoryLabel(item) : "";
         const bikeCategory = bikeCategoryRaw === "Altro" ? "MTB/Gravel" : bikeCategoryRaw;
 
-        const categoryLabel = isTrek ? (item.trek?.difficulty ?? "Trekking") : bikeCategory;
+        // FIX: Chip should say "Trekking", NOT difficulty
+        const categoryLabel = isTrek ? "Trekking" : bikeCategory;
         const categoryIcon = isTrek ? "walk" : "bicycle";
+
+        // FIX: Resolve difficulty from trek object if missing on root
+        const displayDifficulty = item.difficulty ?? item.trek?.difficulty;
+
         const statusBadge = isArchived ? (
           <StatusBadge status="archived" />
         ) : (
@@ -162,14 +188,23 @@ export function RideList({
           }
         }
 
+        // Icon Logic for Card Header (Left)
+        const displayIconName = isTrek ? "hiking" : "bike";
+        const displayIconColor = isTrek ? UI.colors.eventTrekking : UI.colors.eventCycling;
+
         return (
           <TouchableOpacity style={styles.card} onPress={() => onSelect(item)}>
+            {/* LEFT ICON */}
+            <CategoryIcon name={displayIconName} color={displayIconColor} />
+
             <View style={{ flex: 1 }}>
               <View style={[styles.chipsRow, styles.chipsTop]}>
-                <View style={styles.chip}>
-                  <Ionicons name={categoryIcon} size={14} color="#0F172A" />
-                  <Text style={styles.chipText}>{categoryLabel}</Text>
-                </View>
+                {!isTrek && (
+                  <View style={styles.chip}>
+                    <Ionicons name={categoryIcon} size={14} color="#0F172A" />
+                    <Text style={styles.chipText}>{categoryLabel}</Text>
+                  </View>
+                )}
                 {statusBadge}
               </View>
               <View style={styles.headerRow}>
@@ -189,12 +224,16 @@ export function RideList({
                   Guida: <Text style={styles.metaValue}>{guidaLabel}</Text>
                 </Text>
               </View>
-              <View style={styles.metaBlock}>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Difficoltà:</Text>
-                  <DifficultyBadge level={item.difficulty} />
+
+              {/* Shared Difficulty Row (Cycling + Trekking) with Badge */}
+              {displayDifficulty && (
+                <View style={styles.metaBlock}>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>Difficoltà:</Text>
+                    <DifficultyBadge level={displayDifficulty} />
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           </TouchableOpacity>
         );

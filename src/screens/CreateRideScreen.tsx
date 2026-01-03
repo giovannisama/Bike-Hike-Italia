@@ -164,6 +164,11 @@ export default function CreateRideScreen() {
   const [elevation, setElevation] = useState("");
   const [length, setLength] = useState("");
   const [mandatoryGear, setMandatoryGear] = useState("");
+  // Trip Fields
+  const [tripType, setTripType] = useState("");
+  const [transportType, setTransportType] = useState("");
+  const [durationDays, setDurationDays] = useState("");
+  const [overnightType, setOvernightType] = useState("");
 
   const [difficulty, setDifficulty] = useState<string>(""); // opzionale
   const [maxParticipants, setMaxParticipants] = useState<string>("");
@@ -197,10 +202,10 @@ export default function CreateRideScreen() {
   // --------- util ---------
   const toggleExtraService = useCallback(
     (key: ExtraServiceKey, enabled: boolean) => {
-      if (enabled && servicesLocked && !initialEnabledServices[key]) {
+      if (servicesLocked) {
         Alert.alert(
-          "Servizio non disponibile",
-          "Non puoi attivare nuovi servizi mentre sono già presenti partecipanti prenotati."
+          "Servizi bloccati",
+          "Non puoi modificare i servizi mentre sono già presenti partecipanti prenotati."
         );
         return;
       }
@@ -376,6 +381,14 @@ export default function CreateRideScreen() {
           setMandatoryGear(d.trek.mandatoryGear ?? "");
         }
 
+        // Trip Prefill
+        if (d?.kind === "trip" && d?.trip?.Tipologia) {
+          setTripType(d.trip.Tipologia.tipoViaggio || "");
+          setTransportType(d.trip.Tipologia.mezzoTrasporto || "");
+          setDurationDays(d.trip.Tipologia.durataGiorni ? String(d.trip.Tipologia.durataGiorni) : "");
+          setOvernightType(d.trip.Tipologia.tipoPernotto || "");
+        }
+
         // date/time
         const dt = (d?.dateTime || d?.date) as Timestamp | undefined;
         if (dt?.toDate) {
@@ -409,7 +422,7 @@ export default function CreateRideScreen() {
         if (!hasParticipants) {
           try {
             const participantsSnap = await getDocs(
-              query(collection(db, "rides", rideId, "participants"), limit(1))
+              query(collection(db, collectionName, rideId, "participants"), limit(1))
             );
             hasParticipants = !participantsSnap.empty;
           } catch (err) {
@@ -449,6 +462,10 @@ export default function CreateRideScreen() {
       elevation,
       length,
       mandatoryGear,
+      tripType,
+      transportType,
+      durationDays,
+      overnightType,
     };
     const validation = validateCreateRide(form);
     const errs = getCreateRideErrors(form);
@@ -469,6 +486,10 @@ export default function CreateRideScreen() {
     elevation,
     length,
     mandatoryGear,
+    tripType,
+    transportType,
+    durationDays,
+    overnightType,
   ]);
 
   // ---------- salva ----------
@@ -517,6 +538,10 @@ export default function CreateRideScreen() {
       elevation,
       length,
       mandatoryGear,
+      tripType,
+      transportType,
+      durationDays,
+      overnightType,
     };
     const payload = mapCreateRideToFirestore(form, {
       uid: auth.currentUser.uid,
@@ -589,7 +614,9 @@ export default function CreateRideScreen() {
   };
 
   // ---------- UI ----------
-  const titleScreen = isEdit ? "Modifica Uscita" : "Crea Uscita";
+  const titleScreen = isEdit
+    ? (kind === "trip" ? "Modifica Viaggio" : "Modifica Uscita")
+    : (kind === "trip" ? "Crea Viaggio" : "Crea Uscita");
   const adminWarning = !isAdmin ? "Solo Admin o Owner possono salvare o modificare un’uscita." : null;
 
   // TODO: sezione UI principale molto ampia; valutare estrazione in sottocomponenti (es. form principale, feedback, warning).
@@ -698,7 +725,7 @@ export default function CreateRideScreen() {
               </View>
 
               <View style={styles.formBlock}>
-                <Text style={styles.label}>Guida</Text>
+                <Text style={styles.label}>{kind === "trip" ? "Organizzatore" : "Guida"}</Text>
                 <TextInput
                   value={guidaText}
                   onChangeText={setGuidaText}
@@ -715,8 +742,10 @@ export default function CreateRideScreen() {
             {/* CARD 2: TIPO & DIFFICOLTÀ */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                {kind === "trek" ? <Ionicons name="walk-outline" size={22} color={UI.colors.action} /> : <Ionicons name="bicycle-outline" size={22} color={UI.colors.action} />}
-                <Text style={styles.cardTitle}>{kind === "trek" ? "Dettagli Trekking" : "Tipologia"}</Text>
+                {kind === "trek" ? <Ionicons name="walk-outline" size={22} color={UI.colors.action} /> :
+                  kind === "trip" ? <Ionicons name="airplane-outline" size={22} color={UI.colors.action} /> :
+                    <Ionicons name="bicycle-outline" size={22} color={UI.colors.action} />}
+                <Text style={styles.cardTitle}>{kind === "trek" ? "Dettagli Trekking" : kind === "trip" ? "Dettagli Viaggio" : "Tipologia"}</Text>
               </View>
 
               {kind === "ride" && (
@@ -768,25 +797,73 @@ export default function CreateRideScreen() {
                 </View>
               )}
 
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Difficoltà</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
-                  {DIFFICULTY_OPTIONS.map((opt) => {
-                    const active = difficulty === opt;
-                    const dotColor = getDifficultyColor(opt);
-                    return (
-                      <Pressable
-                        key={opt}
-                        onPress={() => setDifficulty(active ? "" : opt)}
-                        style={[styles.chip, active && styles.chipActive]}
-                      >
-                        <View style={[styles.dot, { backgroundColor: dotColor }]} />
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
+              {kind === "trip" && (
+                <View style={{ gap: 12, marginBottom: 16 }}>
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Tipo Viaggio</Text>
+                    <TextInput
+                      value={tripType}
+                      onChangeText={setTripType}
+                      placeholder="Es. Avventura, Relax"
+                      placeholderTextColor="#94a3b8"
+                      style={styles.input}
+                    />
+                  </View>
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Durata (giorni)</Text>
+                    <TextInput
+                      value={durationDays}
+                      onChangeText={setDurationDays}
+                      placeholder="Es. 7 giorni"
+                      placeholderTextColor="#94a3b8"
+                      style={[styles.input, errors.durationDays && styles.inputError]}
+                    />
+                    {errors.durationDays && <Text style={styles.errorText}>{errors.durationDays}</Text>}
+                  </View>
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Trasporto</Text>
+                    <TextInput
+                      value={transportType}
+                      onChangeText={setTransportType}
+                      placeholder="Es. Bus, Aereo"
+                      placeholderTextColor="#94a3b8"
+                      style={styles.input}
+                    />
+                  </View>
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Pernotto</Text>
+                    <TextInput
+                      value={overnightType}
+                      onChangeText={setOvernightType}
+                      placeholder="Es. Hotel, B&B"
+                      placeholderTextColor="#94a3b8"
+                      style={styles.input}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {kind !== "trip" && (
+                <View style={styles.formBlock}>
+                  <Text style={styles.label}>Difficoltà</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScrollContent}>
+                    {DIFFICULTY_OPTIONS.map((opt) => {
+                      const active = difficulty === opt;
+                      const dotColor = getDifficultyColor(opt);
+                      return (
+                        <Pressable
+                          key={opt}
+                          onPress={() => setDifficulty(active ? "" : opt)}
+                          style={[styles.chip, active && styles.chipActive]}
+                        >
+                          <View style={[styles.dot, { backgroundColor: dotColor }]} />
+                          <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* CARD 3: DATA & DOVE */}
@@ -940,7 +1017,7 @@ export default function CreateRideScreen() {
               <View style={styles.serviceList}>
                 {EXTRA_SERVICE_DEFINITIONS.map(({ key, label, helper }, index) => {
                   const state = extraServices[key];
-                  const isToggleLocked = servicesLocked && !initialEnabledServices[key];
+                  const isToggleLocked = servicesLocked;
                   const showDivider = index < EXTRA_SERVICE_DEFINITIONS.length - 1;
                   return (
                     <View
@@ -1000,10 +1077,10 @@ export default function CreateRideScreen() {
             {/* Added extra padding for scroll content to clear sticky footer */}
             <View style={{ height: 40 }} />
           </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAvoidingView >
 
         {/* STICKY CTA */}
-        <View style={styles.footerContainer}>
+        < View style={styles.footerContainer} >
           <TouchableOpacity
             onPress={onSave}
             disabled={saving || !isAdmin || loadingPrefill}
@@ -1020,12 +1097,12 @@ export default function CreateRideScreen() {
               </View>
             ) : (
               <Text style={styles.saveBtnText}>
-                {isEdit ? "Salva Modifiche" : "Crea Uscita"}
+                {isEdit ? "Salva Modifiche" : (kind === "trip" ? "Crea Viaggio" : "Crea Uscita")}
               </Text>
             )}
           </TouchableOpacity>
           <Text style={styles.mandatoryNote}>* Campi obbligatori</Text>
-        </View>
+        </View >
       </View >
 
       {/* iOS Modal DatePicker */}

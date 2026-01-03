@@ -61,8 +61,9 @@ type Ride = {
   difficulty?: string | null;
   archived?: boolean;
   manualParticipants?: any[];
-  kind?: "ride" | "trek";
+  kind?: "ride" | "trek" | "trip";
   trek?: TrekDoc["trek"];
+  trip?: any; // Trip data
 };
 
 const normalizeForSearch = (value?: string) =>
@@ -78,14 +79,25 @@ const normalizeForSearch = (value?: string) =>
 // Removed local ACTION_GREEN -> using UI.colors.action
 
 // ---- Badge partecipanti ----
-function ParticipantsBadge({ count, max, kind }: { count?: number; max?: number | null; kind?: "ride" | "trek" }) {
+function ParticipantsBadge({ count, max, kind }: { count?: number; max?: number | null; kind?: "ride" | "trek" | "trip" }) {
   const display = max != null ? `${count ?? 0}/${max}` : String(count ?? 0);
   // Determine colors based on kind
   const isTrek = kind === "trek";
+  const isTrip = kind === "trip";
   // Trekking: Red (#e11d48) -> Bg Rose-100 (#FFE4E6)
   // Cycling: Green (#16a34a) -> Bg Green-100 (#DCFCE7)
-  const color = isTrek ? UI.colors.eventTrekking : UI.colors.eventCycling;
-  const bg = isTrek ? "#FFE4E6" : UI.colors.eventCyclingBg;
+  // Viaggi: Indigo/Purple -> Bg Slate-100? Or use UI colors.
+
+  let color = UI.colors.eventCycling;
+  let bg = UI.colors.eventCyclingBg;
+
+  if (isTrek) {
+    color = UI.colors.eventTrekking;
+    bg = "#FFE4E6";
+  } else if (isTrip) {
+    color = UI.colors.eventTravel || "#7c3aed"; // Fallback purple
+    bg = "#F3E8FF"; // Purple-100
+  }
 
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
@@ -101,7 +113,7 @@ type RideListItemProps = {
   onPress: (rideId: string, title: string) => void;
   onSubscribe: (rideId: string) => void;
   onUnsubscribe: (rideId: string) => void;
-  kind?: "ride" | "trek";
+  kind?: "ride" | "trek" | "trip";
 };
 
 const RideListItem = React.memo(function RideListItem({
@@ -153,7 +165,7 @@ const RideListItem = React.memo(function RideListItem({
           {isCancelled ? (
             <StatusBadge status="cancelled" />
           ) : (
-            item.difficulty && kind !== "trek" && (
+            item.difficulty && (kind !== "trek" && kind !== "trip") && (
               <DifficultyBadge level={item.difficulty} />
             )
           )}
@@ -234,7 +246,7 @@ export default function UsciteList() {
   } = route.params || {};
 
   const { width } = useWindowDimensions();
-  const { isAdmin, profile, loading: profileLoading, canSeeCiclismo, canSeeTrekking } =
+  const { isAdmin, profile, loading: profileLoading, canSeeCiclismo, canSeeTrekking, canSeeViaggi } =
     useCurrentProfile() as any;
 
   const approvedOk =
@@ -248,9 +260,10 @@ export default function UsciteList() {
       (profile.disabled === "true") ||
       (profile.disabled === 1));
 
-  // Basic permission check: if Kind is Trek, check Trek permission?
   // User profile has 'canSeeTrekking'.
-  const hasPermission = kind === "trek" ? canSeeTrekking : canSeeCiclismo;
+  let hasPermission = canSeeCiclismo;
+  if (kind === "trek") hasPermission = canSeeTrekking;
+  else if (kind === "trip") hasPermission = canSeeViaggi;
   const canReadRides = isAdmin || (approvedOk && !disabledOn); // General approval
 
   const [rides, setRides] = useState<Ride[]>([]);
@@ -382,7 +395,12 @@ export default function UsciteList() {
       setRides([]); setLoading(false); return;
     }
     const base = collection(db, collectionName);
-    const q = query(base, orderBy("dateTime", "asc"));
+    // For 'trips', we avoid orderBy("dateTime") temporarily to bypass potential missing index or permission/filter mismatch issues
+    // given that the collection is likely small and new. We sort client-side.
+    const isTrips = collectionName === "trips";
+    const q = isTrips
+      ? query(base)
+      : query(base, orderBy("dateTime", "asc"));
 
     const unsub = onSnapshot(
       q,
@@ -412,6 +430,16 @@ export default function UsciteList() {
             trek: d?.trek,
           });
         });
+
+        // Client-side sort for trips (or strictly enforce for all to be safe?)
+        // If isTrips, we MUST sort because query didn't.
+        if (isTrips) {
+          rows.sort((a, b) => {
+            const ta = a.dateTime ? a.dateTime.toMillis() : 0;
+            const tb = b.dateTime ? b.dateTime.toMillis() : 0;
+            return ta - tb;
+          });
+        }
 
         ridesRef.current = rows;
         setRides(rows);
@@ -541,7 +569,11 @@ export default function UsciteList() {
           isAdmin && (
             <TouchableOpacity
               onPress={() => navigation.navigate("CreateRide", { collectionName, kind })}
-              style={[styles.addButton, { backgroundColor: kind === "trek" ? UI.colors.eventTrekking : UI.colors.eventCycling }]}
+              style={[styles.addButton, {
+                backgroundColor: kind === "trek" ? UI.colors.eventTrekking :
+                  kind === "trip" ? (UI.colors.eventTravel || "#7c3aed") :
+                    UI.colors.eventCycling
+              }]}
               accessibilityRole="button"
               accessibilityLabel="Crea nuova uscita"
             >

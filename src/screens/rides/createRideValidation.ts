@@ -6,6 +6,10 @@ export type FieldErrors = {
   maxParticipants?: string;
   link?: string;
   bikes?: string;
+  tripType?: string;
+  transportType?: string;
+  durationDays?: string;
+  overnightType?: string;
   elevation?: string;
   length?: string;
   mandatoryGear?: string;
@@ -28,6 +32,12 @@ export type CreateRideForm = {
   difficulty: string;
   guidaText: string;
   extraServices: Record<string, ExtraServiceState>;
+  // Trek specific
+  // Trip specific
+  tripType?: string;
+  transportType?: string;
+  durationDays?: string;
+  overnightType?: string;
   // Trek specific
   elevation?: string;
   length?: string;
@@ -80,6 +90,11 @@ export function getCreateRideErrors(form: CreateRideForm): FieldErrors {
 
   if (Array.isArray(form.bikes) && form.bikes.length > 20) {
     errs.bikes = "Max 20 tipologie";
+  }
+
+  // Trip Validation
+  if (form.durationDays && form.durationDays.length > 50) {
+    errs.durationDays = "Testo troppo lungo (max 50)";
   }
 
   if (form.link.trim() && !/^((https?):\/\/|geo:)/i.test(form.link.trim())) {

@@ -6,7 +6,7 @@ type MapperContext = {
   uid: string;
   dateTime: Date;
   isEdit: boolean;
-  kind?: "ride" | "trek";
+  kind?: "ride" | "trek" | "trip";
 };
 
 const sanitizeCreatePayload = (raw: Record<string, any>) => {
@@ -78,7 +78,41 @@ export function mapCreateRideToFirestore(form: CreateRideForm, ctx: MapperContex
       difficulty: form.difficulty ? form.difficulty : null, // Redundant but okay
     };
     basePayload.trek = trek;
+    basePayload.trek = trek;
     basePayload.bikes = []; // Force empty for treks
+  } else if (ctx.kind === "trip") {
+    // Populate trip object
+    const trip = {
+      Tipologia: {
+        tipoViaggio: form.tripType || "",
+        mezzoTrasporto: form.transportType || "",
+        durataGiorni: form.durationDays && form.durationDays.trim() ? form.durationDays.trim() : null,
+        tipoPernotto: form.overnightType || "",
+      },
+      Informazioni: {
+        organizzatore: basePayload.guidaName || "", // Use mapped guidaName
+        titoloEvento: basePayload.title,
+      },
+      QuandoeDove: {
+        data: basePayload.date,
+        ora: form.time, // raw time string
+        luogoRitrovo: basePayload.meetingPoint,
+        linkPosizione: basePayload.link || "",
+      },
+      Descrizione: {
+        descrizione: basePayload.description || "",
+      },
+      Partecipanti: {
+        maxPartecipanti: basePayload.maxParticipants || 0,
+      },
+      ServiziExtra: {
+        pranzo: form.extraServices?.lunch?.enabled ?? false,
+        cena: form.extraServices?.dinner?.enabled ?? false,
+        pernotto: form.extraServices?.overnight?.enabled ?? false,
+      },
+    };
+    basePayload.trip = trip;
+    basePayload.bikes = []; // Force empty for trips
   }
 
   const payload = sanitizeCreatePayload(basePayload);

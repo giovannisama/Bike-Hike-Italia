@@ -1,11 +1,12 @@
-export type EnabledSectionKey = "ciclismo" | "trekking" | "bikeaut";
+export type EnabledSectionKey = "ciclismo" | "trekking" | "bikeaut" | "viaggi";
 
-const KNOWN_KEYS: EnabledSectionKey[] = ["ciclismo", "trekking", "bikeaut"];
+const KNOWN_KEYS: EnabledSectionKey[] = ["ciclismo", "trekking", "bikeaut", "viaggi"];
 
 export const DEFAULT_ENABLED_SECTIONS: EnabledSectionKey[] = [
   "ciclismo",
   "trekking",
   "bikeaut",
+  "viaggi",
 ];
 
 export function normalizeEnabledSections(value: unknown): EnabledSectionKey[] | null {

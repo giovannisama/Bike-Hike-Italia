@@ -64,8 +64,9 @@ export interface RideDoc {
   participantsCount?: number | null;
   participantsCountSelf?: number | null;
   participantsCountTotal?: number | null;
-  kind?: "ride" | "trek";
+  kind?: "ride" | "trek" | "trip";
   trek?: TrekData | null;
+  trip?: TripData | null;
   status?: string;
   archived?: boolean;
   archiveYear?: number | null;
@@ -105,6 +106,41 @@ export interface TrekData {
 export interface TrekDoc extends RideDoc {
   kind: "trek";
   trek: TrekData;
+}
+
+export interface TripData {
+  Tipologia?: {
+    tipoViaggio?: string | null;
+    mezzoTrasporto?: string | null;
+    durataGiorni?: string | null;
+    tipoPernotto?: string | null;
+  };
+  Informazioni?: {
+    organizzatore?: string | null;
+    titoloEvento?: string | null;
+  };
+  QuandoeDove?: {
+    data?: FirestoreTimestamp | null;
+    ora?: string | null;
+    luogoRitrovo?: string | null;
+    linkPosizione?: string | null;
+  };
+  Descrizione?: {
+    descrizione?: string | null;
+  };
+  Partecipanti?: {
+    maxPartecipanti?: number | null;
+  };
+  ServiziExtra?: {
+    pranzo?: boolean;
+    cena?: boolean;
+    pernotto?: boolean;
+  };
+}
+
+export interface TripDoc extends RideDoc {
+  kind: "trip";
+  trip: TripData;
 }
 
 export interface ParticipantDoc {

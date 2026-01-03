@@ -74,6 +74,7 @@ export default function useCurrentProfile() {
     enabledSectionsNormalized,
     canSeeCiclismo: canSeeSection("ciclismo"),
     canSeeTrekking: canSeeSection("trekking"),
+    canSeeViaggi: true, // Universally enabled
     canSeeBikeAut: canSeeSection("bikeaut"),
     displayName,
     loading,

@@ -11,7 +11,7 @@ export type RootStackParamList = {
   UserDetail: { uid: string; meRole?: string | null };
   UsciteList: {
     collectionName?: string;
-    kind?: "ride" | "trek";
+    kind?: "ride" | "trek" | "trip";
     title?: string;
     subtitle?: string;
   } | undefined;
@@ -21,10 +21,10 @@ export type RootStackParamList = {
   Calendar: undefined;
   CalendarDay: { day: string; rides: any[] };
   Board: undefined;
-  CreateRide: { rideId?: string; collectionName?: string; kind?: "ride" | "trek" };
+  CreateRide: { rideId?: string; collectionName?: string; kind?: "ride" | "trek" | "trip" };
   // LEGACY alias: route "Create" mantenuta per compatibilità con versioni precedenti (al momento non navigata direttamente).
   Create: undefined; // alias compatibilità
-  RideDetails: { rideId: string; title?: string; collectionName?: string; kind?: "ride" | "trek" };
+  RideDetails: { rideId: string; title?: string; collectionName?: string; kind?: "ride" | "trek" | "trip" };
   Profile: undefined;
   Attesa: undefined;
   Rejected: undefined;

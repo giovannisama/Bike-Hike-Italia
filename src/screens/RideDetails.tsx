@@ -153,7 +153,7 @@ const handlePressLink = (rawUrl: string) => {
 // TYPES
 // ------------------------------------------------------------------
 type RootStackParamList = {
-  RideDetails: { rideId: string; title?: string; collectionName?: string; kind?: "ride" | "trek" };
+  RideDetails: { rideId: string; title?: string; collectionName?: string; kind?: "ride" | "trek" | "trip" };
   CreateRide: { editMode: boolean; rideId: string };
   UserDetail: { userId: string };
 };
@@ -861,13 +861,20 @@ export default function RideDetails() {
     ? format(ride.dateTime.toDate(), "HH:mm")
     : "--:--";
 
-  const guideLabel =
+  const isTrek = ride.kind === "trek";
+  const isTrip = ride.kind === "trip";
+  const tripData = ride.trip;
+
+  let guideLabel =
     ride.guidaNames && ride.guidaNames.length > 0
       ? ride.guidaNames.join(", ")
       : ride.guidaName || "Da assegnare";
 
-  const isTrek = ride.kind === "trek";
-  const bikeCategory = !isTrek ? getBikeCategoryLabel(ride) : "";
+  if (isTrip && tripData?.Informazioni?.organizzatore) {
+    guideLabel = tripData.Informazioni.organizzatore;
+  }
+
+  const bikeCategory = (!isTrek && !isTrip) ? getBikeCategoryLabel(ride) : "";
   const status = getRideStatus(ride); // active, cancelled, archived
 
   return (
@@ -905,7 +912,7 @@ export default function RideDetails() {
           <View style={styles.banner}>
             <View style={styles.badgesRow}>
               <StatusBadge status={status} />
-              <DifficultyBadge level={ride.difficulty} />
+              {!isTrip && <DifficultyBadge level={ride.difficulty} />}
             </View>
           </View>
 
@@ -914,7 +921,7 @@ export default function RideDetails() {
 
             <View style={styles.infoGrid}>
               {/* Type - Conditionally Render */}
-              {!isTrek && (
+              {!isTrek && !isTrip && (
                 <View style={styles.infoRow}>
                   <Ionicons name="bicycle-outline" size={18} color={UI.colors.action} />
                   <Text style={styles.infoText}>{bikeCategory}</Text>
@@ -934,6 +941,27 @@ export default function RideDetails() {
                       <Text style={styles.infoText}>Sviluppo: <Text style={{ fontWeight: '600' }}>{ride.trek.length} km</Text></Text>
                     </View>
                   )}
+                </>
+              )}
+              {/* Trip Info */}
+              {isTrip && tripData?.Tipologia && (
+                <>
+                  <View style={styles.infoRow}>
+                    <Ionicons name="compass-outline" size={18} color={UI.colors.action} />
+                    <Text style={styles.infoText}>{tripData.Tipologia.tipoViaggio || "Viaggio"}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Ionicons name="bus-outline" size={18} color={UI.colors.action} />
+                    <Text style={styles.infoText}>{tripData.Tipologia.mezzoTrasporto || "Mezzo non spec."}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Ionicons name="time-outline" size={18} color={UI.colors.action} />
+                    <Text style={styles.infoText}>{tripData.Tipologia.durataGiorni || "Durata non spec."}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Ionicons name="bed-outline" size={18} color={UI.colors.action} />
+                    <Text style={styles.infoText}>{tripData.Tipologia.tipoPernotto || "Pernotto non spec."}</Text>
+                  </View>
                 </>
               )}
               {/* Location */}
@@ -957,10 +985,10 @@ export default function RideDetails() {
                   </TouchableOpacity>
                 </View>
               </View>
-              {/* Guide */}
+              {/* Guide/Organizer */}
               <View style={styles.infoRow}>
                 <Ionicons name="person-outline" size={18} color={UI.colors.action} />
-                <Text style={styles.infoText}>Guida: <Text style={{ fontWeight: '600' }}>{guideLabel}</Text></Text>
+                <Text style={styles.infoText}>{isTrip ? "Organizzatore" : "Guida"}: <Text style={{ fontWeight: '600' }}>{guideLabel}</Text></Text>
               </View>
 
             </View>
@@ -1204,7 +1232,7 @@ export default function RideDetails() {
               <View style={[styles.modalCard, { gap: 12 }]}>
                 <Text style={styles.modalTitle}>{editTarget ? "Modifica iscrizione" : "Partecipa all'Uscita"}</Text>
                 <Text style={styles.modalSubtitle}>
-                  {editTarget ? "Aggiorna nota e servizi extra." : "Vuoi aggiungere una nota per la guida?"}
+                  {editTarget ? "Aggiorna nota e servizi extra." : `Vuoi aggiungere una nota per ${isTrip ? "l'organizzatore" : "la guida"}?`}
                 </Text>
                 <TextInput
                   style={styles.modalInput}

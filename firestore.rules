@@ -94,7 +94,7 @@ service cloud.firestore {
         'guidaName','guidaNames','link','difficulty',
         'guidaName','guidaNames','link','difficulty',
         'manualParticipants','extraServices','serviceStats',
-        'kind','trek'
+        'kind','trek','trip'
       ];
     }
 
@@ -281,7 +281,7 @@ service cloud.firestore {
       // ---- enabledSections validation (Owner-only via validUserUpdateAdmin) ----
       function isAllowedSection(val) {
         return val is string
-          && (val == 'ciclismo' || val == 'trekking' || val == 'bikeaut');
+          && (val == 'ciclismo' || val == 'trekking' || val == 'bikeaut' || val == 'viaggi');
       }
 
       function validEnabledSections() {
@@ -738,6 +738,92 @@ service cloud.firestore {
         // Moving them up is cleaner but risky for regression.
         // I will duplicate strict validators for safety.
         
+        function validParticipantCreate() {
+          let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
+          return request.resource.data.keys().hasOnly(allowed)
+            && request.resource.data.uid == uid
+            && (
+              !has('name')
+              || request.resource.data.name == null
+              || (
+                request.resource.data.name is string
+                && request.resource.data.name.size() > 0
+                && request.resource.data.name.size() <= 120
+              )
+            )
+            && (!has('displayName') || request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 120))
+            && (!has('nickname') || request.resource.data.nickname == null || (request.resource.data.nickname is string && request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 120))
+            && (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500))
+            && (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time)
+            && (!has('services') || validServiceResponses(request.resource.data.services));
+        }
+
+        function validServiceResponses(val) {
+           return val == null ||
+          (
+            val is map &&
+            val.keys().hasOnly(['lunch','dinner','overnight']) &&
+            (!val.keys().hasAny(['lunch']) || val.lunch == null || (val.lunch == 'yes' || val.lunch == 'no')) &&
+            (!val.keys().hasAny(['dinner']) || val.dinner == null || (val.dinner == 'yes' || val.dinner == 'no')) &&
+            (!val.keys().hasAny(['overnight']) || val.overnight == null || (val.overnight == 'yes' || val.overnight == 'no'))
+          );
+        }
+
+        function validParticipantUpdatePartial() {
+          let diff = request.resource.data.diff(resource.data);
+          let changed = diff.changedKeys();
+          let added   = diff.addedKeys();
+          let removed = diff.removedKeys();
+
+          let allowed = ['note','services'];
+
+          return changed.union(added).union(removed).hasOnly(allowed)
+            && (!(changed.hasAny(['note']) || added.hasAny(['note'])) || (request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 500)))
+            && (!(changed.hasAny(['services']) || added.hasAny(['services'])) || validServiceResponses(request.resource.data.services));
+        }
+      }
+    }
+
+    // -----------------------
+    // /trips/{tripId}
+    // -----------------------
+    match /trips/{tripId} {
+      allow read: if canReadRides();
+
+      allow create: if (isAdmin() || isOwner()) && validRideCreateFlexible();
+      allow update: if (isAdmin() || isOwner()) && validRideUpdatePartial();
+      allow delete: if (isAdmin() || isOwner());
+
+      // -------- participants subcollection --------
+      match /participants/{uid} {
+        allow read: if canReadRides();
+
+        allow create: if
+          canReadRides()
+          && request.auth.uid == uid
+          && parentTripIsBookable()
+          && validParticipantCreate();
+
+        allow update: if
+          canReadRides()
+          && (request.auth.uid == uid || isAdmin() || isOwner())
+          && parentTripIsBookable()
+          && validParticipantUpdatePartial();
+
+        allow delete: if
+          canReadRides()
+          && parentTripIsBookable()
+          && (
+            request.auth.uid == uid
+            || isAdmin()
+            || isOwner()
+          );
+
+        function parentTripIsBookable() {
+          let trip = get(/databases/$(database)/documents/trips/$(tripId)).data;
+          return !(trip.status == 'cancelled') && !(trip.archived == true);
+        }
+
         function validParticipantCreate() {
           let allowed = ['uid','name','displayName','nickname','note','createdAt','services'];
           return request.resource.data.keys().hasOnly(allowed)

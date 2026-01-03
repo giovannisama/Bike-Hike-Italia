@@ -13,8 +13,9 @@ export type Ride = {
   difficulty?: string | null;
   guidaName?: string | null;
   guidaNames?: string[] | null;
-  kind?: "ride" | "trek";
+  kind?: "ride" | "trek" | "trip";
   trek?: TrekData | null;
+  trip?: any;
 };
 
 export type MarkedDate = {

@@ -17,7 +17,7 @@ import {
 import DateTimePicker, { DateTimePickerAndroid, DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc, Timestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, Timestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Screen, UI } from "../components/Screen";
@@ -246,7 +246,18 @@ export default function SocialEditScreen() {
           lunch: nextExtras.lunch.enabled,
           dinner: nextExtras.dinner.enabled,
         });
-        setServicesLocked(false);
+
+        // Check for participants to lock services
+        let hasParticipants = false;
+        try {
+          const participantsSnap = await getDocs(
+            query(collection(db, "social_events", eventId, "participants"), limit(1))
+          );
+          hasParticipants = !participantsSnap.empty;
+        } catch (e) {
+          console.warn("Error checking participants", e);
+        }
+        setServicesLocked(hasParticipants);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -258,10 +269,10 @@ export default function SocialEditScreen() {
 
   const toggleExtra = useCallback(
     (key: ExtraKey, enabled: boolean) => {
-      if (enabled && servicesLocked && !initialEnabledServices[key]) {
+      if (servicesLocked) {
         Alert.alert(
-          "Servizio non disponibile",
-          "Non puoi attivare nuovi servizi mentre sono già presenti partecipanti prenotati."
+          "Servizi bloccati",
+          "Non puoi modificare i servizi mentre sono già presenti partecipanti prenotati."
         );
         return;
       }
@@ -596,7 +607,7 @@ export default function SocialEditScreen() {
                 <View style={styles.serviceList}>
                   {EXTRA_DEFINITIONS.map(({ key, label, helper, icon }, index) => {
                     const state = extraServices[key];
-                    const isToggleLocked = servicesLocked && !initialEnabledServices[key];
+                    const isToggleLocked = servicesLocked;
                     const showDivider = index < EXTRA_DEFINITIONS.length - 1;
                     return (
                       <View
@@ -629,6 +640,7 @@ export default function SocialEditScreen() {
                             <Switch
                               value={state.enabled}
                               onValueChange={(value) => toggleExtra(key, value)}
+                              disabled={isToggleLocked}
                               trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
                             />
                           </View>

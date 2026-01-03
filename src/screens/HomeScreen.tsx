@@ -76,6 +76,30 @@ function useActiveTreksCount() {
   return count;
 }
 
+function useActiveTripsCount() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "trips"),
+      (snap) => {
+        let c = 0;
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          const archived = d?.archived === true;
+          const status = (d?.status ?? "active") as string;
+          if (!archived && status !== "cancelled") c += 1;
+        });
+        setCount(c);
+      },
+      () => setCount(null)
+    );
+    return () => unsub();
+  }, []);
+
+  return count;
+}
+
 function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
   const [items, setItems] = useState<BoardPreviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,10 +177,11 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
 
 
 export default function HomeScreen({ navigation }: any) {
-  const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking } =
+  const { profile, isAdmin, isOwner, canSeeCiclismo, canSeeTrekking, canSeeViaggi } =
     useCurrentProfile();
   const activeCount = useActiveRidesCount();
   const activeTreksCount = useActiveTreksCount();
+  const activeTripsCount = useActiveTripsCount();
   const socialActiveCount = useActiveSocialCount();
   const rootNav = navigation?.getParent?.() ?? navigation;
 
@@ -243,7 +268,7 @@ export default function HomeScreen({ navigation }: any) {
       icon: iconMap.trekking.name,
       iconColor: iconMap.trekking.color,
       badge: activeTreksCount ?? 0,
-      enabled: true,
+      enabled: canSeeTrekking,
       permissionKey: "trekking",
       onPress: () =>
         rootNav.navigate("UsciteList", {
@@ -259,9 +284,14 @@ export default function HomeScreen({ navigation }: any) {
       caption: "Scopri il mondo",
       icon: iconMap.viaggi.name,
       iconColor: iconMap.viaggi.color,
-      badge: 0,
+      badge: activeTripsCount ?? 0,
       enabled: true,
-      onPress: () => rootNav.navigate("ViaggiPlaceholder"),
+      onPress: () => rootNav.navigate("UsciteList", {
+        collectionName: "trips",
+        kind: "trip",
+        title: "VIAGGI",
+        subtitle: "Scopri il mondo",
+      }),
     },
     {
       id: "social",

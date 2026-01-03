@@ -88,6 +88,7 @@ export default function CalendarScreen() {
   const bottomInset = useMemo(() => Math.max(insets.bottom, 16), [insets.bottom]);
   const indicatorInsets = useMemo(() => ({ bottom: bottomInset }), [bottomInset]);
   const socialItems = rideLists.socialForSelectedDay;
+  const tripItems = rideLists.tripsForSelectedDay;
 
   const renderSocialItem = useCallback(
     (item: SocialCalendarEvent) => {
@@ -106,6 +107,38 @@ export default function CalendarScreen() {
             </View>
             <Text style={calendarStyles.rideTitle} numberOfLines={2}>
               {item.title || "Evento social"}
+            </Text>
+            <Text style={calendarStyles.ridePlace} numberOfLines={1}>
+              Organizzatore: {item.organizerName || "—"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [navigation]
+  );
+
+  const renderTripItem = useCallback(
+    (item: SocialCalendarEvent) => {
+      const status = item.status || "active";
+      return (
+        <TouchableOpacity
+          style={[calendarStyles.rideCard, { marginBottom: 8, alignItems: "flex-start" }]}
+          onPress={() => navigation.navigate("RideDetails", {
+            id: item.id,
+            kind: "trip",
+            collectionName: "trips"
+          })}
+        >
+          {/* LEFT ICON */}
+          <CategoryIcon name="bag-checked" color={UI.colors.eventTravel} />
+
+          <View style={{ flex: 1 }}>
+            <View style={{ marginBottom: 8, alignSelf: "flex-start" }}>
+              <StatusBadge status={status} />
+            </View>
+            <Text style={calendarStyles.rideTitle} numberOfLines={2}>
+              {item.title || "Viaggio"}
             </Text>
             <Text style={calendarStyles.ridePlace} numberOfLines={1}>
               Organizzatore: {item.organizerName || "—"}
@@ -282,7 +315,8 @@ export default function CalendarScreen() {
                         {/* CICLISMO GROUP */}
                         {rideLists.forSelectedDay.some(r => r.kind !== "trek") && (
                           <View>
-                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: UI.colors.eventCycling, marginRight: 8 }} />
                               <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Ciclismo</Text>
                             </View>
                             <RideList
@@ -298,7 +332,8 @@ export default function CalendarScreen() {
                         {/* TREKKING GROUP */}
                         {rideLists.forSelectedDay.some(r => r.kind === "trek") && (
                           <View>
-                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: UI.colors.eventTrekking, marginRight: 8 }} />
                               <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Trekking</Text>
                             </View>
                             <RideList
@@ -311,10 +346,26 @@ export default function CalendarScreen() {
                           </View>
                         )}
 
+                        {/* TRIPS GROUP */}
+                        {tripItems.length > 0 && (
+                          <View>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: UI.colors.eventTravel, marginRight: 8 }} />
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Viaggi</Text>
+                            </View>
+                            <View style={{ paddingHorizontal: 16 }}>
+                              {tripItems.map((item) => (
+                                <View key={item.id}>{renderTripItem(item)}</View>
+                              ))}
+                            </View>
+                          </View>
+                        )}
+
                         {/* SOCIAL GROUP */}
                         {socialItems.length > 0 && (
                           <View>
-                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+                            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: UI.colors.eventSocial, marginRight: 8 }} />
                               <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }}>Social</Text>
                             </View>
                             <View style={{ paddingHorizontal: 16 }}>
@@ -326,7 +377,7 @@ export default function CalendarScreen() {
                         )}
 
                         {/* EMPTY STATE */}
-                        {rideLists.forSelectedDay.length === 0 && socialItems.length === 0 && (
+                        {rideLists.forSelectedDay.length === 0 && socialItems.length === 0 && tripItems.length === 0 && (
                           <View style={{ padding: 32, alignItems: "center" }}>
                             <Text style={{ color: "#64748B" }}>Nessuna uscita per questo giorno.</Text>
                           </View>

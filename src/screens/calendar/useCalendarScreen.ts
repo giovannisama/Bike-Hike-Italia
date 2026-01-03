@@ -115,6 +115,7 @@ export type RideLists = {
   forSelectedDay: Ride[];
   filtered: Ride[];
   socialForSelectedDay: SocialCalendarEvent[];
+  tripsForSelectedDay: SocialCalendarEvent[];
 };
 
 export type LoadingFlags = {
@@ -147,7 +148,7 @@ export type UseCalendarScreenResult = {
 
 export function useCalendarScreen(): UseCalendarScreenResult {
   const navigation = useNavigation<any>();
-  const { canSeeCiclismo, canSeeTrekking } = useCurrentProfile();
+  const { canSeeCiclismo, canSeeTrekking, canSeeViaggi } = useCurrentProfile();
 
   const [currentMonth, setCurrentMonth] = useState<string>(() => {
     const d = new Date();
@@ -160,11 +161,10 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   });
 
   const [rides, setRides] = useState<Ride[]>([]); // Contains both rides and treks for the month
-  const [ridesOnly, setRidesOnly] = useState<Ride[]>([]);
-  const [treksOnly, setTreksOnly] = useState<Ride[]>([]);
-  const [allRides, setAllRides] = useState<Ride[]>([]);
   const [socialEvents, setSocialEvents] = useState<SocialCalendarEvent[]>([]);
+  const [tripEvents, setTripEvents] = useState<SocialCalendarEvent[]>([]); // Reusing SocialCalendarEvent structure for Trips as they are similar enough for calendar view
   const [loading, setLoading] = useState(true);
+  const [allRides, setAllRides] = useState<Ride[]>([]);
   const [allRidesLoading, setAllRidesLoading] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
@@ -352,6 +352,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     const end = new Date(endOfMonthISO(currentMonth));
     const col = collection(db, "rides");
     const socialCol = collection(db, "social_events");
+    const tripsCol = collection(db, "trips");
 
     const map = new Map<string, Ride>();
     const unsubs: Array<() => void> = [];
@@ -370,8 +371,6 @@ export function useCalendarScreen(): UseCalendarScreenResult {
         where("date", "<=", Timestamp.fromDate(end)),
         orderBy("date", "asc")
       );
-
-
 
       const upsertFromSnap = (snap: any) => {
         snap.forEach((doc: any) => {
@@ -437,6 +436,36 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     );
     unsubs.push(unsubSocial);
 
+    if (canSeeViaggi) {
+      const qTrips = query(
+        tripsCol,
+        where("dateTime", ">=", Timestamp.fromDate(start)),
+        where("dateTime", "<=", Timestamp.fromDate(end)),
+        orderBy("dateTime", "asc")
+      );
+
+      const unsubTrips = onSnapshot(qTrips, (snap) => {
+        const rows: SocialCalendarEvent[] = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data() as any;
+          const status = (d?.status as SocialCalendarEvent["status"]) ?? "active";
+          // Trips logic: same as social, no specific filter for cancelled usually but lets keep consistent
+          rows.push({
+            id: docSnap.id,
+            title: d?.title ?? "",
+            meetingPlaceText: d?.meetingPoint ?? "", // Mapped from meetingPoint
+            organizerName: d?.guidaName ?? "", // Mapped from guidaName
+            startAt: d?.dateTime ?? d?.date ?? null,
+            status,
+          });
+        });
+        setTripEvents(rows);
+      }, () => { }); // No explicit loading update here to avoid flickering or race conditions, logic handles global loading mostly
+      unsubs.push(unsubTrips);
+    } else {
+      setTripEvents([]);
+    }
+
     if (canSeeTrekking) {
       const trekCol = collection(db, "treks");
       // Reuse query constraints (roughly same fields)
@@ -491,7 +520,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [currentMonth, canSeeCiclismo, canSeeTrekking]);
+  }, [currentMonth, canSeeCiclismo, canSeeTrekking, canSeeViaggi]);
 
   const applyCalendarFilters = (
     source: Ride[],
@@ -548,19 +577,26 @@ export function useCalendarScreen(): UseCalendarScreenResult {
   const marked: MarkedDates = useMemo(() => {
     const out: MarkedDates = {};
 
-    const byDay = new Map<string, { rides: Ride[]; hasSocial: boolean }>();
+    const byDay = new Map<string, { rides: Ride[]; hasSocial: boolean; hasTrips: boolean }>();
     for (const r of ridesVisible) {
       const key = toLocalISODate(r.dateTime || r.date);
       if (!key) continue;
-      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false });
+      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false, hasTrips: false });
       byDay.get(key)!.rides.push(r);
     }
 
     for (const s of socialEvents) {
       const key = toLocalISODate(s.startAt);
       if (!key) continue;
-      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false });
+      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false, hasTrips: false });
       byDay.get(key)!.hasSocial = true;
+    }
+
+    for (const t of tripEvents) {
+      const key = toLocalISODate(t.startAt);
+      if (!key) continue;
+      if (!byDay.has(key)) byDay.set(key, { rides: [], hasSocial: false, hasTrips: false });
+      byDay.get(key)!.hasTrips = true;
     }
 
     byDay.forEach((entry, day) => {
@@ -577,7 +613,11 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       if (hasTrekking) {
         dots.push({ color: UI.colors.eventTrekking });
       }
-      // 3. Social
+      // 3. Trips (Viaggi)
+      if (entry.hasTrips) {
+        dots.push({ color: UI.colors.eventTravel });
+      }
+      // 4. Social
       if (entry.hasSocial) {
         dots.push({ color: UI.colors.eventSocial });
       }
@@ -600,7 +640,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     }
 
     return out;
-  }, [ridesVisible, socialEvents, selectedDay]);
+  }, [ridesVisible, socialEvents, tripEvents, selectedDay]);
 
   const listForSelected = useMemo(() => {
     const key = selectedDay;
@@ -625,16 +665,22 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     return socialEvents.filter((e) => toLocalISODate(e.startAt) === key);
   }, [socialEvents, selectedDay]);
 
+  const tripsForSelectedDay = useMemo(() => {
+    const key = selectedDay;
+    return tripEvents.filter((e) => toLocalISODate(e.startAt) === key);
+  }, [tripEvents, selectedDay]);
+
   const hasEventsForDay = useCallback(
     (dateString: string) =>
       ridesVisible.some((r) => toLocalISODate(r.dateTime || r.date) === dateString) ||
-      socialEvents.some((e) => toLocalISODate(e.startAt) === dateString),
-    [ridesVisible, socialEvents]
+      socialEvents.some((e) => toLocalISODate(e.startAt) === dateString) ||
+      tripEvents.some((e) => toLocalISODate(e.startAt) === dateString),
+    [ridesVisible, socialEvents, tripEvents]
   );
 
   const hasEventsForSelectedDay = useMemo(
-    () => listForSelected.length > 0 || socialForSelectedDay.length > 0,
-    [listForSelected, socialForSelectedDay]
+    () => listForSelected.length > 0 || socialForSelectedDay.length > 0 || tripsForSelectedDay.length > 0,
+    [listForSelected, socialForSelectedDay, tripsForSelectedDay]
   );
 
   const resultsAll = useMemo(() => {
@@ -992,6 +1038,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
     forSelectedDay: listForSelected,
     filtered: resultsAll,
     socialForSelectedDay,
+    tripsForSelectedDay,
   };
 
   return {

@@ -476,8 +476,12 @@ export default function SocialEditScreen() {
                     </Pressable>
                   </View>
                   <Text style={styles.helperText}>
-                    Stato attuale: {status === "cancelled" ? "ANNULLATO" : "ATTIVO"}
-                    {status === "archived" ? " • ARCHIVIATO" : ""}
+                    Stato attuale: {
+                      status === "cancelled" ? "ANNULLATO"
+                        : status === "archived" ? "ARCHIVIATO"
+                          : "ATTIVO"
+                    }
+
                   </Text>
                 </View>
               )}

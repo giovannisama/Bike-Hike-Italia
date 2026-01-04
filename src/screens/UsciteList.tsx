@@ -241,7 +241,7 @@ export default function UsciteList() {
   const {
     collectionName = "rides",
     kind = "ride",
-    title = "ELENCO USCITE",
+    title = "CICLISMO",
     subtitle = EVENT_CATEGORY_SUBTITLES.ciclismo,
   } = route.params || {};
 
@@ -555,24 +555,29 @@ export default function UsciteList() {
   if (!hasPermission) return <AccessDenied title="Sezione Riservata" message={`Non hai i permessi per visualizzare la sezione ${kind}.`} />;
   if (!canReadRides) return <AccessDenied title="Account in attesa" message="Il tuo account deve essere approvato." />;
 
+  const sectionColor = kind === "trek" ? UI.colors.eventTrekking :
+    kind === "trip" ? (UI.colors.eventTravel || "#7c3aed") :
+      UI.colors.eventCycling;
+
+  const sectionIcon = kind === "trek" ? "hiking" :
+    kind === "trip" ? "bag-checked" :
+      "bike";
+
   return (
     <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
-      {/* 
-        Unified Header 
-        Standard topPadding is fine here.
-      */}
       <ScreenHeader
         title={title}
         subtitle={subtitle}
         showBack={true}
+        backIconColor={sectionColor}
+        headerIcon={sectionIcon}
+        headerIconColor={sectionColor}
         rightAction={
           isAdmin && (
             <TouchableOpacity
               onPress={() => navigation.navigate("CreateRide", { collectionName, kind })}
               style={[styles.addButton, {
-                backgroundColor: kind === "trek" ? UI.colors.eventTrekking :
-                  kind === "trip" ? (UI.colors.eventTravel || "#7c3aed") :
-                    UI.colors.eventCycling
+                backgroundColor: sectionColor
               }]}
               accessibilityRole="button"
               accessibilityLabel="Crea nuova uscita"
@@ -610,8 +615,6 @@ export default function UsciteList() {
 }
 
 const styles = StyleSheet.create({
-  // Removed header styles (ScreenHeader used)
-
   addButton: {
     backgroundColor: UI.colors.action,
     width: 36,

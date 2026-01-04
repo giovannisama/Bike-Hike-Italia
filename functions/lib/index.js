@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onSocialParticipantDeleted = exports.onSocialParticipantCreated = exports.onParticipantWrite = exports.onSocialEventUpdated = exports.onSocialEventCreated = exports.onTrekUpdated = exports.onTrekCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
+exports.sendTestPush = exports.onBoardPostCreated = exports.onUserCreated = exports.backfillParticipantsCounts = exports.onRideManualParticipantsUpdated = exports.onSocialParticipantDeleted = exports.onSocialParticipantCreated = exports.onParticipantWrite = exports.onTripUpdated = exports.onTripCreated = exports.onSocialEventUpdated = exports.onSocialEventCreated = exports.onTrekUpdated = exports.onTrekCreated = exports.onRideUpdated = exports.onRideCreated = exports.healthCheck = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const expoPush_1 = require("./expoPush");
@@ -272,7 +272,7 @@ exports.onTrekCreated = functions.firestore
         }
     }
     const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
-        eventFlagField: "notificationsDisabledForCreatedRide",
+        eventFlagField: "notificationsDisabledForCreatedTrek",
         enabledSection: "trekking",
     });
     functions.logger.info(`[onTrekCreated] ${trekId} approved users=${approvedUsersCount}`);
@@ -322,7 +322,7 @@ exports.onTrekUpdated = functions.firestore
         ? `L'uscita "${title}" è stata annullata.`
         : "Un'uscita è stata annullata.";
     const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
-        eventFlagField: "notificationsDisabledForCancelledRide",
+        eventFlagField: "notificationsDisabledForCancelledTrek",
         enabledSection: "trekking",
     });
     functions.logger.info(`[onTrekUpdated] ${trekId} cancellation approved users=${approvedUsersCount}`);
@@ -367,7 +367,9 @@ exports.onSocialEventCreated = functions.firestore
             dateLabel = null;
         }
     }
-    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)();
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+        eventFlagField: "notificationsDisabledForCreatedSocial",
+    });
     functions.logger.info(`[onSocialEventCreated] ${eventId} approved users=${approvedUsersCount}`);
     functions.logger.info(`[onSocialEventCreated] ${eventId} tokens collected=${recipients.length}`);
     functions.logger.info(`[onSocialEventCreated] ${eventId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`);
@@ -412,7 +414,9 @@ exports.onSocialEventUpdated = functions.firestore
     const body = title
         ? `L'evento "${title}" è stato annullato.`
         : "Un evento è stato annullato.";
-    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)();
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+        eventFlagField: "notificationsDisabledForCancelledSocial",
+    });
     functions.logger.info(`[onSocialEventUpdated] ${eventId} approved users=${approvedUsersCount}`);
     functions.logger.info(`[onSocialEventUpdated] ${eventId} tokens collected=${recipients.length}`);
     functions.logger.info(`[onSocialEventUpdated] ${eventId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`);
@@ -428,6 +432,98 @@ exports.onSocialEventUpdated = functions.firestore
     });
     results.forEach((result, index) => {
         functions.logger.info(`[onSocialEventUpdated] ${eventId} cancel chunk ${index} status=${result.status} ok=${result.ok}`);
+    });
+});
+// -----------------------------
+// 3b) Trigger su nuovo viaggio
+// -----------------------------
+exports.onTripCreated = functions.firestore
+    .document("trips/{tripId}")
+    .onCreate(async (snapshot, context) => {
+    const tripId = context.params.tripId;
+    const data = snapshot.data() || {};
+    const title = typeof data?.title === "string" && data.title.trim().length > 0
+        ? data.title
+        : "Viaggio";
+    const dateValue = data?.dateTime ?? data?.date;
+    let dateLabel = null;
+    if (dateValue?.toDate) {
+        try {
+            dateLabel = dateValue.toDate().toLocaleDateString("it-IT", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            });
+        }
+        catch {
+            dateLabel = null;
+        }
+    }
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+        eventFlagField: "notificationsDisabledForCreatedTrip",
+    });
+    functions.logger.info(`[onTripCreated] ${tripId} approved users=${approvedUsersCount}`);
+    functions.logger.info(`[onTripCreated] ${tripId} tokens collected=${recipients.length}`);
+    functions.logger.info(`[onTripCreated] ${tripId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`);
+    if (!recipients.length) {
+        functions.logger.info(`[onTripCreated] ${tripId} no recipients`);
+        return;
+    }
+    const body = dateLabel
+        ? `È stato pubblicato un nuovo viaggio: ${title} (${dateLabel})`
+        : `È stato pubblicato un nuovo viaggio: ${title}`;
+    const results = await (0, expoPush_1.sendExpoPushNotification)({
+        to: recipients,
+        title: "Viaggi: Nuovi viaggi",
+        body,
+        data: { type: "trip", tripId },
+    });
+    results.forEach((result, index) => {
+        functions.logger.info(`[onTripCreated] ${tripId} chunk ${index} status=${result.status} ok=${result.ok}`);
+    });
+});
+// -----------------------------
+// 3b) Trigger su aggiornamento viaggio (annullamento)
+// -----------------------------
+exports.onTripUpdated = functions.firestore
+    .document("trips/{tripId}")
+    .onUpdate(async (change, context) => {
+    const tripId = context.params.tripId;
+    const before = change.before.data();
+    const after = change.after.data();
+    if (!before || !after) {
+        functions.logger.info(`[onTripUpdated] ${tripId} missing snapshot data`);
+        return;
+    }
+    const prevStatus = typeof before.status === "string" ? before.status : "active";
+    const nextStatus = typeof after.status === "string" ? after.status : "active";
+    if (prevStatus === "cancelled" || nextStatus !== "cancelled") {
+        return;
+    }
+    const title = typeof after.title === "string" && after.title.trim().length > 0
+        ? after.title
+        : null;
+    const body = title
+        ? `Il viaggio "${title}" è stato annullato.`
+        : "Un viaggio è stato annullato.";
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } = await (0, userTokens_1.fetchApprovedExpoTokens)({
+        eventFlagField: "notificationsDisabledForCancelledTrip",
+    });
+    functions.logger.info(`[onTripUpdated] ${tripId} cancellation approved users=${approvedUsersCount}`);
+    functions.logger.info(`[onTripUpdated] ${tripId} cancellation tokens collected=${recipients.length}`);
+    functions.logger.info(`[onTripUpdated] ${tripId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`);
+    if (!recipients.length) {
+        functions.logger.info(`[onTripUpdated] ${tripId} cancellation no recipients`);
+        return;
+    }
+    const results = await (0, expoPush_1.sendExpoPushNotification)({
+        to: recipients,
+        title: "Viaggi: Viaggi annullati",
+        body,
+        data: { type: "tripCancelled", tripId },
+    });
+    results.forEach((result, index) => {
+        functions.logger.info(`[onTripUpdated] ${tripId} cancel chunk ${index} status=${result.status} ok=${result.ok}`);
     });
 });
 // -----------------------------

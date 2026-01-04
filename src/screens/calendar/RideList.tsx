@@ -173,7 +173,7 @@ export function RideList({
         // FIX: Resolve difficulty from trek object if missing on root
         const displayDifficulty = item.difficulty ?? item.trek?.difficulty;
 
-        const statusBadge = isArchived ? (
+        const statusBadge = isArchived || item.status === "archived" ? (
           <StatusBadge status="archived" />
         ) : (
           <StatusBadge status={item.status === "cancelled" ? "cancelled" : "active"} />

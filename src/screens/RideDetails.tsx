@@ -220,6 +220,11 @@ export default function RideDetails() {
         navigation.goBack();
       }
       setLoading(false);
+    }, (error) => {
+      console.warn("RideDetails fetch error:", error);
+      setLoading(false);
+      Alert.alert("Errore", "Impossibile caricare l'evento.");
+      navigation.goBack();
     });
     return () => unsub();
   }, [rideId, navigation]);

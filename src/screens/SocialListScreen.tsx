@@ -24,6 +24,7 @@ import { it } from "date-fns/locale";
 import type { FirestoreTimestamp } from "../types/firestore";
 import { toDateSafe, toMillisSafe } from "../utils/firestoreDate";
 import { info } from "../utils/logger";
+import { StatusBadge } from "./calendar/StatusBadge";
 
 type SocialEvent = {
   id: string;
@@ -32,6 +33,7 @@ type SocialEvent = {
   organizerName?: string | null;
   startAt?: FirestoreTimestamp | null;
   participantsCount?: number | null;
+  status?: string;
 };
 
 const normalizeForSearch = (value?: string) =>
@@ -63,6 +65,7 @@ type SocialListItemProps = {
 const SocialListItem = React.memo(function SocialListItem({ item, onPress }: SocialListItemProps) {
   const dt = toDateSafe(item.startAt);
   const dateLabel = dt ? format(dt, "EEE d MMM • HH:mm", { locale: it }) : "Data da definire";
+  const isCancelled = item.status === "cancelled";
 
   const handlePress = useCallback(() => {
     onPress(item.id);
@@ -74,7 +77,12 @@ const SocialListItem = React.memo(function SocialListItem({ item, onPress }: Soc
         onPress={handlePress}
         style={({ pressed }) => [styles.cardInner, pressed && { opacity: 0.95 }]}
       >
-        <Text style={styles.cardTitle}>{item.title || "Evento social"}</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Text style={[styles.cardTitle, isCancelled && styles.titleCancelled, { flex: 1 }]}>
+            {item.title || "Evento social"}
+          </Text>
+          {isCancelled && <StatusBadge status="cancelled" />}
+        </View>
 
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
@@ -119,10 +127,14 @@ export default function SocialListScreen() {
   const [filterType, setFilterType] = useState<"active" | "archived">("active");
 
   useEffect(() => {
-    const fetchFallback = async (status: "active" | "archived") => {
+    // Determine statuses to fetch. Active tab shows 'active' AND 'cancelled'.
+    // Archived tab shows 'archived'.
+    const targetStatuses = filterType === "active" ? ["active", "cancelled"] : ["archived"];
+
+    const fetchFallback = async () => {
       try {
         const snap = await getDocs(
-          query(collection(db, "social_events"), where("status", "==", status))
+          query(collection(db, "social_events"), where("status", "in", targetStatuses))
         );
         console.warn("[social_events] list fallback (no index)", snap.size);
         const next: SocialEvent[] = [];
@@ -135,11 +147,12 @@ export default function SocialListScreen() {
             organizerName: data?.organizerName ?? null,
             startAt: data?.startAt ?? null,
             participantsCount: data?.participantsCount ?? null,
+            status: data?.status,
           });
         });
         next.sort((a, b) => {
           const diff = (toMillisSafe(a.startAt) ?? 0) - (toMillisSafe(b.startAt) ?? 0);
-          return status === "archived" ? -diff : diff;
+          return filterType === "archived" ? -diff : diff;
         });
         setItems(next);
       } catch (err: any) {
@@ -153,7 +166,7 @@ export default function SocialListScreen() {
 
     const q = query(
       collection(db, "social_events"),
-      where("status", "==", filterType),
+      where("status", "in", targetStatuses),
       orderBy("startAt", filterType === "archived" ? "desc" : "asc")
     );
     const unsub = onSnapshot(
@@ -170,28 +183,17 @@ export default function SocialListScreen() {
             organizerName: data?.organizerName ?? null,
             startAt: data?.startAt ?? null,
             participantsCount: data?.participantsCount ?? null,
+            status: data?.status,
           });
         });
         setItems(next);
         setLoading(false);
-        if (snap.empty) {
-          const debugQ = query(
-            collection(db, "social_events"),
-            where("status", "==", filterType)
-          );
-          getDocs(debugQ)
-            .then((debugSnap) => {
-              if (__DEV__) info("social_events debug snapshot", { size: debugSnap.size });
-            })
-            .catch((err) => {
-              console.error("[social_events] debug failed", err);
-            });
-        }
       },
       (err) => {
         console.error("[social_events] list failed", err);
         if (err?.message?.includes("requires an index")) {
-          void fetchFallback(filterType);
+          // If index missing, use fallback client-side sort
+          void fetchFallback();
           return;
         }
         Alert.alert("Errore", err?.message ?? "Impossibile caricare gli eventi.");
@@ -292,6 +294,9 @@ export default function SocialListScreen() {
         title="SOCIAL"
         subtitle="Meetup e eventi"
         showBack
+        backIconColor={UI.colors.eventSocial}
+        headerIcon="account-group-outline"
+        headerIconColor={UI.colors.eventSocial}
         rightAction={
           canCreate ? (
             <Pressable
@@ -402,6 +407,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0F172A",
     lineHeight: 24,
+  },
+  titleCancelled: {
+    textDecorationLine: "line-through",
+    color: "#94A3B8",
   },
   infoRow: { flexDirection: "row", gap: 16 },
   infoItem: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },

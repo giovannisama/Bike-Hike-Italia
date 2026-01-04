@@ -100,10 +100,17 @@ export default function SocialDetailScreen() {
     const unsub = onSnapshot(
       eventRef,
       (snap) => {
-        setEvent((snap.data() as SocialEvent) || null);
+        if (snap.exists()) {
+          setEvent(snap.data() as SocialEvent);
+        } else {
+          setEvent(null);
+        }
         setLoading(false);
       },
-      () => setLoading(false)
+      (err) => {
+        console.warn("SocialDetail fetch error", err);
+        setLoading(false);
+      }
     );
     return () => {
       try {
@@ -621,6 +628,10 @@ export default function SocialDetailScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={UI.colors.primary} />
+        </View>
+      ) : !event ? (
+        <View style={styles.center}>
+          <Text style={{ fontSize: 16, color: "#64748B" }}>Evento non trovato o rimosso.</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>

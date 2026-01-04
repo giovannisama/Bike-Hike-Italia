@@ -8,7 +8,7 @@ export type Ride = {
   bikes?: string[];
   date?: Timestamp | null;
   dateTime?: Timestamp | null;
-  status?: "active" | "cancelled";
+  status?: "active" | "cancelled" | "archived";
   archived?: boolean;
   difficulty?: string | null;
   guidaName?: string | null;

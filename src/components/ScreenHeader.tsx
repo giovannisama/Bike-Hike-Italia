@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UI } from './Screen';
@@ -15,6 +15,9 @@ type ScreenHeaderProps = {
     // Allows overriding the top padding if needed
     topPadding?: number;
     disableUppercase?: boolean; // Kept for compat, but Info style is Mixed case
+    backIconColor?: string;
+    headerIcon?: any; // Icon name from MaterialCommunityIcons
+    headerIconColor?: string;
 };
 
 export function ScreenHeader({
@@ -23,7 +26,10 @@ export function ScreenHeader({
     showBack = true,
     rightAction,
     topPadding,
-    disableUppercase
+    disableUppercase,
+    backIconColor,
+    headerIcon,
+    headerIconColor
 }: ScreenHeaderProps) {
     const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
@@ -55,8 +61,13 @@ export function ScreenHeader({
                                 hitSlop={15}
                                 style={styles.backButton}
                             >
-                                <Ionicons name="arrow-back" size={24} color="#1E293B" />
+                                <Ionicons name="arrow-back" size={24} color={backIconColor ?? "#1E293B"} />
                             </Pressable>
+                        )}
+                        {headerIcon && (
+                            <View style={{ marginRight: 8, justifyContent: 'center' }}>
+                                <MaterialCommunityIcons name={headerIcon} size={28} color={headerIconColor ?? "#1E293B"} />
+                            </View>
                         )}
                         <View style={styles.titleBlock}>
                             <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{title}</Text>

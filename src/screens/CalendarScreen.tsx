@@ -92,7 +92,7 @@ export default function CalendarScreen() {
 
   const renderSocialItem = useCallback(
     (item: SocialCalendarEvent) => {
-      const status = item.status || "active";
+      const status = item.status; // No fallback
       return (
         <TouchableOpacity
           style={[calendarStyles.rideCard, { marginBottom: 8, alignItems: "flex-start" }]}
@@ -120,12 +120,12 @@ export default function CalendarScreen() {
 
   const renderTripItem = useCallback(
     (item: SocialCalendarEvent) => {
-      const status = item.status || "active";
+      const status = item.status; // No fallback
       return (
         <TouchableOpacity
           style={[calendarStyles.rideCard, { marginBottom: 8, alignItems: "flex-start" }]}
           onPress={() => navigation.navigate("RideDetails", {
-            id: item.id,
+            rideId: item.id,
             kind: "trip",
             collectionName: "trips"
           })}

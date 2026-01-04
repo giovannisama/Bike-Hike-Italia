@@ -550,6 +550,137 @@ export const onSocialEventUpdated = functions.firestore
   });
 
 // -----------------------------
+// 3b) Trigger su nuovo viaggio
+// -----------------------------
+export const onTripCreated = functions.firestore
+  .document("trips/{tripId}")
+  .onCreate(async (snapshot, context) => {
+    const tripId = context.params.tripId;
+    const data = snapshot.data() || {};
+
+    const title =
+      typeof data?.title === "string" && data.title.trim().length > 0
+        ? data.title
+        : "Viaggio";
+
+    const dateValue = data?.dateTime ?? data?.date;
+    let dateLabel: string | null = null;
+    if (dateValue?.toDate) {
+      try {
+        dateLabel = dateValue.toDate().toLocaleDateString("it-IT", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch {
+        dateLabel = null;
+      }
+    }
+
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } =
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCreatedTrip",
+      });
+
+    functions.logger.info(
+      `[onTripCreated] ${tripId} approved users=${approvedUsersCount}`
+    );
+    functions.logger.info(
+      `[onTripCreated] ${tripId} tokens collected=${recipients.length}`
+    );
+    functions.logger.info(
+      `[onTripCreated] ${tripId} active users=${activeUsersCount} tokens=${recipients.length} reason=created`
+    );
+
+    if (!recipients.length) {
+      functions.logger.info(`[onTripCreated] ${tripId} no recipients`);
+      return;
+    }
+
+    const body = dateLabel
+      ? `È stato pubblicato un nuovo viaggio: ${title} (${dateLabel})`
+      : `È stato pubblicato un nuovo viaggio: ${title}`;
+
+    const results = await sendExpoPushNotification({
+      to: recipients,
+      title: "Viaggi: Nuovi viaggi",
+      body,
+      data: { type: "trip", tripId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onTripCreated] ${tripId} chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
+  });
+
+// -----------------------------
+// 3b) Trigger su aggiornamento viaggio (annullamento)
+// -----------------------------
+export const onTripUpdated = functions.firestore
+  .document("trips/{tripId}")
+  .onUpdate(async (change, context) => {
+    const tripId = context.params.tripId;
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (!before || !after) {
+      functions.logger.info(`[onTripUpdated] ${tripId} missing snapshot data`);
+      return;
+    }
+
+    const prevStatus = typeof before.status === "string" ? before.status : "active";
+    const nextStatus = typeof after.status === "string" ? after.status : "active";
+
+    if (prevStatus === "cancelled" || nextStatus !== "cancelled") {
+      return;
+    }
+
+    const title =
+      typeof after.title === "string" && after.title.trim().length > 0
+        ? after.title
+        : null;
+
+    const body = title
+      ? `Il viaggio "${title}" è stato annullato.`
+      : "Un viaggio è stato annullato.";
+
+    const { tokens: recipients, approvedUsersCount, activeUsersCount } =
+      await fetchApprovedExpoTokens({
+        eventFlagField: "notificationsDisabledForCancelledTrip",
+      });
+
+    functions.logger.info(
+      `[onTripUpdated] ${tripId} cancellation approved users=${approvedUsersCount}`
+    );
+    functions.logger.info(
+      `[onTripUpdated] ${tripId} cancellation tokens collected=${recipients.length}`
+    );
+    functions.logger.info(
+      `[onTripUpdated] ${tripId} active users=${activeUsersCount} tokens=${recipients.length} reason=cancelled`
+    );
+
+    if (!recipients.length) {
+      functions.logger.info(`[onTripUpdated] ${tripId} cancellation no recipients`);
+      return;
+    }
+
+    const results = await sendExpoPushNotification({
+      to: recipients,
+      title: "Viaggi: Viaggi annullati",
+      body,
+      data: { type: "tripCancelled", tripId },
+    });
+
+    results.forEach((result, index) => {
+      functions.logger.info(
+        `[onTripUpdated] ${tripId} cancel chunk ${index} status=${result.status} ok=${result.ok}`
+      );
+    });
+  });
+
+// -----------------------------
 // 3b) Trigger su partecipanti (conteggio)
 // -----------------------------
 export const onParticipantWrite = functions.firestore

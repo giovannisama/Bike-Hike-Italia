@@ -680,7 +680,10 @@ export default function CreateRideScreen() {
                     ]}
                   >
                     <Text style={styles.adminBtnText}>
-                      {status === "cancelled" ? "Riapri Uscita" : "Annulla Uscita"}
+                      {status === "cancelled"
+                        ? (kind === "trip" || collectionName === "trips" ? "Riapri Viaggio" : "Riapri Uscita")
+                        : (kind === "trip" || collectionName === "trips" ? "Annulla Viaggio" : "Annulla Uscita")
+                      }
                     </Text>
                   </Pressable>
                   <Pressable
@@ -691,13 +694,16 @@ export default function CreateRideScreen() {
                     ]}
                   >
                     <Text style={styles.adminBtnText}>
-                      {archived ? "Ripristina Uscita" : "Archivia"}
+                      {archived ? (kind === "trip" || collectionName === "trips" ? "Ripristina Viaggio" : "Ripristina Uscita") : "Archivia"}
                     </Text>
                   </Pressable>
                 </View>
                 <Text style={styles.helperText}>
-                  Stato attuale: {status === "cancelled" ? "ANNULLATA" : "ATTIVA"}
-                  {archived ? " • ARCHIVIATA" : ""}
+                  Stato attuale: {
+                    status === "cancelled" ? "ANNULLATA"
+                      : archived ? "ARCHIVIATA"
+                        : "ATTIVA"
+                  }
                 </Text>
               </View>
             )}

@@ -24,6 +24,8 @@ export interface UserDoc {
   notificationsDisabledForCancelledTrek?: boolean;
   notificationsDisabledForCreatedSocial?: boolean;
   notificationsDisabledForCancelledSocial?: boolean;
+  notificationsDisabledForCreatedTrip?: boolean;
+  notificationsDisabledForCancelledTrip?: boolean;
   notificationsDisabledForPendingUser?: boolean;
   notificationsDisabledForBoardPost?: boolean;
   enabledSections?: string[];

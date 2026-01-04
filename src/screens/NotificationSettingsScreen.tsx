@@ -19,6 +19,8 @@ const NotificationSettingsScreen: React.FC = () => {
   const [rideCancelledEnabled, setRideCancelledEnabled] = useState(true);
   const [trekCreatedEnabled, setTrekCreatedEnabled] = useState(true);
   const [trekCancelledEnabled, setTrekCancelledEnabled] = useState(true);
+  const [tripCreatedEnabled, setTripCreatedEnabled] = useState(true);
+  const [tripCancelledEnabled, setTripCancelledEnabled] = useState(true);
   const [socialCreatedEnabled, setSocialCreatedEnabled] = useState(true);
   const [socialCancelledEnabled, setSocialCancelledEnabled] = useState(true);
   const [pendingUserEnabled, setPendingUserEnabled] = useState(true);
@@ -51,6 +53,8 @@ const NotificationSettingsScreen: React.FC = () => {
           const disabledCancelled = data.notificationsDisabledForCancelledRide === true;
           const disabledTrekCreated = data.notificationsDisabledForCreatedTrek === true;
           const disabledTrekCancelled = data.notificationsDisabledForCancelledTrek === true;
+          const disabledTripCreated = data.notificationsDisabledForCreatedTrip === true;
+          const disabledTripCancelled = data.notificationsDisabledForCancelledTrip === true;
           const disabledSocialCreated = data.notificationsDisabledForCreatedSocial === true;
           const disabledSocialCancelled = data.notificationsDisabledForCancelledSocial === true;
           const disabledPending = data.notificationsDisabledForPendingUser === true;
@@ -60,6 +64,8 @@ const NotificationSettingsScreen: React.FC = () => {
           setRideCancelledEnabled(!disabledCancelled);
           setTrekCreatedEnabled(!disabledTrekCreated);
           setTrekCancelledEnabled(!disabledTrekCancelled);
+          setTripCreatedEnabled(!disabledTripCreated);
+          setTripCancelledEnabled(!disabledTripCancelled);
           setSocialCreatedEnabled(!disabledSocialCreated);
           setSocialCancelledEnabled(!disabledSocialCancelled);
           setPendingUserEnabled(!disabledPending);
@@ -267,6 +273,62 @@ const NotificationSettingsScreen: React.FC = () => {
       Alert.alert(
         "Errore",
         "Si è verificato un errore aggiornando le impostazioni per i trekking annullati."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: nuovo viaggio -------
+  const handleTripCreatedToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = tripCreatedEnabled;
+    setTripCreatedEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCreatedTrip: !value,
+      });
+    } catch (e) {
+      console.error("Error updating tripCreated notification setting", e);
+      setTripCreatedEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per i nuovi viaggi."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ------- toggle: viaggio annullato -------
+  const handleTripCancelledToggle = async (value: boolean) => {
+    if (saving) return;
+    const currentUser = ensureAuthUser();
+    if (!currentUser) return;
+    if (!guardEventToggle()) return;
+
+    const previous = tripCancelledEnabled;
+    setTripCancelledEnabled(value);
+    setSaving(true);
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        notificationsDisabledForCancelledTrip: !value,
+      });
+    } catch (e) {
+      console.error("Error updating tripCancelled notification setting", e);
+      setTripCancelledEnabled(previous);
+      Alert.alert(
+        "Errore",
+        "Si è verificato un errore aggiornando le impostazioni per i viaggi annullati."
       );
     } finally {
       setSaving(false);
@@ -507,6 +569,52 @@ const NotificationSettingsScreen: React.FC = () => {
               <Switch
                 value={trekCancelledEnabled}
                 onValueChange={handleTrekCancelledToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleTripCreatedToggle(!tripCreatedEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Viaggi: Nuovi eventi</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando viene pubblicato un nuovo viaggio.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={tripCreatedEnabled}
+                onValueChange={handleTripCreatedToggle}
+                disabled={eventSwitchDisabled}
+                trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.settingRow, styles.eventRow, pressed && styles.rowPressed]}
+            onPress={() => handleTripCancelledToggle(!tripCancelledEnabled)}
+            disabled={eventSwitchDisabled}
+            android_ripple={{ color: UI.colors.tint }}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <View style={styles.rowText}>
+              <Text style={styles.eventTitle}>Viaggi: Eventi annullati</Text>
+              <Text style={styles.eventSubtitle}>
+                Ricevi una notifica quando un viaggio viene annullato.
+              </Text>
+            </View>
+            <View style={styles.switchWrapper}>
+              <Switch
+                value={tripCancelledEnabled}
+                onValueChange={handleTripCancelledToggle}
                 disabled={eventSwitchDisabled}
                 trackColor={{ false: UI.colors.tint, true: UI.colors.action }}
               />

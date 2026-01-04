@@ -375,6 +375,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       const upsertFromSnap = (snap: any) => {
         snap.forEach((doc: any) => {
           const d = doc.data() as any;
+          const status = (d?.status as Ride["status"]) ?? "active";
+          if (status === "cancelled") return; // Filter out cancelled
+
           map.set(doc.id, {
             id: doc.id,
             title: d?.title ?? "",
@@ -382,7 +385,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
             bikes: sanitizeBikeList(d?.bikes),
             date: d?.date ?? null,
             dateTime: d?.dateTime ?? null,
-            status: (d?.status as Ride["status"]) ?? "active",
+            status,
             archived: !!d?.archived,
             difficulty: d?.difficulty ?? null,
             guidaName: d?.guidaName ?? null,
@@ -448,8 +451,10 @@ export function useCalendarScreen(): UseCalendarScreenResult {
         const rows: SocialCalendarEvent[] = [];
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
-          const status = (d?.status as SocialCalendarEvent["status"]) ?? "active";
-          // Trips logic: same as social, no specific filter for cancelled usually but lets keep consistent
+          let status = (d?.status as SocialCalendarEvent["status"]) ?? "active";
+          if (d?.archived) status = "archived";
+          if (status === "cancelled") return; // Filter out cancelled trips
+
           rows.push({
             id: docSnap.id,
             title: d?.title ?? "",
@@ -485,6 +490,9 @@ export function useCalendarScreen(): UseCalendarScreenResult {
       const upsertTreks = (snap: any) => {
         snap.forEach((doc: any) => {
           const d = doc.data() as any;
+          const status = (d?.status as Ride["status"]) ?? "active";
+          if (status === "cancelled") return; // Filter out cancelled treks
+
           map.set(doc.id, {
             id: doc.id,
             title: d?.title ?? "",
@@ -492,7 +500,7 @@ export function useCalendarScreen(): UseCalendarScreenResult {
             bikes: [], // Trek has no bikes
             date: d?.date ?? null,
             dateTime: d?.dateTime ?? null,
-            status: (d?.status as Ride["status"]) ?? "active",
+            status,
             archived: !!d?.archived,
             difficulty: null, // Trek has difficulty in trek object, but Ride type expects standard diff? 
             // Actually Ride type has `trek` object now.

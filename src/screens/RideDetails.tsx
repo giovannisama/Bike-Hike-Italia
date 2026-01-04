@@ -892,6 +892,9 @@ export default function RideDetails() {
       <ScreenHeader
         title={ride.title}
         disableUppercase={true}
+        titleNumberOfLines={2}
+        titleAllowShrink={true}
+        titleMinScale={0.7}
         subtitle={
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
@@ -1057,76 +1060,91 @@ export default function RideDetails() {
           </View>
         )}
 
+        {/* USER RESERVATION CARD (Unified Design) */}
+        {selfParticipant && (
+            <View style={styles.sectionTight}>
+              <View
+                style={[
+                  styles.unifiedSelfCard,
+                  isTrip && styles.unifiedSelfCardTrip,
+                  isTrek && styles.unifiedSelfCardTrek,
+                ]}
+              >
+              {/* Header */}
+              <View style={styles.unifiedHeader}>
+                <Ionicons name="checkmark-circle" size={24} color={UI.colors.action} />
+                <View>
+                  <Text style={styles.unifiedTitle}>Sei prenotato come:</Text>
+                  <Text style={styles.unifiedSubtitle}>
+                    {selfParticipant.displayName} {selfParticipant.isMe && "(Tu)"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Note Box */}
+              <View style={styles.noteBox}>
+                <Text style={styles.noteLabel}>NOTA</Text>
+                <Text style={[styles.noteText, !selfParticipant.note && styles.noteTextPlaceholder]}>
+                  {selfParticipant.note ? selfParticipant.note.trim() : "Nessuna nota"}
+                </Text>
+
+                {/* Extra Services (Inline with Note block logic as requested "sotto la nota") */}
+                {ride?.extraServices && (
+                  <View style={styles.servicesBlock}>
+                    {SERVICE_KEYS.filter((k) => ride.extraServices?.[k]?.enabled).map((key) => {
+                      const enabled = selfParticipant.services?.[key] === "yes";
+                      if (!enabled) return null; // Show only selected services? Request said "Pranzo: Sì", implying list.
+                      const label = ride.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                      return (
+                        <Text key={key} style={styles.serviceItem}>
+                          {label}: Sì
+                        </Text>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+
+              {/* Actions */}
+              <View style={styles.unifiedActions}>
+                <TouchableOpacity
+                  onPress={() => openEditModal(selfParticipant)}
+                  style={styles.unifiedActionBtn}
+                >
+                  <Text style={styles.unifiedActionText}>Modifica nota e servizi</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleLeave}
+                  style={[styles.unifiedActionBtn, styles.unifiedActionDestructive]}
+                >
+                  <Text style={styles.unifiedActionDestructiveText}>Non partecipo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* PARTICIPANTS */}
         <View style={styles.section}>
           {/* Join/Leave Actions moved here */}
-          {!isArchived && !isCancelled && (
+          {!userIsParticipant && !isArchived && !isCancelled && (
             <View style={{ marginBottom: 16 }}>
-              {userIsParticipant ? (
+              {canJoin ? (
                 <Pressable
-                  style={[styles.bigButton, { backgroundColor: "#fee2e2", borderColor: "#fecaca" }]}
-                  onPress={handleLeave}
+                  style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
+                  onPress={openJoinModal}
+                  disabled={joining}
                 >
-                  <Text style={[styles.bigButtonText, { color: "#991b1b" }]}>Annulla iscrizione</Text>
+                  {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'uscita</Text>}
                 </Pressable>
               ) : (
-                canJoin ? (
-                  <Pressable
-                    style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
-                    onPress={openJoinModal}
-                    disabled={joining}
-                  >
-                    {joining ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'uscita</Text>}
-                  </Pressable>
-                ) : (
-                  <View style={[styles.bigButton, { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" }]}>
-                    <Text style={[styles.bigButtonText, { color: "#94a3b8" }]}>
-                      {isFull ? "Lista Piena" : "Iscrizioni Chiuse"}
-                    </Text>
-                  </View>
-                )
-              )}
-            </View>
-          )}
-
-          {selfParticipant && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>La tua iscrizione</Text>
-                {!isArchived && !isCancelled && (
-                  <Pressable
-                    onPress={() => openEditModal({ ...selfParticipant, type: "user" })}
-                    hitSlop={10}
-                    style={styles.editLink}
-                  >
-                    <Text style={styles.editLinkText}>Modifica iscrizione</Text>
-                  </Pressable>
-                )}
-              </View>
-              <View style={styles.selfCard}>
-                <View style={styles.selfRow}>
-                  <Text style={styles.selfLabel}>Nota</Text>
-                  <Text style={styles.selfValue} numberOfLines={2}>
-                    {selfParticipant.note ? selfParticipant.note : "—"}
+                <View style={[styles.bigButton, { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" }]}>
+                  <Text style={[styles.bigButtonText, { color: "#94a3b8" }]}>
+                    {isFull ? "Lista Piena" : "Iscrizioni Chiuse"}
                   </Text>
                 </View>
-                {ride?.extraServices && (
-                  <View style={styles.selfRow}>
-                    <Text style={styles.selfLabel}>Servizi extra</Text>
-                    <View style={styles.selfServices}>
-                      {SERVICE_KEYS.filter((k) => ride.extraServices?.[k]?.enabled).map((key) => {
-                        const val = selfParticipant.services?.[key] === "yes" ? "Sì" : "No";
-                        const label = ride.extraServices?.[key]?.label || SERVICE_LABELS[key];
-                        return (
-                          <Text key={key} style={styles.selfValue} numberOfLines={1}>
-                            {label}: {val}
-                          </Text>
-                        );
-                      })}
-                    </View>
-                  </View>
-                )}
-              </View>
+              )}
             </View>
           )}
 
@@ -1147,67 +1165,72 @@ export default function RideDetails() {
             <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
           ) : (
             allParticipants.map((p, idx) => (
-              <View key={p.id} style={styles.participantRow}>
-                <View style={styles.participantAvatar}>
-                  {p.photoURL ? (
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ddd', overflow: 'hidden' }}>
-                      {/* Image component would go here */}
-                      <Text style={{ textAlign: 'center', lineHeight: 32 }}>Img</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.avatarPlaceholder, p.type === "manual" && { backgroundColor: "#f1f5f9" }]}>
-                      <Ionicons name={p.type === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
-                    </View>
-                  )}
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.participantName}>
-                    {p.displayName} {p.isMe && "(Tu)"}
-                  </Text>
-                  {/* Show Note if present */}
-                  {p.note && (
-                    <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
-                      "{p.note}"
+              <View
+                key={p.id}
+                style={[styles.participantCard, idx === allParticipants.length - 1 && styles.participantCardLast]}
+              >
+                <View style={styles.participantRow}>
+                  <View style={styles.participantAvatar}>
+                    {p.photoURL ? (
+                      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ddd', overflow: 'hidden' }}>
+                        {/* Image component would go here */}
+                        <Text style={{ textAlign: 'center', lineHeight: 32 }}>Img</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.avatarPlaceholder, p.type === "manual" && { backgroundColor: "#f1f5f9" }]}>
+                        <Ionicons name={p.type === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.participantName}>
+                      {p.displayName} {p.isMe && "(Tu)"}
                     </Text>
-                  )}
-                  {/* Show Services if present */}
-                  {p.services && (
-                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                      {Object.keys(p.services).map(key => {
-                        const val = p.services[key]; // "yes" or "no"
-                        if (val !== "yes") return null;
-                        const label = SERVICE_LABELS[key as RideServiceKey] || key;
-                        return (
-                          <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                  {/* Show generic label if manual and nothing else */}
-                  {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
-                </View>
-                <View style={styles.participantActions}>
-                  {isAdmin && !isArchived && !isCancelled && (
-                    <Pressable
-                      onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
-                      hitSlop={10}
-                      style={styles.editIconBtn}
-                    >
-                      <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                    </Pressable>
-                  )}
-                  {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
-                  {(isAdmin || p.isMe) && (
-                    <TouchableOpacity
-                      onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
-                      style={{ padding: 4 }}
-                      disabled={isArchived || isCancelled}
-                    >
-                      <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                    </TouchableOpacity>
-                  )}
+                    {/* Show Note if present */}
+                    {p.note && (
+                      <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
+                        "{p.note}"
+                      </Text>
+                    )}
+                    {/* Show Services if present */}
+                    {p.services && (
+                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                        {Object.keys(p.services).map(key => {
+                          const val = p.services[key]; // "yes" or "no"
+                          if (val !== "yes") return null;
+                          const label = SERVICE_LABELS[key as RideServiceKey] || key;
+                          return (
+                            <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                    {/* Show generic label if manual and nothing else */}
+                    {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
+                  </View>
+                  <View style={styles.participantActions}>
+                    {isAdmin && !isArchived && !isCancelled && (
+                      <Pressable
+                        onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
+                        hitSlop={10}
+                        style={styles.editIconBtn}
+                      >
+                        <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                      </Pressable>
+                    )}
+                    {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
+                    {(isAdmin || p.isMe) && (
+                      <TouchableOpacity
+                        onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
+                        style={{ padding: 4 }}
+                        disabled={isArchived || isCancelled}
+                      >
+                        <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
             ))
@@ -1434,6 +1457,7 @@ const styles = StyleSheet.create({
 
   // Sections
   section: { paddingHorizontal: 20, marginTop: 24 },
+  sectionTight: { paddingHorizontal: 20, marginTop: 12 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1E293B" },
   descriptionText: { fontSize: 16, lineHeight: 24, color: "#475569" },
@@ -1448,7 +1472,19 @@ const styles = StyleSheet.create({
   // Participants
   addManualBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
   addManualText: { color: UI.colors.action, fontWeight: "700", fontSize: 13 },
-  participantRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  participantCard: {
+    backgroundColor: UI.colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: UI.colors.borderMuted,
+    padding: 12,
+    marginBottom: 8,
+    ...UI.shadow.card,
+  },
+  participantCardLast: {
+    marginBottom: 0,
+  },
+  participantRow: { flexDirection: "row", alignItems: "center" },
   participantAvatar: {},
   avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center" },
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
@@ -1543,4 +1579,103 @@ const styles = StyleSheet.create({
   summaryBadges: { flexDirection: "row", gap: 8 },
   summaryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   summaryBadgeText: { fontSize: 12, fontWeight: "700" },
+
+  // Unified Self Card
+  unifiedSelfCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderLeftWidth: 6,
+    borderLeftColor: UI.colors.action, // Default green
+    padding: 16,
+  },
+  unifiedSelfCardTrip: {
+    borderLeftColor: UI.colors.eventTravel, // Trip specific accent
+  },
+  unifiedSelfCardTrek: {
+    borderLeftColor: UI.colors.eventTrekking,
+  },
+  unifiedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  unifiedTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  unifiedSubtitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#334155",
+    marginTop: 2,
+  },
+  noteBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    marginBottom: 16,
+  },
+  noteLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  noteText: {
+    fontSize: 14,
+    color: "#334155",
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
+  noteTextPlaceholder: {
+    color: "#94A3B8",
+  },
+  servicesBlock: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    gap: 4,
+  },
+  serviceItem: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  unifiedActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  unifiedActionBtn: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unifiedActionText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#334155",
+    textAlign: "center",
+  },
+  unifiedActionDestructive: {
+    backgroundColor: "#FEF2F2",
+  },
+  unifiedActionDestructiveText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#DC2626",
+    textAlign: "center",
+  },
 });

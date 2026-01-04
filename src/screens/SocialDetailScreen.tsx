@@ -608,6 +608,9 @@ export default function SocialDetailScreen() {
       <ScreenHeader
         title={event?.title ?? "Evento"}
         disableUppercase={true}
+        titleNumberOfLines={2}
+        titleAllowShrink={true}
+        titleMinScale={0.7}
         subtitle={
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
@@ -717,63 +720,68 @@ export default function SocialDetailScreen() {
             </View>
           )}
 
-          <View style={styles.section}>
-            {status !== "archived" && (
-              <View style={{ marginBottom: 16 }}>
-                {userParticipant ? (
-                  <Pressable
-                    style={[styles.bigButton, { backgroundColor: "#fee2e2", borderColor: "#fecaca" }]}
-                    onPress={handleLeave}
-                    disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
-                  >
-                    <Text style={[styles.bigButtonText, { color: "#991b1b" }]}>Annulla iscrizione</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
-                    onPress={openJoinModal}
-                    disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
-                  >
-                    {joinSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'evento</Text>}
-                  </Pressable>
-                )}
-              </View>
-            )}
-
-            {userParticipant && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionTitle}>La tua iscrizione</Text>
-                  {canModifyParticipation && (
-                    <Pressable onPress={() => openEditModal(userParticipant)} hitSlop={10} style={styles.editLink}>
-                      <Text style={styles.editLinkText}>Modifica iscrizione</Text>
-                    </Pressable>
-                  )}
-                </View>
-                <View style={styles.selfCard}>
-                  <View style={styles.selfRow}>
-                    <Text style={styles.selfLabel}>Nota</Text>
-                    <Text style={styles.selfValue} numberOfLines={2}>
-                      {userParticipant.note ? userParticipant.note : "—"}
+          {userParticipant && (
+            <View style={styles.sectionTight}>
+              <View style={styles.bookingCard}>
+                <View style={styles.bookingHeader}>
+                  <Ionicons name="checkmark-circle" size={24} color={UI.colors.action} />
+                  <View>
+                    <Text style={styles.bookingTitle}>Sei prenotato come:</Text>
+                    <Text style={styles.bookingSubtitle}>
+                      {userParticipant.displayName} {userParticipant.uid === userId && "(Tu)"}
                     </Text>
                   </View>
+                </View>
+
+                <View style={styles.bookingNoteBox}>
+                  <Text style={styles.bookingNoteLabel}>NOTA</Text>
+                  <Text style={[styles.bookingNoteText, !userParticipant.note && styles.bookingNotePlaceholder]}>
+                    {userParticipant.note ? userParticipant.note.trim() : "Nessuna nota"}
+                  </Text>
+
                   {(extrasEnabled.lunch || extrasEnabled.dinner) && (
-                    <View style={styles.selfRow}>
-                      <Text style={styles.selfLabel}>Servizi extra</Text>
-                      <View style={styles.selfServices}>
-                        {EXTRA_KEYS.filter((k) => extrasEnabled[k]).map((key) => {
-                          const val = userParticipant.services?.[key] === "yes" ? "Sì" : "No";
-                          const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
-                          return (
-                            <Text key={key} style={styles.selfValue} numberOfLines={1}>
-                              {label}: {val}
-                            </Text>
-                          );
-                        })}
-                      </View>
+                    <View style={styles.bookingServices}>
+                      {EXTRA_KEYS.filter((k) => extrasEnabled[k]).map((key) => {
+                        const val = userParticipant.services?.[key] === "yes" ? "Sì" : "No";
+                        const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                        return (
+                          <Text key={key} style={styles.bookingServiceItem}>
+                            {label}: {val}
+                          </Text>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
+
+                <View style={styles.bookingActions}>
+                  {canModifyParticipation && (
+                    <Pressable onPress={() => openEditModal(userParticipant)} style={styles.bookingActionBtn}>
+                      <Text style={styles.bookingActionText}>Modifica nota e servizi</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={handleLeave}
+                    style={[styles.bookingActionBtn, styles.bookingActionDestructive]}
+                    disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
+                  >
+                    <Text style={styles.bookingActionDestructiveText}>Non partecipo</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.section}>
+            {status !== "archived" && !userParticipant && (
+              <View style={{ marginBottom: 16 }}>
+                <Pressable
+                  style={[styles.bigButton, { backgroundColor: UI.colors.action }]}
+                  onPress={openJoinModal}
+                  disabled={joinSaving || isSavingJoinLeave || !canModifyParticipation}
+                >
+                  {joinSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.bigButtonText}>Partecipa all'evento</Text>}
+                </Pressable>
               </View>
             )}
 
@@ -789,55 +797,60 @@ export default function SocialDetailScreen() {
             {orderedParticipants.length === 0 ? (
               <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
             ) : (
-              orderedParticipants.map((p) => (
-                <View key={p.id} style={styles.participantRow}>
-                  <View style={styles.participantAvatar}>
-                    <View style={styles.avatarPlaceholder}>
-                      <Ionicons name={p.source === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
-                    </View>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.participantName}>
-                      {p.displayName} {p.uid === userId && "(Tu)"}
-                    </Text>
-                    {p.note && (
-                      <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
-                        "{p.note}"
-                      </Text>
-                    )}
-                    {p.services && (
-                      <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                        {Object.keys(p.services).map((key) => {
-                          const val = (p.services as any)[key];
-                          if (val !== "yes") return null;
-                          const label = SERVICE_LABELS[key as "lunch" | "dinner"] || key;
-                          return (
-                            <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
-                            </View>
-                          );
-                        })}
+              orderedParticipants.map((p, idx) => (
+                <View
+                  key={p.id}
+                  style={[styles.participantCard, idx === orderedParticipants.length - 1 && styles.participantCardLast]}
+                >
+                  <View style={styles.participantRow}>
+                    <View style={styles.participantAvatar}>
+                      <View style={styles.avatarPlaceholder}>
+                        <Ionicons name={p.source === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
                       </View>
-                    )}
-                    {p.source === "manual" && !p.note && !p.services && (
-                      <Text style={styles.participantSub}>Registrato manualmente</Text>
-                    )}
-                  </View>
-                  <View style={styles.participantActions}>
-                    {canEdit && canModifyParticipation && (
-                      <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
-                        <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                      </Pressable>
-                    )}
-                    {(canEdit || p.uid === userId) && (
-                      <Pressable
-                        onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
-                        style={{ padding: 4 }}
-                        disabled={!canModifyParticipation}
-                      >
-                        <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                      </Pressable>
-                    )}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.participantName}>
+                        {p.displayName} {p.uid === userId && "(Tu)"}
+                      </Text>
+                      {p.note && (
+                        <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
+                          "{p.note}"
+                        </Text>
+                      )}
+                      {p.services && (
+                        <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                          {Object.keys(p.services).map((key) => {
+                            const val = (p.services as any)[key];
+                            if (val !== "yes") return null;
+                            const label = SERVICE_LABELS[key as "lunch" | "dinner"] || key;
+                            return (
+                              <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                      {p.source === "manual" && !p.note && !p.services && (
+                        <Text style={styles.participantSub}>Registrato manualmente</Text>
+                      )}
+                    </View>
+                    <View style={styles.participantActions}>
+                      {canEdit && canModifyParticipation && (
+                        <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
+                          <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                        </Pressable>
+                      )}
+                      {(canEdit || p.uid === userId) && (
+                        <Pressable
+                          onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
+                          style={{ padding: 4 }}
+                          disabled={!canModifyParticipation}
+                        >
+                          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 </View>
               ))
@@ -1069,6 +1082,7 @@ const styles = StyleSheet.create({
 
   // Sections
   section: { paddingHorizontal: 20, marginTop: 24 },
+  sectionTight: { paddingHorizontal: 20, marginTop: 12 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: "#1E293B" },
   descriptionText: { fontSize: 16, lineHeight: 24, color: "#475569" },
@@ -1083,7 +1097,19 @@ const styles = StyleSheet.create({
   // Participants
   addManualBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
   addManualText: { color: UI.colors.action, fontWeight: "700", fontSize: 13 },
-  participantRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  participantCard: {
+    backgroundColor: UI.colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: UI.colors.borderMuted,
+    padding: 12,
+    marginBottom: 8,
+    ...UI.shadow.card,
+  },
+  participantCardLast: {
+    marginBottom: 0,
+  },
+  participantRow: { flexDirection: "row", alignItems: "center" },
   participantAvatar: {},
   avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center" },
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
@@ -1178,4 +1204,96 @@ const styles = StyleSheet.create({
   summaryBadges: { flexDirection: "row", gap: 8 },
   summaryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   summaryBadgeText: { fontSize: 12, fontWeight: "700" },
+
+  bookingCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderLeftWidth: 6,
+    borderLeftColor: UI.colors.eventSocial,
+    padding: 16,
+  },
+  bookingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  bookingTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  bookingSubtitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#334155",
+    marginTop: 2,
+  },
+  bookingNoteBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    marginBottom: 16,
+  },
+  bookingNoteLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  bookingNoteText: {
+    fontSize: 14,
+    color: "#334155",
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
+  bookingNotePlaceholder: {
+    color: "#94A3B8",
+  },
+  bookingServices: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    gap: 4,
+  },
+  bookingServiceItem: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  bookingActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  bookingActionBtn: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bookingActionText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#334155",
+    textAlign: "center",
+  },
+  bookingActionDestructive: {
+    backgroundColor: "#FEF2F2",
+  },
+  bookingActionDestructiveText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#DC2626",
+    textAlign: "center",
+  },
 });

@@ -12,6 +12,9 @@ type ScreenHeaderProps = {
     subtitle?: string | React.ReactNode;
     showBack?: boolean;
     rightAction?: React.ReactNode;
+    titleNumberOfLines?: number;
+    titleAllowShrink?: boolean;
+    titleMinScale?: number;
     // Allows overriding the top padding if needed
     topPadding?: number;
     disableUppercase?: boolean; // Kept for compat, but Info style is Mixed case
@@ -25,6 +28,9 @@ export function ScreenHeader({
     subtitle,
     showBack = true,
     rightAction,
+    titleNumberOfLines,
+    titleAllowShrink,
+    titleMinScale,
     topPadding,
     disableUppercase,
     backIconColor,
@@ -35,6 +41,9 @@ export function ScreenHeader({
     const insets = useSafeAreaInsets();
 
     const effectiveTopPadding = topPadding !== undefined ? topPadding : (insets.top > 0 ? insets.top + 10 : 20);
+    const titleLines = titleNumberOfLines ?? 1;
+    const allowShrink = titleAllowShrink ?? titleLines === 1;
+    const minScale = titleMinScale ?? 0.8;
 
     return (
         <View style={styles.container}>
@@ -70,7 +79,15 @@ export function ScreenHeader({
                             </View>
                         )}
                         <View style={styles.titleBlock}>
-                            <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{title}</Text>
+                            <Text
+                                style={styles.headerTitle}
+                                numberOfLines={titleLines}
+                                ellipsizeMode="tail"
+                                adjustsFontSizeToFit={allowShrink}
+                                minimumFontScale={allowShrink ? minScale : undefined}
+                            >
+                                {title}
+                            </Text>
                             {!!subtitle && (
                                 typeof subtitle === 'string'
                                     ? <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>
@@ -143,5 +160,3 @@ const styles = StyleSheet.create({
         // marginTop: 4
     }
 });
-
-

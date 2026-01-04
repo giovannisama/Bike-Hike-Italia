@@ -59,6 +59,9 @@ export default function App() {
   // 1) Ascolta lo stato di autenticazione
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (__DEV__) {
+        console.log("[auth] onAuthStateChanged", firebaseUser?.uid ?? null);
+      }
       const isAnonymous = !!firebaseUser?.isAnonymous;
       const hasNoProviders = (firebaseUser?.providerData?.length ?? 0) === 0;
       const isNotPasswordProvider =
@@ -94,7 +97,7 @@ export default function App() {
   }, [user?.uid]);
 
   // 2) Schermata di caricamento mentre verifichiamo auth o profilo
-  if (user === undefined || (user && profileLoading)) {
+  if (user === undefined) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" />
@@ -122,7 +125,7 @@ export default function App() {
           }
         }}
       >
-        <RootNavigator user={user} profile={profile} />
+        <RootNavigator user={user} profile={profile} profileLoading={profileLoading} />
       </NavigationContainer>
     </AppErrorBoundary>
   );

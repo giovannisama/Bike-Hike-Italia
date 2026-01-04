@@ -114,7 +114,13 @@ const t = (label: string) => {
     if (PERF) console.log(`[perf] ${label} ${Date.now()}`);
 };
 
-function LoginScreen({ navigation }: any) {
+function LoginScreen({
+    navigation,
+    onLoginSuccess,
+}: {
+    navigation: any;
+    onLoginSuccess?: (reason: string) => void;
+}) {
     t("LoginScreen render");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -122,6 +128,8 @@ function LoginScreen({ navigation }: any) {
     const [bioReady, setBioReady] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
     const [inputsReady, setInputsReady] = useState(false);
+    const [loginAttempted, setLoginAttempted] = useState(false);
+    const [loginSucceeded, setLoginSucceeded] = useState(false);
     const inputBusyRef = useRef(false);
     const initRanRef = useRef(false);
     const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,6 +194,7 @@ function LoginScreen({ navigation }: any) {
                 } else {
                     setRememberMe(false);
                 }
+                t("prefill done");
 
                 if (bioEnabled) {
                     try {
@@ -220,13 +229,16 @@ function LoginScreen({ navigation }: any) {
         };
     }, []);
 
-    const doLogin = async () => {
+    const doLogin = async (reason: "manual") => {
         if (!email || !password) {
             Alert.alert("Attenzione", "Inserisci email e password.");
             return;
         }
         try {
             setBusy(true);
+            const attempted = true;
+            setLoginAttempted(attempted);
+            t(`${reason}Login start`);
             await signInWithEmailAndPassword(auth, email.trim(), password);
             if (rememberMe) {
                 void (async () => {
@@ -250,7 +262,12 @@ function LoginScreen({ navigation }: any) {
             if (ok) {
                 // Here we could ask to save creds if not saved
             }
+            setLoginSucceeded(true);
+            t(`${reason}Login success`);
+            t(`onLoginSuccess reason=${reason} attempted=${attempted}`);
+            onLoginSuccess?.(reason);
         } catch (e: any) {
+            t(`${reason}Login fail`);
             Alert.alert("Errore login", e.message);
         } finally {
             setBusy(false);
@@ -273,17 +290,37 @@ function LoginScreen({ navigation }: any) {
 
     const loginWithBiometrics = async () => {
         try {
+            t("biometricLogin start");
             const saved = await loadCredsSecurely();
             if (!saved) return;
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: "Accedi con Face ID/Touch ID",
             });
             if (!result.success) return;
+            const attempted = true;
+            setLoginAttempted(attempted);
             await signInWithEmailAndPassword(auth, saved.email, saved.password);
+            setLoginSucceeded(true);
+            t("biometricLogin success");
+            t(`onLoginSuccess reason=biometric attempted=${attempted}`);
+            onLoginSuccess?.("biometric");
         } catch (e: any) {
+            t("biometricLogin fail");
             Alert.alert("Errore", e.message);
         }
     };
+
+    useEffect(() => {
+        if (loginAttempted) {
+            t("loginAttempted=true");
+        }
+    }, [loginAttempted]);
+
+    useEffect(() => {
+        if (loginSucceeded) {
+            t("loginSucceeded=true");
+        }
+    }, [loginSucceeded]);
 
     const doResetPassword = async () => {
         if (!email.trim()) return Alert.alert("Email mancante", "Inserisci la email.");
@@ -407,7 +444,7 @@ function LoginScreen({ navigation }: any) {
                         </Pressable>
 
                         <View style={styles.buttonGroup}>
-                            <Pressable onPress={doLogin} style={styles.loginPrimaryButton}>
+                            <Pressable onPress={() => void doLogin("manual")} style={styles.loginPrimaryButton}>
                                 <Text style={styles.loginPrimaryText}>{busy ? "Accesso..." : "Accedi"}</Text>
                             </Pressable>
 
@@ -432,7 +469,13 @@ function LoginScreen({ navigation }: any) {
     );
 }
 
-function SignupScreen({ navigation }: any) {
+function SignupScreen({
+    navigation,
+    onLoginSuccess,
+}: {
+    navigation: any;
+    onLoginSuccess?: (reason: string) => void;
+}) {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [nickname, setNickname] = useState("");
@@ -468,8 +511,11 @@ function SignupScreen({ navigation }: any) {
                 disabled: false,
                 createdAt: serverTimestamp(),
             });
+            t("signup success");
+            onLoginSuccess?.("signup");
             // Skip public doc for brevity in this extraction, or add it back if critical
         } catch (e: any) {
+            t("signup fail");
             Alert.alert("Errore registrazione", e.message);
         } finally {
             setBusy(false);
@@ -627,7 +673,46 @@ function RejectedScreen({ profile }: { profile: any }) {
 // ROOT NAVIGATOR
 // ------------------------------------------------------------------
 
-export default function RootNavigator({ user, profile }: { user: any; profile: any }) {
+export default function RootNavigator({
+    user,
+    profile,
+    profileLoading,
+}: {
+    user: any;
+    profile: any;
+    profileLoading?: boolean;
+}) {
+    const [forceLogin, setForceLogin] = useState(true);
+    const loggedInitialRef = useRef(false);
+    const lastStackRef = useRef<"auth" | "main" | "pending" | null>(null);
+    const log = (message: string) => {
+        if (__DEV__) {
+            console.log(`[RootNavigator] ${message}`);
+        }
+    };
+
+    useEffect(() => {
+        if (!loggedInitialRef.current) {
+            loggedInitialRef.current = true;
+            log(`initial forceLogin=${forceLogin}`);
+        }
+    }, [forceLogin]);
+
+    useEffect(() => {
+        log(`forceLogin -> ${forceLogin}`);
+    }, [forceLogin]);
+
+    useEffect(() => {
+        if (user === null && !forceLogin) {
+            log("user is null, resetting forceLogin=true");
+            setForceLogin(true);
+        }
+    }, [user, forceLogin]);
+
+    const handleLoginSuccess = (reason: string) => {
+        log(`onLoginSuccess reason=${reason} -> forceLogin=false`);
+        setForceLogin(false);
+    };
     const approvedOk =
         !!profile &&
         ((profile.approved === true) ||
@@ -648,16 +733,41 @@ export default function RootNavigator({ user, profile }: { user: any; profile: a
     const isPending = !!profile && !isSelfDeleted && !approvedOk && !disabledOn;
     const isDisabledOnly = !!profile && !isSelfDeleted && disabledOn === true;
 
-    if (user === null) {
+    if (forceLogin) {
+        if (lastStackRef.current !== "auth") {
+            lastStackRef.current = "auth";
+            log("render AuthStack");
+        }
         return (
             <Stack.Navigator screenOptions={{ headerTitleAlign: "center" }}>
-                <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Accedi" }} />
-                <Stack.Screen name="Signup" component={SignupScreen} options={{ title: "Registrati" }} />
+                <Stack.Screen name="Login" options={{ title: "Accedi" }}>
+                    {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
+                </Stack.Screen>
+                <Stack.Screen name="Signup" options={{ title: "Registrati" }}>
+                    {(props) => <SignupScreen {...props} onLoginSuccess={handleLoginSuccess} />}
+                </Stack.Screen>
             </Stack.Navigator>
         );
     }
 
+    if (user && profileLoading) {
+        if (lastStackRef.current !== "pending") {
+            lastStackRef.current = "pending";
+            log("render LoadingGate");
+        }
+        return (
+            <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <ActivityIndicator size="large" />
+                <Text style={{ marginTop: 12 }}>Verifica accesso...</Text>
+            </SafeAreaView>
+        );
+    }
+
     if (profile && (isSelfDeleted || isPending || isDisabledOnly)) {
+        if (lastStackRef.current !== "pending") {
+            lastStackRef.current = "pending";
+            log("render Pending/Rejected");
+        }
         return (
             <Stack.Navigator screenOptions={{ headerTitleAlign: "center" }}>
                 {isPending || isSelfDeleted ? (
@@ -678,6 +788,10 @@ export default function RootNavigator({ user, profile }: { user: any; profile: a
         );
     }
 
+    if (lastStackRef.current !== "main") {
+        lastStackRef.current = "main";
+        log("render MainStack");
+    }
     return (
         <Stack.Navigator screenOptions={{ headerShadowVisible: false, headerTitleAlign: "center" }}>
             <Stack.Screen name="Home" component={MainTabs} options={{ headerShown: false }} />

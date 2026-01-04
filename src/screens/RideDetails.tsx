@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Pressable,
   Share,
+  ActionSheetIOS, // ADDED
   Platform,
   Linking, // ADDED
   Modal, // ADDED
@@ -183,7 +184,7 @@ export default function RideDetails() {
     });
   }, [navigation]);
 
-  const { profile, isAdmin, isGuide, loading: profileLoading } = useCurrentProfile();
+  const { profile, isAdmin, isOwner, isGuide, loading: profileLoading } = useCurrentProfile();
   const userId = auth.currentUser?.uid;
 
   const [ride, setRide] = useState<any>(null);
@@ -254,32 +255,57 @@ export default function RideDetails() {
   useEffect(() => {
     const missing = participants
       .filter((p) => p.id && !p.id.startsWith("manual_") && !Object.prototype.hasOwnProperty.call(publicIndex, p.id))
-      .map((p) => p.id);
+      .map((p) => ({ docId: p.id, uid: p.uid || p.id }));
 
     if (missing.length === 0) return;
 
     const fetchProfiles = async () => {
       const newEntries: Record<string, PublicUserDoc | null> = {};
 
+      // Helper to try fetching private user doc (only works if admin/owner)
+      const tryFetchPrivate = async (uid: string) => {
+        try {
+          const userSnap = await getDoc(doc(db, "users", uid));
+          if (userSnap.exists()) {
+            return userSnap.data();
+          }
+        } catch { }
+        return null;
+      };
+
       await Promise.all(
-        missing.map(async (uid) => {
+        missing.map(async (item) => {
+          const { docId, uid } = item;
+          let resolved: any = null;
+
+          // 1. Try public profile first (fast, reliable for names)
           try {
             const publicSnap = await getDoc(doc(db, "users_public", uid));
             if (publicSnap.exists()) {
-              newEntries[uid] = publicSnap.data() as PublicUserDoc;
-              return;
+              resolved = publicSnap.data();
             }
           } catch { }
 
-          try {
-            const userSnap = await getDoc(doc(db, "users", uid));
-            if (userSnap.exists()) {
-              newEntries[uid] = userSnap.data() as PublicUserDoc;
-              return;
+          // 2. If I am admin/owner, try to fetch private doc to get phoneNumber
+          //    We do this even if public found, because we want the phone.
+          //    (Works for all event types: Ride, Trip, Trek)
+          if (isAdmin || isOwner) {
+            const privateData = await tryFetchPrivate(uid);
+            if (privateData) {
+              // Merge: prefer public for display name logic, but take phone from private
+              resolved = { ...resolved, ...privateData };
             }
-          } catch { }
+          } else if (!resolved) {
+            // Fallback for legacy
+            try {
+              const userSnap = await getDoc(doc(db, "users", uid));
+              if (userSnap.exists()) {
+                resolved = userSnap.data();
+              }
+            } catch { }
+          }
 
-          newEntries[uid] = null;
+          newEntries[docId] = resolved || null;
         })
       );
 
@@ -303,7 +329,11 @@ export default function RideDetails() {
     // 1. Registered users (from subcollection)
     // 1. Registered users (from subcollection)
     const registered = participants.map((p) => {
-      const resolved = publicIndex[p.id];
+      let resolved = publicIndex[p.id];
+      // Use local profile for "Me" to ensure we have private fields like phoneNumber
+      if (p.id === userId && profile) {
+        resolved = { ...resolved, ...profile } as any;
+      }
       const resolvedName = buildPublicName(resolved);
       const displayName = resolvedName || p.displayName || p.name || "Utente";
       const photoURL = (resolved as any)?.photoURL || p.photoURL || null;
@@ -317,7 +347,8 @@ export default function RideDetails() {
         isMe: p.id === userId,
         role: p.role || "user",
         note: p.note || null,
-        services: p.services || null, // ADDED
+        services: p.services || null,
+        phoneNumber: (resolved as any)?.phoneNumber || null,
       };
     }).sort((a: any, b: any) => {
       const timeA = a.signedAt ? a.signedAt.getTime() : 0;
@@ -848,6 +879,63 @@ export default function RideDetails() {
     }
   };
 
+  const handleContactParticipant = (phoneNumber: string) => {
+    if (!phoneNumber) return;
+
+    // Ensure clean number for logic
+    const cleanPhone = phoneNumber.replace(/\s+/g, "");
+
+    const options = ["Apri WhatsApp", "Chiama", "Annulla"];
+    const destructiveButtonIndex = -1;
+    const cancelButtonIndex = 2;
+
+    const executeAction = (index: number) => {
+      if (index === 0) {
+        // WhatsApp: remove '+' prefix
+        const waNumber = cleanPhone.startsWith("+") ? cleanPhone.substring(1) : cleanPhone;
+        const waUrl = `whatsapp://send?phone=${waNumber}`;
+
+        Linking.openURL(waUrl).catch(() => {
+          // Fallback
+          const webUrl = `https://wa.me/${waNumber}`;
+          Linking.openURL(webUrl).catch(() => {
+            Alert.alert("Errore", "Impossibile aprire WhatsApp.");
+          });
+        });
+      } else if (index === 1) {
+        // Call: keep '+' prefix if present (E.164)
+        const telUrl = `tel:${cleanPhone}`;
+        Linking.openURL(telUrl).catch(() => {
+          Alert.alert("Errore", "Impossibile effettuare la chiamata.");
+        });
+      }
+    };
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex,
+          destructiveButtonIndex,
+          title: "Contatta partecipante",
+        },
+        (buttonIndex) => executeAction(buttonIndex)
+      );
+    } else {
+      // Android simple alert/sheet equivalent
+      Alert.alert(
+        "Contatta partecipante",
+        undefined,
+        [
+          { text: "Apri WhatsApp", onPress: () => executeAction(0) },
+          { text: "Chiama", onPress: () => executeAction(1) },
+          { text: "Annulla", style: "cancel" }
+        ],
+        { cancelable: true }
+      );
+    }
+  };
+
   // ----------------------------------------------------------------
   // RENDER
   // ----------------------------------------------------------------
@@ -858,6 +946,9 @@ export default function RideDetails() {
       </View>
     );
   }
+
+
+
 
   const dateLabel = ride.date
     ? format(ride.date.toDate(), "EEEE d MMMM yyyy", { locale: it })
@@ -1062,14 +1153,14 @@ export default function RideDetails() {
 
         {/* USER RESERVATION CARD (Unified Design) */}
         {selfParticipant && (
-            <View style={styles.sectionTight}>
-              <View
-                style={[
-                  styles.unifiedSelfCard,
-                  isTrip && styles.unifiedSelfCardTrip,
-                  isTrek && styles.unifiedSelfCardTrek,
-                ]}
-              >
+          <View style={styles.sectionTight}>
+            <View
+              style={[
+                styles.unifiedSelfCard,
+                isTrip && styles.unifiedSelfCardTrip,
+                isTrek && styles.unifiedSelfCardTrek,
+              ]}
+            >
               {/* Header */}
               <View style={styles.unifiedHeader}>
                 <Ionicons name="checkmark-circle" size={24} color={UI.colors.action} />
@@ -1211,6 +1302,18 @@ export default function RideDetails() {
                     {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
                   </View>
                   <View style={styles.participantActions}>
+                    {/* Access to contact only if phoneNumber is present AND user is Admin/Owner */}
+                    {/* For 'Me', ensure we use profile.phoneNumber if p.phoneNumber is missing */}
+                    {(p.phoneNumber || (p.isMe && profile?.phoneNumber)) && (isAdmin || isOwner) && (
+                      <TouchableOpacity
+                        onPress={() => handleContactParticipant(p.phoneNumber || (p.isMe ? profile?.phoneNumber : undefined))}
+                        style={{ padding: 4, marginRight: 4 }}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="call-outline" size={20} color={UI.colors.action} />
+                      </TouchableOpacity>
+                    )}
+
                     {isAdmin && !isArchived && !isCancelled && (
                       <Pressable
                         onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}

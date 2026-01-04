@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Share,
   Switch,
+  ActionSheetIOS,
 } from "react-native";
 import { Screen, UI } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -74,13 +75,14 @@ const SERVICE_LABELS: Record<(typeof EXTRA_KEYS)[number], string> = {
 const emptySelection = () => ({ lunch: null as Choice, dinner: null as Choice });
 
 export default function SocialDetailScreen() {
-  const { isAdmin, isOwner, displayName } = useCurrentProfile();
+  const { isAdmin, isOwner, displayName, profile } = useCurrentProfile();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<any>();
   const eventId = route.params?.eventId as string | undefined;
   const canEdit = isAdmin || isOwner;
   const [event, setEvent] = useState<SocialEvent | null>(null);
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
+  const [profilesIndex, setProfilesIndex] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [joinSaving, setJoinSaving] = useState(false);
   const [isSavingJoinLeave, setIsSavingJoinLeave] = useState(false);
@@ -150,6 +152,40 @@ export default function SocialDetailScreen() {
       } catch { }
     };
   }, [eventId]);
+
+  // FETCH PROFILES (for phone numbers)
+  useEffect(() => {
+    // Only if admin/owner
+    if (!isAdmin && !isOwner) return;
+
+    const missing = participants
+      .filter((p) => p.uid && p.uid !== auth.currentUser?.uid && !profilesIndex[p.uid])
+      .map((p) => p.uid!);
+
+    if (missing.length === 0) return;
+
+    const fetchPrivate = async () => {
+      const newEntries: Record<string, any> = {};
+      await Promise.all(
+        missing.map(async (uid) => {
+          try {
+            // Assuming "users" is the collection for private data
+            const snap = await getDoc(doc(db, "users", uid));
+            if (snap.exists()) {
+              newEntries[uid] = snap.data();
+            } else {
+              newEntries[uid] = { notFound: true };
+            }
+          } catch {
+            newEntries[uid] = { error: true };
+          }
+        })
+      );
+      setProfilesIndex((prev) => ({ ...prev, ...newEntries }));
+    };
+
+    fetchPrivate();
+  }, [participants, isAdmin, isOwner, profilesIndex]);
 
   const userId = auth.currentUser?.uid ?? null;
   const userParticipant = useMemo(
@@ -601,6 +637,40 @@ export default function SocialDetailScreen() {
     } catch (e) {
       Alert.alert("Errore", "Impossibile aggiungere evento.");
     }
+
+  };
+
+  const handleContactParticipant = (phoneNumber: string) => {
+    if (!phoneNumber) return;
+    const cleanPhone = phoneNumber.replace(/\s+/g, "");
+    const options = ["Apri WhatsApp", "Chiama", "Annulla"];
+    const executeAction = (index: number) => {
+      if (index === 0) {
+        // WhatsApp
+        const waNumber = cleanPhone.startsWith("+") ? cleanPhone.substring(1) : cleanPhone;
+        const waUrl = `whatsapp://send?phone=${waNumber}`;
+        Linking.openURL(waUrl).catch(() => {
+          const webUrl = `https://wa.me/${waNumber}`;
+          Linking.openURL(webUrl).catch(() => Alert.alert("Errore", "Impossibile aprire WhatsApp."));
+        });
+      } else if (index === 1) {
+        const telUrl = `tel:${cleanPhone}`;
+        Linking.openURL(telUrl).catch(() => Alert.alert("Errore", "Impossibile chiamare."));
+      }
+    };
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: 2, destructiveButtonIndex: -1, title: "Contatta partecipante" },
+        executeAction
+      );
+    } else {
+      Alert.alert("Contatta partecipante", undefined, [
+        { text: "Apri WhatsApp", onPress: () => executeAction(0) },
+        { text: "Chiama", onPress: () => executeAction(1) },
+        { text: "Annulla", style: "cancel" }
+      ], { cancelable: true });
+    }
   };
 
   return (
@@ -797,64 +867,89 @@ export default function SocialDetailScreen() {
             {orderedParticipants.length === 0 ? (
               <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
             ) : (
-              orderedParticipants.map((p, idx) => (
-                <View
-                  key={p.id}
-                  style={[styles.participantCard, idx === orderedParticipants.length - 1 && styles.participantCardLast]}
-                >
-                  <View style={styles.participantRow}>
-                    <View style={styles.participantAvatar}>
-                      <View style={styles.avatarPlaceholder}>
-                        <Ionicons name={p.source === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
+              orderedParticipants.map((p, idx) => {
+                // Resolve private info
+                let privateData = null;
+                if (p.uid === userId && profile) {
+                  privateData = profile;
+                } else if (p.uid && profilesIndex[p.uid]) {
+                  privateData = profilesIndex[p.uid];
+                }
+                const phoneNumber = (privateData as any)?.phoneNumber;
+
+                return (
+                  <View
+                    key={p.id}
+                    style={[styles.participantCard, idx === orderedParticipants.length - 1 && styles.participantCardLast]}
+                  >
+                    <View style={styles.participantRow}>
+                      <View style={styles.participantAvatar}>
+                        <View style={styles.avatarPlaceholder}>
+                          <Ionicons name={p.source === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
+                        </View>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.participantName}>
+                          {p.displayName} {p.uid === userId && "(Tu)"}
+                        </Text>
+                        {p.note && (
+                          <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
+                            "{p.note}"
+                          </Text>
+                        )}
+                        {p.services && (
+                          <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                            {Object.keys(p.services).map((key) => {
+                              const val = (p.services as any)[key];
+                              if (val !== "yes") return null;
+                              const label = SERVICE_LABELS[key as "lunch" | "dinner"] || key;
+                              return (
+                                <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+                        {p.source === "manual" && !p.note && !p.services && (
+                          <Text style={styles.participantSub}>Registrato manualmente</Text>
+                        )}
+                      </View>
+                      <View style={styles.participantActions}>
+                        {/* Contact Icon First */}
+                        {phoneNumber && (isAdmin || isOwner) && (
+                          <TouchableOpacity
+                            onPress={() => handleContactParticipant(phoneNumber)}
+                            style={{ padding: 4, marginRight: 4 }}
+                            hitSlop={8}
+                          >
+                            <Ionicons name="call-outline" size={20} color={UI.colors.action} />
+                          </TouchableOpacity>
+                        )}
+
+                        {canEdit && canModifyParticipation && (
+                          <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
+                            <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                          </Pressable>
+                        )}
+                        {(canEdit || p.uid === userId) && (
+                          <Pressable
+                            onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
+                            style={{ padding: 4 }}
+                            disabled={!canModifyParticipation}
+                          >
+                            <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                          </Pressable>
+                        )}
+
+
                       </View>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.participantName}>
-                        {p.displayName} {p.uid === userId && "(Tu)"}
-                      </Text>
-                      {p.note && (
-                        <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
-                          "{p.note}"
-                        </Text>
-                      )}
-                      {p.services && (
-                        <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                          {Object.keys(p.services).map((key) => {
-                            const val = (p.services as any)[key];
-                            if (val !== "yes") return null;
-                            const label = SERVICE_LABELS[key as "lunch" | "dinner"] || key;
-                            return (
-                              <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
-                      {p.source === "manual" && !p.note && !p.services && (
-                        <Text style={styles.participantSub}>Registrato manualmente</Text>
-                      )}
-                    </View>
-                    <View style={styles.participantActions}>
-                      {canEdit && canModifyParticipation && (
-                        <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
-                          <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                        </Pressable>
-                      )}
-                      {(canEdit || p.uid === userId) && (
-                        <Pressable
-                          onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
-                          style={{ padding: 4 }}
-                          disabled={!canModifyParticipation}
-                        >
-                          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                        </Pressable>
-                      )}
-                    </View>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
+
           </View>
 
           <View style={styles.actionGrid}>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, Image, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, SafeAreaView } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, SafeAreaView, InteractionManager } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, sendPasswordResetEmail, updateProfile as fbUpdateProfile } from "firebase/auth";
@@ -37,18 +37,21 @@ import InfoScreen from "../screens/InfoScreen";
 import AdminScreen from "../screens/AdminScreen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import AdminGate from "./guards/AdminGate";
+import { UI } from "../components/Screen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const COLOR_PRIMARY = "#0B3D2E";
 const COLOR_TEXT = "#102A43";
 const COLOR_MUTED = "#5B6B7F";
-const logo = require("../../assets/images/logo.jpg");
+const loginLogo = require("../../assets/images/logo.png");
 
 // ------------------------------------------------------------------
 // AUTH HELPERS & CONSTANTS
 // ------------------------------------------------------------------
 const BIOMETRIC_EMAIL_KEY = "bh_email";
 const BIOMETRIC_PASS_KEY = "bh_pass";
+const REMEMBER_EMAIL_KEY = "bh_remember_email";
+const REMEMBER_PASS_KEY = "bh_remember_pass";
 
 async function deviceSupportsBiometrics() {
     try {
@@ -73,6 +76,24 @@ async function loadCredsSecurely() {
     if (email && pass) return { email, password: pass };
     return null;
 }
+async function loadRememberCreds() {
+    const email = await SecureStore.getItemAsync(REMEMBER_EMAIL_KEY);
+    const pass = await SecureStore.getItemAsync(REMEMBER_PASS_KEY);
+    if (email && pass) return { email, password: pass };
+    return null;
+}
+async function saveRememberCreds(email: string, password: string) {
+    await SecureStore.setItemAsync(REMEMBER_EMAIL_KEY, email, {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+    });
+    await SecureStore.setItemAsync(REMEMBER_PASS_KEY, password, {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+    });
+}
+async function clearRememberCreds() {
+    await SecureStore.deleteItemAsync(REMEMBER_EMAIL_KEY);
+    await SecureStore.deleteItemAsync(REMEMBER_PASS_KEY);
+}
 
 const APP_VERSION_LABEL = (() => {
     const platformKey = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : Platform.OS;
@@ -88,19 +109,115 @@ type UserProfile = UserDoc;
 // ------------------------------------------------------------------
 // SCREENS (Moved from App.tsx)
 // ------------------------------------------------------------------
+const PERF = __DEV__;
+const t = (label: string) => {
+    if (PERF) console.log(`[perf] ${label} ${Date.now()}`);
+};
 
 function LoginScreen({ navigation }: any) {
+    t("LoginScreen render");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [busy, setBusy] = useState(false);
     const [bioReady, setBioReady] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
+    const [inputsReady, setInputsReady] = useState(false);
+    const inputBusyRef = useRef(false);
+    const initRanRef = useRef(false);
+    const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initRef = useRef<() => void>(() => {});
+    const defaultBiometricLabel = Platform.OS === "ios" ? "Accedi con Face ID / Touch ID" : "Accedi con Touch ID";
+    const [biometricLabel, setBiometricLabel] = useState(defaultBiometricLabel);
 
     useEffect(() => {
-        (async () => {
-            const ok = await deviceSupportsBiometrics();
-            const stored = await loadCredsSecurely();
-            setBioReady(ok && !!stored);
-        })();
+        let timeout: ReturnType<typeof setTimeout> | null = null;
+        const task = InteractionManager.runAfterInteractions(() => {
+            timeout = setTimeout(() => setInputsReady(true), 900);
+        });
+        return () => {
+            task.cancel?.();
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+        };
+    }, []);
+
+    const scheduleInitAfterIdle = () => {
+        if (initRanRef.current || initTimerRef.current) return;
+        t("Login init scheduled");
+        initTimerRef.current = setTimeout(() => {
+            initTimerRef.current = null;
+            if (initRanRef.current) return;
+            if (inputBusyRef.current) {
+                scheduleInitAfterIdle();
+                return;
+            }
+            initRef.current();
+        }, 900);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        const init = async () => {
+            if (inputBusyRef.current) {
+                scheduleInitAfterIdle();
+                return;
+            }
+            t("Login init start");
+            initRanRef.current = true;
+            try {
+                const [ok, storedBio, remembered] = await Promise.all([
+                    deviceSupportsBiometrics(),
+                    loadCredsSecurely(),
+                    loadRememberCreds(),
+                ]);
+                if (cancelled) return;
+                const bioEnabled = ok && !!storedBio;
+                setBioReady(bioEnabled);
+
+                if (remembered) {
+                    if (remembered.email) {
+                        setEmail((prev) => (prev ? prev : remembered.email));
+                    }
+                    if (remembered.password) {
+                        setPassword((prev) => (prev ? prev : remembered.password));
+                    }
+                    setRememberMe(true);
+                } else {
+                    setRememberMe(false);
+                }
+
+                if (bioEnabled) {
+                    try {
+                        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+                        if (cancelled) return;
+                        if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                            setBiometricLabel("Accedi con Face ID / Touch ID");
+                        } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+                            setBiometricLabel("Accedi con Touch ID");
+                        }
+                    } catch {
+                        if (!cancelled) {
+                            setBiometricLabel(defaultBiometricLabel);
+                        }
+                    }
+                }
+            } finally {
+                t("Login init end");
+            }
+        };
+        initRef.current = () => void init();
+        const task = InteractionManager.runAfterInteractions(() => {
+            scheduleInitAfterIdle();
+        });
+        return () => {
+            cancelled = true;
+            task.cancel?.();
+            if (initTimerRef.current) {
+                clearTimeout(initTimerRef.current);
+                initTimerRef.current = null;
+            }
+        };
     }, []);
 
     const doLogin = async () => {
@@ -111,6 +228,23 @@ function LoginScreen({ navigation }: any) {
         try {
             setBusy(true);
             await signInWithEmailAndPassword(auth, email.trim(), password);
+            if (rememberMe) {
+                void (async () => {
+                    try {
+                        await saveRememberCreds(email.trim(), password);
+                    } catch {
+                        // Silent best-effort
+                    }
+                })();
+            } else {
+                void (async () => {
+                    try {
+                        await clearRememberCreds();
+                    } catch {
+                        // Silent best-effort
+                    }
+                })();
+            }
             // Biometric prompt logic is simpler if we just do it on success
             const ok = await deviceSupportsBiometrics();
             if (ok) {
@@ -120,6 +254,20 @@ function LoginScreen({ navigation }: any) {
             Alert.alert("Errore login", e.message);
         } finally {
             setBusy(false);
+        }
+    };
+
+    const handleRememberToggle = (value: boolean) => {
+        setRememberMe(value);
+        if (!value) {
+            setPassword("");
+            void (async () => {
+                try {
+                    await clearRememberCreds();
+                } catch {
+                    // Silent best-effort
+                }
+            })();
         }
     };
 
@@ -152,52 +300,132 @@ function LoginScreen({ navigation }: any) {
     return (
         <SafeAreaView style={styles.authContainer}>
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={styles.authScroll}>
-                    <Image source={logo} style={styles.authLogo} />
-                    {!!APP_VERSION_LABEL && <Text style={styles.authVersion}>{APP_VERSION_LABEL}</Text>}
-                    <Text style={styles.authTitle}>Accedi</Text>
+                <ScrollView
+                    contentContainerStyle={styles.loginScroll}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={styles.loginCard}>
+                        <View style={styles.loginHeader}>
+                            <View style={styles.logoWrap}>
+                                <Image source={loginLogo} style={styles.logoImage} />
+                            </View>
+                            <Text style={styles.loginTitle}>Accedi</Text>
+                            {!inputsReady && <ActivityIndicator size="small" color={UI.colors.muted} style={styles.loginWarmup} />}
+                            {!!APP_VERSION_LABEL && (
+                                <Text style={styles.loginVersion}>{APP_VERSION_LABEL}</Text>
+                            )}
+                        </View>
 
-                    <Text style={styles.inputLabel}>Email</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="nome@esempio.com"
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        value={email}
-                        onChangeText={setEmail}
-                    />
+                        <View style={[styles.fieldGroup, styles.fieldGroupFirst]}>
+                            <Text style={styles.loginLabel}>Email</Text>
+                            <TextInput
+                                style={styles.loginInput}
+                                placeholder="nome@esempio.com"
+                                placeholderTextColor={UI.colors.disabled}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                spellCheck={false}
+                                keyboardType="email-address"
+                                {...Platform.select({
+                                    ios: { textContentType: "none" },
+                                    android: { autoComplete: "email", importantForAutofill: "yes" },
+                                })}
+                                editable={inputsReady}
+                                selectTextOnFocus={inputsReady}
+                                value={email}
+                                onChangeText={setEmail}
+                                onFocus={() => {
+                                    inputBusyRef.current = true;
+                                    t("Email focus");
+                                }}
+                                onBlur={() => {
+                                    inputBusyRef.current = false;
+                                    scheduleInitAfterIdle();
+                                }}
+                            />
+                        </View>
 
-                    <Text style={styles.inputLabel}>Password</Text>
-                    <View style={styles.passwordField}>
-                        <TextInput
-                            style={[styles.input, styles.passwordInput]}
-                            placeholder="••••••••"
-                            secureTextEntry={!passwordVisible}
-                            value={password}
-                            onChangeText={setPassword}
-                        />
-                        <Pressable onPress={() => setPasswordVisible(!passwordVisible)} style={styles.passwordToggle}>
-                            <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={20} color="#475569" />
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.loginLabel}>Password</Text>
+                            <View style={styles.loginPasswordField}>
+                                <TextInput
+                                    style={styles.loginPasswordInput}
+                                    placeholder="••••••••"
+                                    placeholderTextColor={UI.colors.disabled}
+                                    secureTextEntry={!passwordVisible}
+                                    autoCorrect={false}
+                                    spellCheck={false}
+                                    {...Platform.select({
+                                        ios: { textContentType: "none", keyboardType: "ascii-capable" },
+                                        android: { autoComplete: "password", importantForAutofill: "yes" },
+                                    })}
+                                    editable={inputsReady}
+                                    selectTextOnFocus={inputsReady}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    onFocus={() => {
+                                        inputBusyRef.current = true;
+                                        t("Password focus");
+                                    }}
+                                    onBlur={() => {
+                                        inputBusyRef.current = false;
+                                        scheduleInitAfterIdle();
+                                    }}
+                                />
+                                <Pressable
+                                    onPress={() => setPasswordVisible(!passwordVisible)}
+                                    style={styles.passwordToggle}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                >
+                                    <Ionicons
+                                        name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+                                        size={20}
+                                        color={UI.colors.muted}
+                                    />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        <Pressable
+                            onPress={() => void handleRememberToggle(!rememberMe)}
+                            style={styles.rememberRow}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <View style={styles.rememberInline}>
+                                <Text style={styles.rememberLabel}>Ricordami</Text>
+                                <Ionicons
+                                    name={rememberMe ? "checkbox" : "square-outline"}
+                                    size={28}
+                                    color={rememberMe ? UI.colors.action : UI.colors.muted}
+                                    style={styles.rememberCheckIcon}
+                                />
+                            </View>
                         </Pressable>
+
+                        <Pressable onPress={doResetPassword} style={styles.forgotLink}>
+                            <Text style={styles.forgotLinkText}>Password dimenticata?</Text>
+                        </Pressable>
+
+                        <View style={styles.buttonGroup}>
+                            <Pressable onPress={doLogin} style={styles.loginPrimaryButton}>
+                                <Text style={styles.loginPrimaryText}>{busy ? "Accesso..." : "Accedi"}</Text>
+                            </Pressable>
+
+                            {bioReady && (
+                                <Pressable onPress={loginWithBiometrics} style={styles.loginSecondaryButton}>
+                                    <Ionicons name="finger-print" size={20} color={UI.colors.muted} />
+                                    <Text style={styles.loginSecondaryText}>{biometricLabel}</Text>
+                                </Pressable>
+                            )}
+                        </View>
+
+                        <View style={styles.loginFooterRow}>
+                            <Text style={styles.loginFooterText}>Non hai un account?</Text>
+                            <Pressable onPress={() => navigation.replace("Signup")} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                <Text style={styles.loginFooterLink}>Registrati</Text>
+                            </Pressable>
+                        </View>
                     </View>
-
-                    <Pressable onPress={doResetPassword} style={{ marginTop: 8 }}>
-                        <Text style={{ color: COLOR_PRIMARY, fontWeight: "600" }}>Password dimenticata?</Text>
-                    </Pressable>
-
-                    <Pressable onPress={doLogin} style={[styles.btnPrimary, { marginTop: 16 }]}>
-                        <Text style={styles.btnPrimaryText}>{busy ? "Accesso..." : "Accedi"}</Text>
-                    </Pressable>
-
-                    {bioReady && (
-                        <Pressable onPress={loginWithBiometrics} style={[styles.btnSecondary, { marginTop: 12 }]}>
-                            <Text style={styles.btnSecondaryText}>Accedi con Face ID / Touch ID</Text>
-                        </Pressable>
-                    )}
-
-                    <Pressable onPress={() => navigation.replace("Signup")} style={[styles.btnTextLink, { marginTop: 16 }]}>
-                        <Text style={styles.textLink}>Non hai un account? Registrati</Text>
-                    </Pressable>
                 </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
@@ -251,33 +479,110 @@ function SignupScreen({ navigation }: any) {
     return (
         <SafeAreaView style={styles.authContainer}>
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={styles.authScroll}>
-                    <Image source={logo} style={styles.authLogo} />
-                    <Text style={styles.authTitle}>Registrati</Text>
-                    {/* Inputs simplified for length, imagine standard inputs here */}
-                    <Text style={styles.inputLabel}>Nome *</Text>
-                    <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} />
-                    <Text style={styles.inputLabel}>Cognome *</Text>
-                    <TextInput style={styles.input} value={lastName} onChangeText={setLastName} />
-                    <Text style={styles.inputLabel}>Email *</Text>
-                    <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-                    <Text style={styles.inputLabel}>Password *</Text>
-                    <View style={styles.passwordField}>
-                        <TextInput style={[styles.input, styles.passwordInput]} secureTextEntry={!passwordVisible} value={password} onChangeText={setPassword} />
-                        <Pressable onPress={() => setPasswordVisible(!passwordVisible)} style={styles.passwordToggle}><Ionicons name="eye-outline" size={20} /></Pressable>
-                    </View>
-                    <Text style={styles.inputLabel}>Conferma Password *</Text>
-                    <View style={styles.passwordField}>
-                        <TextInput style={[styles.input, styles.passwordInput]} secureTextEntry={!confirmVisible} value={confirmPassword} onChangeText={setConfirmPassword} />
-                        <Pressable onPress={() => setConfirmVisible(!confirmVisible)} style={styles.passwordToggle}><Ionicons name="eye-outline" size={20} /></Pressable>
-                    </View>
+                <ScrollView
+                    contentContainerStyle={styles.signupScroll}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={styles.loginCard}>
+                        <View style={styles.loginHeader}>
+                            <View style={styles.signupLogoWrap}>
+                                <Image source={loginLogo} style={styles.logoImage} resizeMode="contain" />
+                            </View>
+                            <Text style={[styles.loginTitle, styles.signupTitle]}>Registrati</Text>
+                        </View>
 
-                    <Pressable onPress={doSignup} style={[styles.btnPrimary, { marginTop: 16 }]}>
-                        <Text style={styles.btnPrimaryText}>{busy ? "Creazione..." : "Crea account"}</Text>
-                    </Pressable>
-                    <Pressable onPress={() => navigation.replace("Login")} style={[styles.btnSecondary, { marginTop: 12 }]}>
-                        <Text style={styles.btnSecondaryText}>Hai già un account? Accedi</Text>
-                    </Pressable>
+                        <View style={[styles.fieldGroup, styles.fieldGroupFirst, styles.signupFieldGroupFirst]}>
+                            <Text style={styles.loginLabel}>Nome *</Text>
+                            <TextInput
+                                style={[styles.loginInput, styles.signupInput]}
+                                placeholder="Mario"
+                                placeholderTextColor={UI.colors.disabled}
+                                value={firstName}
+                                onChangeText={setFirstName}
+                            />
+                        </View>
+
+                        <View style={[styles.fieldGroup, styles.signupFieldGroup]}>
+                            <Text style={styles.loginLabel}>Cognome *</Text>
+                            <TextInput
+                                style={[styles.loginInput, styles.signupInput]}
+                                placeholder="Rossi"
+                                placeholderTextColor={UI.colors.disabled}
+                                value={lastName}
+                                onChangeText={setLastName}
+                            />
+                        </View>
+
+                        <View style={[styles.fieldGroup, styles.signupFieldGroup]}>
+                            <Text style={styles.loginLabel}>Email *</Text>
+                            <TextInput
+                                style={[styles.loginInput, styles.signupInput]}
+                                placeholder="nome@esempio.com"
+                                value={email}
+                                onChangeText={setEmail}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                                placeholderTextColor={UI.colors.disabled}
+                            />
+                        </View>
+
+                        <View style={[styles.fieldGroup, styles.signupFieldGroup]}>
+                            <Text style={styles.loginLabel}>Password *</Text>
+                            <View style={styles.loginPasswordField}>
+                                <TextInput
+                                    style={[styles.loginPasswordInput, styles.signupPasswordInput]}
+                                    secureTextEntry={!passwordVisible}
+                                    placeholder="••••••••"
+                                    placeholderTextColor={UI.colors.disabled}
+                                    value={password}
+                                    onChangeText={setPassword}
+                                />
+                                <Pressable
+                                    onPress={() => setPasswordVisible(!passwordVisible)}
+                                    style={styles.passwordToggle}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                >
+                                    <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={20} color={UI.colors.muted} />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        <View style={[styles.fieldGroup, styles.signupFieldGroup]}>
+                            <Text style={styles.loginLabel}>Conferma Password *</Text>
+                            <View style={styles.loginPasswordField}>
+                                <TextInput
+                                    style={[styles.loginPasswordInput, styles.signupPasswordInput]}
+                                    secureTextEntry={!confirmVisible}
+                                    placeholder="••••••••"
+                                    placeholderTextColor={UI.colors.disabled}
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                />
+                                <Pressable
+                                    onPress={() => setConfirmVisible(!confirmVisible)}
+                                    style={styles.passwordToggle}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                >
+                                    <Ionicons name={confirmVisible ? "eye-off-outline" : "eye-outline"} size={20} color={UI.colors.muted} />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        <Text style={styles.signupInfoText}>
+                            App riservata ai soci Bike and Hike Italia ASD.{"\n"}Info: bikeandhikeitalia.info@gmail.com
+                        </Text>
+
+                        <Pressable onPress={doSignup} style={styles.loginPrimaryButton}>
+                            <Text style={styles.loginPrimaryText}>{busy ? "Creazione..." : "Crea account"}</Text>
+                        </Pressable>
+
+                        <View style={styles.loginFooterRow}>
+                            <Text style={styles.loginFooterText}>Hai già un account?</Text>
+                            <Pressable onPress={() => navigation.replace("Login")} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                <Text style={styles.loginFooterLink}>Accedi</Text>
+                            </Pressable>
+                        </View>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
@@ -302,7 +607,7 @@ function RejectedScreen({ profile }: { profile: any }) {
     return (
         <SafeAreaView style={styles.authContainer}>
             <ScrollView contentContainerStyle={styles.authScroll}>
-                <Image source={logo} style={styles.authLogo} />
+                <Image source={loginLogo} style={styles.authLogo} />
                 <Text style={styles.authTitle}>Richiesta non approvata</Text>
                 <Text style={{ textAlign: "center", marginBottom: 20 }}>
                     Spiacenti, la tua richiesta non è stata approvata.
@@ -472,5 +777,213 @@ const styles = StyleSheet.create({
     passwordToggle: {
         paddingHorizontal: 12,
         paddingVertical: 10,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    loginScroll: {
+        paddingHorizontal: 20,
+        paddingVertical: 24,
+        flexGrow: 1,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    signupScroll: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        flexGrow: 1,
+        alignItems: "center",
+    },
+    loginCard: {
+        width: "100%",
+        maxWidth: 420,
+        backgroundColor: "#fff",
+        borderRadius: 24,
+        padding: 24,
+        ...UI.shadow.card,
+    },
+    loginHeader: {
+        alignItems: "center",
+    },
+    logoWrap: {
+        width: 104,
+        height: 104,
+        borderRadius: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#fff",
+    },
+    signupLogoWrap: {
+        width: 88,
+        height: 88,
+        borderRadius: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#fff",
+        marginBottom: 2,
+    },
+    logoImage: {
+        width: "100%",
+        height: "100%",
+        resizeMode: "contain",
+    },
+    loginTitle: {
+        marginTop: 12,
+        fontSize: 28,
+        fontWeight: "800",
+        color: UI.colors.text,
+        textAlign: "center",
+    },
+    signupTitle: {
+        marginTop: 8,
+    },
+    loginVersion: {
+        marginTop: 6,
+        fontSize: 13,
+        fontWeight: "600",
+        color: UI.colors.muted,
+        textAlign: "center",
+    },
+    loginWarmup: {
+        marginTop: 6,
+        alignSelf: "center",
+    },
+    fieldGroup: {
+        marginTop: 12,
+    },
+    fieldGroupFirst: {
+        marginTop: 16,
+    },
+    signupFieldGroup: {
+        marginTop: 10,
+    },
+    signupFieldGroupFirst: {
+        marginTop: 12,
+    },
+    loginLabel: {
+        marginBottom: 6,
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#374151",
+    },
+    loginInput: {
+        borderWidth: 1,
+        borderColor: UI.colors.borderMuted,
+        borderRadius: 14,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        backgroundColor: "#fff",
+        color: UI.colors.text,
+        fontSize: 16,
+    },
+    signupInput: {
+        paddingVertical: 12,
+    },
+    loginPasswordField: {
+        flexDirection: "row",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: UI.colors.borderMuted,
+        borderRadius: 14,
+        backgroundColor: "#fff",
+    },
+    loginPasswordInput: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingRight: 44,
+        paddingVertical: 14,
+        fontSize: 16,
+        color: UI.colors.text,
+    },
+    rememberRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 12,
+        marginBottom: 6,
+        minHeight: 44,
+    },
+    rememberInline: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    rememberLabel: {
+        fontSize: 15,
+        fontWeight: "600",
+        color: UI.colors.text,
+    },
+    rememberCheckIcon: {
+        marginLeft: 10,
+        padding: 6,
+    },
+    signupPasswordInput: {
+        paddingVertical: 12,
+    },
+    forgotLink: {
+        marginTop: 6,
+        alignSelf: "flex-start",
+    },
+    forgotLinkText: {
+        color: UI.colors.action,
+        fontWeight: "600",
+    },
+    buttonGroup: {
+        marginTop: 20,
+    },
+    loginPrimaryButton: {
+        width: "100%",
+        height: 56,
+        borderRadius: 999,
+        backgroundColor: UI.colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    loginPrimaryText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "800",
+    },
+    loginSecondaryButton: {
+        width: "100%",
+        height: 56,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: UI.colors.borderMuted,
+        backgroundColor: "#fff",
+        marginTop: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    loginSecondaryText: {
+        marginLeft: 8,
+        fontSize: 15,
+        fontWeight: "600",
+        color: UI.colors.text,
+    },
+    loginFooterRow: {
+        marginTop: 16,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        flexWrap: "wrap",
+    },
+    loginFooterText: {
+        fontSize: 14,
+        color: UI.colors.muted,
+    },
+    loginFooterLink: {
+        marginLeft: 4,
+        fontSize: 14,
+        fontWeight: "700",
+        color: UI.colors.action,
+    },
+    signupInfoText: {
+        marginTop: 12,
+        marginBottom: 12,
+        paddingHorizontal: 16,
+        fontSize: 12,
+        lineHeight: 16,
+        textAlign: "center",
+        color: UI.colors.muted,
+        alignSelf: "center",
     },
 });

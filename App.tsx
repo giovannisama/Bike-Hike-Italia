@@ -1,6 +1,6 @@
 // App.tsx
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, InteractionManager } from "react-native";
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
 import { registerPushToken } from "./src/notifications/registerPushToken";
 import * as Sentry from "sentry-expo";
@@ -28,6 +28,19 @@ const APP_VERSION =
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 const SENTRY_ENV =
   process.env.EXPO_PUBLIC_SENTRY_ENV ?? (__DEV__ ? "development" : "production");
+
+const scheduleNonCriticalWork = (fn: () => void) => {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const task = InteractionManager.runAfterInteractions(() => {
+    timeout = setTimeout(fn, 1500);
+  });
+  return () => {
+    task.cancel?.();
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  };
+};
 
 Sentry.init({
   dsn: SENTRY_DSN || undefined,
@@ -72,10 +85,12 @@ export default function App() {
   // 1.b) register push token once we know the user
   useEffect(() => {
     if (!user?.uid) return;
-    if (__DEV__) {
-      console.log("[App] registering push token for user", user.uid);
-    }
-    void registerPushToken();
+    return scheduleNonCriticalWork(() => {
+      if (__DEV__) {
+        console.log("[App] registering push token for user", user.uid);
+      }
+      void registerPushToken();
+    });
   }, [user?.uid]);
 
   // 2) Schermata di caricamento mentre verifichiamo auth o profilo

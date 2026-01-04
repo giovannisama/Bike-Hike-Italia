@@ -1,8 +1,9 @@
 // firebase.ts
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configurazione del tuo progetto Firebase
 const firebaseConfig = {
@@ -22,7 +23,9 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
 // Auth (gestione utenti)
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+});
 
 // Storage (file utente / tessere associative, ecc.)
 export const storage = getStorage(app);

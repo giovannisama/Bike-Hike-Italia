@@ -15,6 +15,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { auth, db } from "../firebase";
@@ -45,6 +46,38 @@ import type { RootStackParamList } from "../navigation/types";
 const SELF_DELETED_SENTINEL = "__self_deleted__";
 const CARD_BORDER = "#e5e7eb";
 const CARD_BORDER_SOFT = "rgba(241, 245, 249, 1)";
+const DEFAULT_PHONE_PREFIX = "39";
+const PHONE_PREFIXES: Array<{ label: string; value: string }> = [
+  { label: "Italia (+39)", value: "39" },
+  { label: "Francia (+33)", value: "33" },
+  { label: "Germania (+49)", value: "49" },
+  { label: "Svizzera (+41)", value: "41" },
+  { label: "Regno Unito (+44)", value: "44" },
+  { label: "Spagna (+34)", value: "34" },
+  { label: "USA (+1)", value: "1" },
+];
+
+const normalizePhoneDigits = (value: string) => value.replace(/\s+/g, "");
+
+const parsePhoneNumberE164 = (raw?: string | null) => {
+  if (!raw || typeof raw !== "string") {
+    return { prefix: DEFAULT_PHONE_PREFIX, local: "", matched: true };
+  }
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("+")) {
+    return { prefix: DEFAULT_PHONE_PREFIX, local: normalizePhoneDigits(trimmed), matched: false };
+  }
+  const digits = normalizePhoneDigits(trimmed.slice(1));
+  if (!digits) {
+    return { prefix: DEFAULT_PHONE_PREFIX, local: "", matched: false };
+  }
+  const prefixValues = [...PHONE_PREFIXES.map((p) => p.value)].sort((a, b) => b.length - a.length);
+  const matchedPrefix = prefixValues.find((code) => digits.startsWith(code));
+  if (matchedPrefix) {
+    return { prefix: matchedPrefix, local: digits.slice(matchedPrefix.length), matched: true };
+  }
+  return { prefix: DEFAULT_PHONE_PREFIX, local: digits, matched: false };
+};
 
 type LocalCard = {
   uri: string;
@@ -67,7 +100,14 @@ export default function ProfileScreen() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [nickname, setNickname] = useState("");
+  const [phonePrefix, setPhonePrefix] = useState(DEFAULT_PHONE_PREFIX);
+  const [phoneLocal, setPhoneLocal] = useState("");
+  const [iosPhonePickerVisible, setIosPhonePickerVisible] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
+  const phoneOriginalRef = useRef<string | null>(null);
+  const phoneUnmatchedRef = useRef(false);
+  const phoneInitialPrefixRef = useRef(DEFAULT_PHONE_PREFIX);
+  const phoneInitialLocalRef = useRef("");
 
   const [bioAvailable, setBioAvailable] = useState(false);
   const [bioEnabled, setBioEnabled] = useState(false);
@@ -111,6 +151,8 @@ export default function ProfileScreen() {
   const base64ToShow = cardImageLocal?.base64 ?? cardImageRemote;
   const cardUri = base64ToShow ? `data:image/jpeg;base64,${base64ToShow}` : null;
   const membershipActive = !!cardUri;
+  const phonePrefixLabel =
+    PHONE_PREFIXES.find((item) => item.value === phonePrefix)?.label ?? `+${phonePrefix}`;
 
   const showToast = useCallback((message: string, tone: "success" | "error") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -139,6 +181,14 @@ export default function ProfileScreen() {
       setLastName(data.lastName || "");
       setNickname(data.nickname || "");
       setRoleLabel(typeof data.role === "string" ? data.role : null);
+      const phoneRaw = typeof data.phoneNumber === "string" ? data.phoneNumber : "";
+      const parsedPhone = parsePhoneNumberE164(phoneRaw);
+      phoneOriginalRef.current = phoneRaw || null;
+      phoneUnmatchedRef.current = !parsedPhone.matched;
+      phoneInitialPrefixRef.current = parsedPhone.prefix;
+      phoneInitialLocalRef.current = parsedPhone.local;
+      setPhonePrefix(parsedPhone.prefix);
+      setPhoneLocal(parsedPhone.local);
 
       if (data.membershipCard && typeof data.membershipCard === "object") {
         const base64 = data.membershipCard.base64;
@@ -371,7 +421,49 @@ export default function ProfileScreen() {
       const cleanFirst = firstName.trim();
       const cleanLast = lastName.trim();
       const cleanNick = nickname.trim();
+      const rawPhone = phoneLocal.trim();
+      const normalizedPhone = normalizePhoneDigits(rawPhone);
       const displayName = `${cleanLast}${cleanLast && cleanFirst ? ", " : ""}${cleanFirst}`.trim();
+      let phoneNumberToSave: string | null = null;
+
+      if (rawPhone) {
+        if (rawPhone.startsWith("00") || rawPhone.startsWith("+")) {
+          showToast("Inserisci il numero senza prefisso internazionale (+ o 00).", "error");
+          setSaving(false);
+          return;
+        }
+        if (!/^[0-9 ]+$/.test(rawPhone)) {
+          showToast("Il numero può contenere solo cifre e spazi.", "error");
+          setSaving(false);
+          return;
+        }
+        if (!/^[0-9]+$/.test(normalizedPhone)) {
+          showToast("Numero di telefono non valido.", "error");
+          setSaving(false);
+          return;
+        }
+        if (normalizedPhone.length < 6 || normalizedPhone.length > 15) {
+          showToast("Numero di telefono non valido.", "error");
+          setSaving(false);
+          return;
+        }
+        const composed = `+${phonePrefix}${normalizedPhone}`;
+        if (composed.length < 8 || composed.length > 16) {
+          showToast("Numero di telefono non valido.", "error");
+          setSaving(false);
+          return;
+        }
+        if (
+          phoneUnmatchedRef.current &&
+          phoneOriginalRef.current &&
+          phonePrefix === phoneInitialPrefixRef.current &&
+          normalizedPhone === phoneInitialLocalRef.current
+        ) {
+          phoneNumberToSave = phoneOriginalRef.current;
+        } else {
+          phoneNumberToSave = composed;
+        }
+      }
 
       if (!hasProfile) {
         // CREATE: rispetta validUserCreateSelf (uid/email/role/approved/createdAt)
@@ -384,6 +476,7 @@ export default function ProfileScreen() {
             firstName: cleanFirst || null,
             lastName: cleanLast || null,
             nickname: cleanNick || null,
+            phoneNumber: phoneNumberToSave,
             role: "member",
             approved: false,
             disabled: false,
@@ -400,6 +493,7 @@ export default function ProfileScreen() {
             firstName: cleanFirst || null,
             lastName: cleanLast || null,
             nickname: cleanNick || null,
+            phoneNumber: phoneNumberToSave,
           },
           { merge: true }
         );
@@ -652,6 +746,72 @@ export default function ProfileScreen() {
                 onChangeText={setNickname}
                 placeholder="SuperBiker"
               />
+
+              <Text style={styles.label}>Numero di telefono</Text>
+              <View style={styles.phoneRow}>
+                <View style={styles.phonePrefix}>
+                  {Platform.OS === "ios" ? (
+                    <Pressable
+                      style={styles.phonePrefixPressable}
+                      onPress={() => setIosPhonePickerVisible(true)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.phonePrefixText} numberOfLines={1} ellipsizeMode="tail">
+                        {phonePrefixLabel}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Picker
+                      selectedValue={phonePrefix}
+                      onValueChange={(value) => setPhonePrefix(String(value))}
+                      style={[styles.phonePicker, styles.phonePickerAndroid]}
+                      mode="dropdown"
+                    >
+                      {PHONE_PREFIXES.map((item) => (
+                        <Picker.Item key={item.value} label={item.label} value={item.value} />
+                      ))}
+                    </Picker>
+                  )}
+                </View>
+                <TextInput
+                  style={[styles.input, styles.phoneInput]}
+                  value={phoneLocal}
+                  onChangeText={setPhoneLocal}
+                  placeholder="333 123 4567"
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                />
+              </View>
+              {Platform.OS === "ios" && (
+                <Modal
+                  transparent
+                  visible={iosPhonePickerVisible}
+                  animationType="fade"
+                  onRequestClose={() => setIosPhonePickerVisible(false)}
+                >
+                  <View style={styles.phonePickerModal}>
+                    <Pressable style={styles.phonePickerBackdrop} onPress={() => setIosPhonePickerVisible(false)} />
+                    <View style={styles.phonePickerSheet}>
+                      <View style={styles.phonePickerHeader}>
+                        <Text style={styles.phonePickerTitle}>Prefisso</Text>
+                        <Pressable onPress={() => setIosPhonePickerVisible(false)}>
+                          <Text style={styles.phonePickerButtonText}>Chiudi</Text>
+                        </Pressable>
+                      </View>
+                      <Picker
+                        selectedValue={phonePrefix}
+                        onValueChange={(value) => setPhonePrefix(String(value))}
+                        style={styles.phonePickerWheel}
+                        itemStyle={styles.phonePickerItem}
+                      >
+                        {PHONE_PREFIXES.map((item) => (
+                          <Picker.Item key={item.value} label={item.label} value={item.value} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                </Modal>
+              )}
             </View>
           )}
 
@@ -996,6 +1156,82 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: Platform.select({ ios: 12, android: 10 }),
     backgroundColor: "#fff",
+  },
+  phoneRow: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: UI.spacing.sm,
+    width: "100%",
+  },
+  phonePrefix: {
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 10,
+    backgroundColor: UI.colors.card,
+    width: "100%",
+  },
+  phonePrefixPressable: {
+    height: Platform.select({ ios: 44, android: 48 }),
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  phonePrefixText: {
+    color: UI.colors.text,
+    fontWeight: "600",
+  },
+  phonePicker: {
+    width: "100%",
+    height: Platform.select({ ios: 44, android: 52 }),
+  },
+  phonePickerAndroid: {
+    height: 52,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+  },
+  phoneInput: {
+    width: "100%",
+  },
+  phonePickerBackdrop: {
+    flex: 1,
+    backgroundColor: UI.colors.borderMuted,
+    opacity: 0.6,
+  },
+  phonePickerModal: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  phonePickerSheet: {
+    backgroundColor: UI.colors.card,
+    paddingTop: 12,
+    paddingBottom: Platform.select({ ios: 18, android: 12 }),
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1,
+    borderColor: UI.colors.borderMuted,
+  },
+  phonePickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  phonePickerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: UI.colors.text,
+  },
+  phonePickerButtonText: {
+    color: UI.colors.action,
+    fontWeight: "700",
+  },
+  phonePickerWheel: {
+    width: "100%",
+    height: 200,
+  },
+  phonePickerItem: {
+    fontSize: 16,
+    color: UI.colors.text,
   },
   formCard: {
     backgroundColor: UI.colors.card,

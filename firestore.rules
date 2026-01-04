@@ -259,9 +259,19 @@ service cloud.firestore {
           );
       }
 
+      function isValidPhoneNumber(val) {
+        return val == null
+          || (
+            val is string
+            && val.size() >= 8
+            && val.size() <= 16
+            && val.matches('^\\+[0-9]+$')
+          );
+      }
+
       function allowedUserKeys() {
         return [
-          'uid','email','displayName','firstName','lastName','nickname',
+          'uid','email','displayName','firstName','lastName','nickname','phoneNumber',
           'role','approved','disabled','createdAt','expoPushToken','membershipCard',
           'selfDeleted','selfDeletedAt',
           'enabledSections',
@@ -329,6 +339,7 @@ service cloud.firestore {
           && (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time)
           && request.resource.data.createdAt == request.time
           && (!has('membershipCard') || isValidMembershipCard(request.resource.data.membershipCard))
+          && (!has('phoneNumber') || isValidPhoneNumber(request.resource.data.phoneNumber))
           && (!has('selfDeleted') || request.resource.data.selfDeleted == false)
           && (!has('selfDeletedAt') || request.resource.data.selfDeletedAt == null)
           && (!has('enabledSections'))
@@ -359,6 +370,7 @@ service cloud.firestore {
           && (!changed.hasAny(['firstName'])    || request.resource.data.firstName == null   || request.resource.data.firstName is string)
           && (!changed.hasAny(['lastName'])     || request.resource.data.lastName == null    || request.resource.data.lastName is string)
           && (!changed.hasAny(['nickname'])     || request.resource.data.nickname == null    || request.resource.data.nickname is string)
+          && (!changed.hasAny(['phoneNumber'])  || isValidPhoneNumber(request.resource.data.phoneNumber))
           && (!changed.hasAny(['role'])         || roleIsOneOf(request.resource.data.role))
           && (!changed.hasAny(['approved'])     || request.resource.data.approved is bool)
           && (!changed.hasAny(['disabled'])     || request.resource.data.disabled is bool)
@@ -384,7 +396,7 @@ service cloud.firestore {
 
       function validUserUpdateSelf() {
         let safeKeys = [
-          'displayName','firstName','lastName','nickname','membershipCard',
+          'displayName','firstName','lastName','nickname','phoneNumber','membershipCard',
           // l’utente può modificare i propri flag di notifica
           'notificationsDisabled',
           'notificationsDisabledForCreatedRide',
@@ -406,6 +418,7 @@ service cloud.firestore {
           && (request.resource.data.firstName is string || request.resource.data.firstName == null)
           && (request.resource.data.lastName is string || request.resource.data.lastName == null)
           && (request.resource.data.nickname is string || request.resource.data.nickname == null)
+          && (!changed.hasAny(['phoneNumber']) || isValidPhoneNumber(request.resource.data.phoneNumber))
           && (!changed.hasAny(['membershipCard']) || isValidMembershipCard(request.resource.data.membershipCard))
           // se l’utente cambia questi campi, devono essere booleani
           && (!changed.hasAny(['notificationsDisabled']) || request.resource.data.notificationsDisabled is bool)

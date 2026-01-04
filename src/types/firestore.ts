@@ -14,6 +14,7 @@ export interface UserDoc {
   firstName?: string;
   lastName?: string;
   nickname?: string;
+  phoneNumber?: string;
   role?: "admin" | "member" | "owner" | boolean | string;
   approved?: boolean | string | number;
   disabled?: boolean | string | number;

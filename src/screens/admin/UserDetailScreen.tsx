@@ -54,6 +54,7 @@ type UserDoc = {
   lastName?: string | null;
   displayName?: string | null;
   nickname?: string | null;
+  phoneNumber?: string | null;
   role?: UserRole;
   approved?: boolean | string | number | null;
   disabled?: boolean | string | number | null;
@@ -87,6 +88,7 @@ export default function UserDetailScreen() {
   const [fLastName, setFLastName] = useState("");
   const [fDisplayName, setFDisplayName] = useState("");
   const [fNickname, setFNickname] = useState("");
+  const [fPhoneNumber, setFPhoneNumber] = useState("");
   const firstNameRef = useRef<TextInput>(null);
   const lastNameRef = useRef<TextInput>(null);
   const displayNameRef = useRef<TextInput>(null);
@@ -102,6 +104,7 @@ export default function UserDetailScreen() {
     setFLastName(next.lastName || "");
     setFDisplayName(next.displayName || "");
     setFNickname(next.nickname || "");
+    setFPhoneNumber(next.phoneNumber || "");
   }, []);
 
   useEffect(() => {
@@ -132,6 +135,7 @@ export default function UserDetailScreen() {
           lastName: isSelfDeleted ? "" : d.lastName ?? "",
           displayName: isSelfDeleted ? "" : displayNameRaw,
           nickname: isSelfDeleted ? "" : d.nickname ?? "",
+          phoneNumber: isSelfDeleted ? "" : d.phoneNumber ?? "",
           role: d.role ?? "member",
           approved: d.approved,
           disabled: d.disabled,
@@ -216,6 +220,7 @@ export default function UserDetailScreen() {
     setFLastName(user?.lastName ?? "");
     setFDisplayName(user?.displayName ?? "");
     setFNickname(user?.nickname ?? "");
+    setFPhoneNumber(user?.phoneNumber ?? "");
     setEditMode(true);
   }, [user]);
   // Sync params for App.tsx header
@@ -484,6 +489,7 @@ export default function UserDetailScreen() {
     setFLastName(user?.lastName ?? "");
     setFDisplayName(user?.displayName ?? "");
     setFNickname(user?.nickname ?? "");
+    setFPhoneNumber(user?.phoneNumber ?? "");
   };
 
   const handleFirstNameChange = (text: string) => {
@@ -502,16 +508,38 @@ export default function UserDetailScreen() {
   const saveEdit = async () => {
     if (!user) return;
     // valida minimale per i testi
+    const phoneRaw = fPhoneNumber.trim();
+    let phoneNumberPatch: string | null = null;
+    if (phoneRaw) {
+      if (!phoneRaw.startsWith("+")) {
+        Alert.alert("Numero non valido", "Inserisci il numero in formato internazionale, es. +393331234567.");
+        return;
+      }
+      const digits = phoneRaw.slice(1).replace(/\s+/g, "");
+      if (!/^[0-9]+$/.test(digits)) {
+        Alert.alert("Numero non valido", "Il numero deve contenere solo cifre dopo il +.");
+        return;
+      }
+      const normalized = `+${digits}`;
+      if (normalized.length < 8 || normalized.length > 16) {
+        Alert.alert("Numero non valido", "La lunghezza del numero non è valida.");
+        return;
+      }
+      phoneNumberPatch = normalized;
+    }
     const patch: any = {
       firstName: fFirstName.trim() || null,
       lastName: fLastName.trim() || null,
       displayName: fDisplayName.trim() || null,
       nickname: fNickname.trim() || null,
+      phoneNumber: phoneNumberPatch,
     };
     try {
       setActionLoading("edit");
       await updateDoc(doc(db, "users", user.uid), patch);
-      await mergeUsersPublic(user.uid, patch, "UserDetail");
+      const publicPatch = { ...patch };
+      delete publicPatch.phoneNumber;
+      await mergeUsersPublic(user.uid, publicPatch, "UserDetail");
       setEditMode(false);
     } catch (e: any) {
       Alert.alert("Errore", e?.message ?? "Impossibile salvare le modifiche.");
@@ -635,6 +663,7 @@ export default function UserDetailScreen() {
                     <InfoRow label="Display name" value={isSelfDeleted ? "—" : user.displayName || "—"} />
                     <InfoRow label="Nickname" value={isSelfDeleted ? "—" : user.nickname || "—"} />
                     <InfoRow label="Email" value={user.email || "—"} />
+                    <InfoRow label="Numero di telefono" value={isSelfDeleted ? "—" : user.phoneNumber || "—"} />
                     {isSelfDeleted && (
                       <InfoRow
                         label="Eliminato il"
@@ -678,6 +707,13 @@ export default function UserDetailScreen() {
                       placeholder="SuperBiker"
                       returnKeyType="done"
                       onChangeText={handleNicknameChange}
+                    />
+                    <LabeledInput
+                      label="Numero di telefono"
+                      value={fPhoneNumber}
+                      placeholder="+393331234567"
+                      returnKeyType="done"
+                      onChangeText={setFPhoneNumber}
                     />
                   </>
                 )}

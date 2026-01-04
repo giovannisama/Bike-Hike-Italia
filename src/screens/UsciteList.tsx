@@ -76,6 +76,16 @@ const normalizeForSearch = (value?: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const toEpochMillis = (value?: Timestamp | Date | number | null): number => {
+  if (!value) return 0;
+  if (typeof (value as Timestamp).toDate === "function") {
+    return (value as Timestamp).toDate().getTime();
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  return 0;
+};
+
 // Removed local ACTION_GREEN -> using UI.colors.action
 
 // ---- Badge partecipanti ----
@@ -435,8 +445,8 @@ export default function UsciteList() {
         // If isTrips, we MUST sort because query didn't.
         if (isTrips) {
           rows.sort((a, b) => {
-            const ta = a.dateTime ? a.dateTime.toMillis() : 0;
-            const tb = b.dateTime ? b.dateTime.toMillis() : 0;
+            const ta = toEpochMillis(a.dateTime);
+            const tb = toEpochMillis(b.dateTime);
             return ta - tb;
           });
         }

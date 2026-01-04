@@ -41,33 +41,27 @@ export function toMillisSafe(value: FirestoreDateInput): number | null {
   try {
     if (value == null) return null;
 
-    const v = value as any;
-    if (v && typeof v.toMillis === "function") {
-      try {
-        const millis = v.toMillis();
-        return Number.isFinite(millis) ? millis : null;
-      } catch {
-        return null;
-      }
-    }
-
-    if (typeof v?.seconds === "number") {
-      const nanos = typeof v?.nanoseconds === "number" ? v.nanoseconds : 0;
-      const millis = v.seconds * 1000 + Math.floor(nanos / 1e6);
-      return Number.isFinite(millis) ? millis : null;
-    }
+    if (typeof value === "number" && Number.isFinite(value)) return value;
 
     if (value instanceof Date) {
       const millis = value.getTime();
       return Number.isFinite(millis) ? millis : null;
     }
 
-    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const v = value as any;
+    if (typeof v?.seconds === "number") {
+      const nanos = typeof v?.nanoseconds === "number" ? v.nanoseconds : 0;
+      const millis = v.seconds * 1000 + Math.floor(nanos / 1e6);
+      return Number.isFinite(millis) ? millis : null;
+    }
 
     // Fallback via toDateSafe logic locally to avoid recursion
-    if (typeof v === 'object' && typeof v.toDate === 'function') {
+    if (typeof v === "object" && typeof v.toDate === "function") {
       const d = v.toDate();
-      if (d instanceof Date) return d.getTime();
+      if (d instanceof Date) {
+        const millis = d.getTime();
+        return Number.isFinite(millis) ? millis : null;
+      }
     }
 
     return null;

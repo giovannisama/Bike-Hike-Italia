@@ -133,7 +133,7 @@ function LoginScreen({
     const inputBusyRef = useRef(false);
     const initRanRef = useRef(false);
     const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const initRef = useRef<() => void>(() => {});
+    const initRef = useRef<() => void>(() => { });
     const defaultBiometricLabel = Platform.OS === "ios" ? "Accedi con Face ID / Touch ID" : "Accedi con Touch ID";
     const [biometricLabel, setBiometricLabel] = useState(defaultBiometricLabel);
 
@@ -652,15 +652,37 @@ function AttesaApprovazioneScreen() {
 function RejectedScreen({ profile }: { profile: any }) {
     return (
         <SafeAreaView style={styles.authContainer}>
-            <ScrollView contentContainerStyle={styles.authScroll}>
-                <Image source={loginLogo} style={styles.authLogo} />
-                <Text style={styles.authTitle}>Richiesta non approvata</Text>
-                <Text style={{ textAlign: "center", marginBottom: 20 }}>
-                    Spiacenti, la tua richiesta non è stata approvata.
-                </Text>
-                <Pressable onPress={() => signOut(auth)} style={styles.btnSecondary}>
-                    <Text style={styles.btnSecondaryText}>Esci</Text>
-                </Pressable>
+            <ScrollView contentContainerStyle={styles.loginScroll}>
+                <View style={styles.loginHeader}>
+                    <View style={styles.logoWrap}>
+                        <Image source={loginLogo} style={styles.logoImage} />
+                    </View>
+                    <Text style={styles.loginTitle}>Richiesta in approvazione</Text>
+                </View>
+
+                <View style={styles.loginCard}>
+                    <Text style={{ textAlign: "center", fontSize: 15, lineHeight: 22, color: UI.colors.text }}>
+                        Questa app è riservata ai soli soci dell’associazione Bike and Hike Italia ASD.
+                        {"\n\n"}
+                        Se sei interessato ad entrare a far parte dell’associazione, puoi contattare il presidente{"\n"}
+                        Domenico Sorrenti al numero:{"\n"}
+                        <Text style={{ fontWeight: "700" }}>+39 349 410 83 88</Text>
+                        {"\n"}oppure inviare una mail all’indirizzo{"\n"}
+                        <Text style={{ fontWeight: "700" }}>bikeandhikeitalia.info@gmail.com</Text>
+                        {"\n\n"}
+                        Saremo lieti di averti tra i nostri soci.{"\n"}
+                        Ti aspettiamo!
+                        {"\n\n"}
+                        Un saluto{"\n"}
+                        <Text style={{ fontWeight: "700" }}>Lo staff di B&H</Text>
+                    </Text>
+
+                    <View style={styles.buttonGroup}>
+                        <Pressable onPress={() => signOut(auth)} style={styles.loginPrimaryButton}>
+                            <Text style={styles.loginPrimaryText}>Esci</Text>
+                        </Pressable>
+                    </View>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );

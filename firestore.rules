@@ -220,7 +220,7 @@ service cloud.firestore {
     // /users/{uid}
     // -----------------------
     match /users/{uid} {
-      allow get:  if isAuthed() && (request.auth.uid == uid || isOwner());
+      allow get:  if isAuthed() && (request.auth.uid == uid || isOwner() || isAdmin());
       allow list: if isAuthed() && isOwner();
 
       allow create: if isAuthed() && request.auth.uid == uid && validUserCreateSelf();

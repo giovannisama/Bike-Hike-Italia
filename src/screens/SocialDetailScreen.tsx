@@ -76,6 +76,7 @@ const emptySelection = () => ({ lunch: null as Choice, dinner: null as Choice })
 
 export default function SocialDetailScreen() {
   const { isAdmin, isOwner, displayName, profile } = useCurrentProfile();
+  const isAdminOrOwner = !!isAdmin || !!isOwner;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<any>();
   const eventId = route.params?.eventId as string | undefined;
@@ -156,7 +157,8 @@ export default function SocialDetailScreen() {
   // FETCH PROFILES (for phone numbers)
   useEffect(() => {
     // Only if admin/owner
-    if (!isAdmin && !isOwner) return;
+    if (!isAdminOrOwner) return;
+    if (participants.length === 0) return;
 
     const missing = participants
       .filter((p) => p.uid && p.uid !== auth.currentUser?.uid && !profilesIndex[p.uid])
@@ -185,7 +187,7 @@ export default function SocialDetailScreen() {
     };
 
     fetchPrivate();
-  }, [participants, isAdmin, isOwner, profilesIndex]);
+  }, [participants, isAdminOrOwner, profilesIndex]);
 
   const userId = auth.currentUser?.uid ?? null;
   const userParticipant = useMemo(
@@ -214,6 +216,7 @@ export default function SocialDetailScreen() {
     lunch: extraLunchEnabled,
     dinner: extraDinnerEnabled,
   };
+  const eventAccentColor = UI.colors.eventSocial;
   const status = (event?.status as "active" | "cancelled" | "archived") ?? "active";
   const isInactive = status !== "active";
   const isCancelled = status === "cancelled";
@@ -708,7 +711,7 @@ export default function SocialDetailScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-          <View style={styles.topCard}>
+          <View style={[styles.topCard, { borderLeftWidth: 4, borderLeftColor: eventAccentColor }]}>
             <View style={styles.banner}>
               <View style={styles.badgesRow}>
                 <StatusBadge status={status === "archived" ? "archived" : status === "cancelled" ? "cancelled" : "active"} />
@@ -767,7 +770,7 @@ export default function SocialDetailScreen() {
           {(extrasEnabled.lunch || extrasEnabled.dinner) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Riepilogo Servizi</Text>
-              <View style={styles.summaryCard}>
+              <View style={[styles.summaryCard, { borderLeftWidth: 4, borderLeftColor: eventAccentColor }]}>
                 {EXTRA_KEYS.map((key) => {
                   if (!extrasEnabled[key]) return null;
                   const stat = stats[key];
@@ -876,6 +879,12 @@ export default function SocialDetailScreen() {
                   privateData = profilesIndex[p.uid];
                 }
                 const phoneNumber = (privateData as any)?.phoneNumber;
+                const showPhone = isAdminOrOwner && !!phoneNumber;
+                const showEdit = canEdit && canModifyParticipation;
+                const showRemove = canEdit || p.uid === userId;
+                const showActionsRow = showPhone || showEdit || showRemove;
+                const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
+                const editActionStyle = showRemove ? { marginBottom: 6 } : null;
 
                 return (
                   <View
@@ -888,7 +897,7 @@ export default function SocialDetailScreen() {
                           <Ionicons name={p.source === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
                         </View>
                       </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={styles.participantInfo}>
                         <Text style={styles.participantName}>
                           {p.displayName} {p.uid === userId && "(Tu)"}
                         </Text>
@@ -915,35 +924,35 @@ export default function SocialDetailScreen() {
                           <Text style={styles.participantSub}>Registrato manualmente</Text>
                         )}
                       </View>
-                      <View style={styles.participantActions}>
-                        {/* Contact Icon First */}
-                        {phoneNumber && (isAdmin || isOwner) && (
-                          <TouchableOpacity
-                            onPress={() => handleContactParticipant(phoneNumber)}
-                            style={{ padding: 4, marginRight: 4 }}
-                            hitSlop={8}
-                          >
-                            <Ionicons name="call-outline" size={20} color={UI.colors.action} />
-                          </TouchableOpacity>
-                        )}
+                      {showActionsRow && (
+                        <View style={styles.participantActions}>
+                          {/* Contact Icon First */}
+                          {showPhone && (
+                            <TouchableOpacity
+                              onPress={() => handleContactParticipant(phoneNumber)}
+                              style={[{ padding: 4 }, phoneActionStyle]}
+                              hitSlop={8}
+                            >
+                              <Ionicons name="call-outline" size={20} color={UI.colors.action} />
+                            </TouchableOpacity>
+                          )}
 
-                        {canEdit && canModifyParticipation && (
-                          <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={styles.editIconBtn}>
-                            <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                          </Pressable>
-                        )}
-                        {(canEdit || p.uid === userId) && (
-                          <Pressable
-                            onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
-                            style={{ padding: 4 }}
-                            disabled={!canModifyParticipation}
-                          >
-                            <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                          </Pressable>
-                        )}
-
-
-                      </View>
+                          {showEdit && (
+                            <Pressable onPress={() => openEditModal(p)} hitSlop={10} style={[styles.editIconBtn, editActionStyle]}>
+                              <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                            </Pressable>
+                          )}
+                          {showRemove && (
+                            <Pressable
+                              onPress={() => (p.uid === userId ? handleLeave() : handleRemoveParticipant(p.id))}
+                              style={{ padding: 4 }}
+                              disabled={!canModifyParticipation}
+                            >
+                              <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                            </Pressable>
+                          )}
+                        </View>
+                      )}
                     </View>
                   </View>
                 );
@@ -1207,10 +1216,11 @@ const styles = StyleSheet.create({
   participantRow: { flexDirection: "row", alignItems: "center" },
   participantAvatar: {},
   avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center" },
+  participantInfo: { flex: 1, marginLeft: 12, minWidth: 0 },
+  participantActions: { flexDirection: "column", alignItems: "center", justifyContent: "flex-start" },
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
   participantSub: { fontSize: 12, color: "#94a3b8" },
   emptyText: { color: "#94a3b8", fontStyle: "italic", marginTop: 4 },
-  participantActions: { gap: 6, alignItems: "center" },
   editIconBtn: { padding: 4 },
 
   // Buttons

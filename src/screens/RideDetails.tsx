@@ -185,6 +185,7 @@ export default function RideDetails() {
   }, [navigation]);
 
   const { profile, isAdmin, isOwner, isGuide, loading: profileLoading } = useCurrentProfile();
+  const isAdminOrOwner = !!isAdmin || !!isOwner;
   const userId = auth.currentUser?.uid;
 
   const [ride, setRide] = useState<any>(null);
@@ -253,11 +254,19 @@ export default function RideDetails() {
   // 3. RESOLVE NAMES LOCALLY (Like older version)
   // ----------------------------------------------------------------
   useEffect(() => {
+    if (participants.length === 0) return;
     const missing = participants
       .filter((p) => p.id && !p.id.startsWith("manual_") && !Object.prototype.hasOwnProperty.call(publicIndex, p.id))
       .map((p) => ({ docId: p.id, uid: p.uid || p.id }));
 
-    if (missing.length === 0) return;
+    const phonesMissing = isAdminOrOwner
+      ? participants
+        .filter((p) => p.id && !p.id.startsWith("manual_"))
+        .map((p) => ({ docId: p.id, uid: p.uid || p.id }))
+        .filter((p) => p.uid && !publicIndex[p.docId]?.phoneNumber)
+      : [];
+
+    if (missing.length === 0 && phonesMissing.length === 0) return;
 
     const fetchProfiles = async () => {
       const newEntries: Record<string, PublicUserDoc | null> = {};
@@ -286,34 +295,40 @@ export default function RideDetails() {
             }
           } catch { }
 
-          // 2. If I am admin/owner, try to fetch private doc to get phoneNumber
-          //    We do this even if public found, because we want the phone.
-          //    (Works for all event types: Ride, Trip, Trek)
-          if (isAdmin || isOwner) {
-            const privateData = await tryFetchPrivate(uid);
-            if (privateData) {
-              // Merge: prefer public for display name logic, but take phone from private
-              resolved = { ...resolved, ...privateData };
-            }
-          } else if (!resolved) {
-            // Fallback for legacy
-            try {
-              const userSnap = await getDoc(doc(db, "users", uid));
-              if (userSnap.exists()) {
-                resolved = userSnap.data();
-              }
-            } catch { }
-          }
-
           newEntries[docId] = resolved || null;
         })
       );
 
-      setPublicIndex((prev) => ({ ...prev, ...newEntries }));
+      if (isAdminOrOwner && phonesMissing.length > 0) {
+        await Promise.all(
+          phonesMissing.map(async (item) => {
+            const { docId, uid } = item;
+            const privateData = await tryFetchPrivate(uid);
+            const phoneNumber = (privateData as any)?.phoneNumber;
+            if (phoneNumber) {
+              newEntries[docId] = { ...(newEntries[docId] || {}), phoneNumber };
+            }
+          })
+        );
+      }
+
+      if (Object.keys(newEntries).length === 0) return;
+
+      setPublicIndex((prev) => {
+        const merged = { ...prev };
+        Object.entries(newEntries).forEach(([docId, value]) => {
+          if (value) {
+            merged[docId] = { ...(merged[docId] || {}), ...value };
+          } else if (!Object.prototype.hasOwnProperty.call(merged, docId)) {
+            merged[docId] = null;
+          }
+        });
+        return merged;
+      });
     };
 
     fetchProfiles();
-  }, [participants, publicIndex]);
+  }, [participants, publicIndex, isAdminOrOwner]);
 
   // ----------------------------------------------------------------
   // COMPUTED
@@ -971,6 +986,7 @@ export default function RideDetails() {
   }
 
   const bikeCategory = (!isTrek && !isTrip) ? getBikeCategoryLabel(ride) : "";
+  const eventAccentColor = isTrek ? UI.colors.eventTrekking : isTrip ? UI.colors.eventTravel : UI.colors.eventCycling;
   const status = getRideStatus(ride); // active, cancelled, archived
 
   return (
@@ -1006,7 +1022,7 @@ export default function RideDetails() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* TOP CARD: Title, Badges, Main Info */}
-        <View style={styles.topCard}>
+        <View style={[styles.topCard, { borderLeftWidth: 4, borderLeftColor: eventAccentColor }]}>
           {/* Status Badge */}
           <View style={styles.banner}>
             <View style={styles.badgesRow}>
@@ -1129,7 +1145,7 @@ export default function RideDetails() {
         {serviceStatsSummary && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Riepilogo Servizi</Text>
-            <View style={styles.summaryCard}>
+            <View style={[styles.summaryCard, { borderLeftWidth: 4, borderLeftColor: eventAccentColor }]}>
               {serviceStatsSummary.keys.map(key => {
                 const label = ride.extraServices?.[key]?.label || SERVICE_LABELS[key as RideServiceKey];
                 const counts = serviceStatsSummary.stats[key];
@@ -1255,11 +1271,18 @@ export default function RideDetails() {
           {allParticipants.length === 0 ? (
             <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
           ) : (
-            allParticipants.map((p, idx) => (
-              <View
-                key={p.id}
-                style={[styles.participantCard, idx === allParticipants.length - 1 && styles.participantCardLast]}
-              >
+            allParticipants.map((p, idx) => {
+              const showPhone = isAdminOrOwner && !!p.phoneNumber;
+              const showEdit = isAdmin && !isArchived && !isCancelled;
+              const showRemove = isAdminOrOwner || p.isMe;
+              const showActionsRow = showPhone || showEdit || showRemove;
+              const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
+              const editActionStyle = showRemove ? { marginBottom: 6 } : null;
+              return (
+                <View
+                  key={p.id}
+                  style={[styles.participantCard, idx === allParticipants.length - 1 && styles.participantCardLast]}
+                >
                 <View style={styles.participantRow}>
                   <View style={styles.participantAvatar}>
                     {p.photoURL ? (
@@ -1273,7 +1296,7 @@ export default function RideDetails() {
                       </View>
                     )}
                   </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>
                       {p.displayName} {p.isMe && "(Tu)"}
                     </Text>
@@ -1301,42 +1324,44 @@ export default function RideDetails() {
                     {/* Show generic label if manual and nothing else */}
                     {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
                   </View>
-                  <View style={styles.participantActions}>
-                    {/* Access to contact only if phoneNumber is present AND user is Admin/Owner */}
-                    {/* For 'Me', ensure we use profile.phoneNumber if p.phoneNumber is missing */}
-                    {(p.phoneNumber || (p.isMe && profile?.phoneNumber)) && (isAdmin || isOwner) && (
-                      <TouchableOpacity
-                        onPress={() => handleContactParticipant(p.phoneNumber || (p.isMe ? profile?.phoneNumber : undefined))}
-                        style={{ padding: 4, marginRight: 4 }}
-                        hitSlop={8}
-                      >
-                        <Ionicons name="call-outline" size={20} color={UI.colors.action} />
-                      </TouchableOpacity>
-                    )}
+                  {showActionsRow && (
+                    <View style={styles.participantActions}>
+                      {/* Access to contact only if phoneNumber is present AND user is Admin/Owner */}
+                      {showPhone && (
+                        <TouchableOpacity
+                          onPress={() => handleContactParticipant(p.phoneNumber)}
+                          style={[{ padding: 4 }, phoneActionStyle]}
+                          hitSlop={8}
+                        >
+                          <Ionicons name="call-outline" size={20} color={UI.colors.action} />
+                        </TouchableOpacity>
+                      )}
 
-                    {isAdmin && !isArchived && !isCancelled && (
-                      <Pressable
-                        onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
-                        hitSlop={10}
-                        style={styles.editIconBtn}
-                      >
-                        <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                      </Pressable>
-                    )}
-                    {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
-                    {(isAdmin || p.isMe) && (
-                      <TouchableOpacity
-                        onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
-                        style={{ padding: 4 }}
-                        disabled={isArchived || isCancelled}
-                      >
-                        <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                      {showEdit && (
+                        <Pressable
+                          onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
+                          hitSlop={10}
+                          style={[styles.editIconBtn, editActionStyle]}
+                        >
+                          <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                        </Pressable>
+                      )}
+                      {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
+                      {showRemove && (
+                        <TouchableOpacity
+                          onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
+                          style={{ padding: 4 }}
+                          disabled={isArchived || isCancelled}
+                        >
+                          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
                 </View>
               </View>
-            ))
+            );
+            })
           )}
         </View>
 
@@ -1590,10 +1615,11 @@ const styles = StyleSheet.create({
   participantRow: { flexDirection: "row", alignItems: "center" },
   participantAvatar: {},
   avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center" },
+  participantInfo: { flex: 1, marginLeft: 12, minWidth: 0 },
+  participantActions: { flexDirection: "column", alignItems: "center", justifyContent: "flex-start" },
   participantName: { fontSize: 15, fontWeight: "600", color: "#334155" },
   participantSub: { fontSize: 12, color: "#94a3b8" },
   emptyText: { color: "#94a3b8", fontStyle: "italic", marginTop: 4 },
-  participantActions: { gap: 6, alignItems: "center" },
   editIconBtn: { padding: 4 },
 
   // Buttons

@@ -1,11 +1,14 @@
 // src/components/ScreenHeader.tsx
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UI } from './Screen';
+
+const HEADER_TITLE_SIZE = 24;
+const HEADER_MAX_ADJUST_STEPS = 20;
 
 type ScreenHeaderProps = {
     title: string;
@@ -42,8 +45,48 @@ export function ScreenHeader({
 
     const effectiveTopPadding = topPadding !== undefined ? topPadding : (insets.top > 0 ? insets.top + 10 : 20);
     const titleLines = titleNumberOfLines ?? 1;
-    const allowShrink = titleAllowShrink ?? titleLines === 1;
-    const minScale = titleMinScale ?? 0.8;
+    const allowShrink = titleAllowShrink ?? titleLines > 1;
+    const minScale = titleMinScale ?? 0.75;
+    const minFontSize = Math.max(12, Math.round(HEADER_TITLE_SIZE * minScale));
+    const [titleWidth, setTitleWidth] = useState(0);
+    const [fontSize, setFontSize] = useState(HEADER_TITLE_SIZE);
+    const [adjustSteps, setAdjustSteps] = useState(0);
+    const cacheRef = useRef<Record<string, number>>({});
+    const cacheKey = useMemo(() => `${title}|${titleWidth}`, [title, titleWidth]);
+    const shouldMeasure = allowShrink && titleLines >= 2 && titleWidth > 0;
+
+    useEffect(() => {
+        if (!title) return;
+        if (titleWidth === 0) {
+            setFontSize(HEADER_TITLE_SIZE);
+            setAdjustSteps(0);
+            return;
+        }
+        const cachedSize = cacheRef.current[cacheKey];
+        setFontSize(cachedSize ?? HEADER_TITLE_SIZE);
+        setAdjustSteps(0);
+    }, [title, titleWidth, cacheKey]);
+
+    const handleTitleLayout = useCallback((event: any) => {
+        const nextWidth = Math.floor(event.nativeEvent.layout.width);
+        if (nextWidth !== titleWidth) {
+            setTitleWidth(nextWidth);
+        }
+    }, [titleWidth]);
+
+    const handleTextLayout = useCallback((event: any) => {
+        if (!allowShrink || titleLines < 2) return;
+        if (titleWidth === 0) return;
+        const lineCount = event.nativeEvent.lines?.length ?? 0;
+        if (lineCount > titleLines && fontSize > minFontSize && adjustSteps < HEADER_MAX_ADJUST_STEPS) {
+            setFontSize((prev) => Math.max(prev - 1, minFontSize));
+            setAdjustSteps((prev) => prev + 1);
+            return;
+        }
+        if (!cacheRef.current[cacheKey]) {
+            cacheRef.current[cacheKey] = fontSize;
+        }
+    }, [allowShrink, titleLines, titleWidth, fontSize, minFontSize, adjustSteps, cacheKey]);
 
     return (
         <View style={styles.container}>
@@ -78,13 +121,23 @@ export function ScreenHeader({
                                 <MaterialCommunityIcons name={headerIcon} size={28} color={headerIconColor ?? "#1E293B"} />
                             </View>
                         )}
-                        <View style={styles.titleBlock}>
+                        <View style={styles.titleBlock} onLayout={handleTitleLayout}>
+                            {shouldMeasure && (
+                                <Text
+                                    style={[styles.headerTitle, { fontSize, width: titleWidth }, styles.measureText]}
+                                    onTextLayout={handleTextLayout}
+                                    pointerEvents="none"
+                                    accessible={false}
+                                    allowFontScaling={true}
+                                >
+                                    {title}
+                                </Text>
+                            )}
                             <Text
-                                style={styles.headerTitle}
+                                style={[styles.headerTitle, { fontSize, width: titleWidth || undefined }]}
                                 numberOfLines={titleLines}
-                                ellipsizeMode="tail"
-                                adjustsFontSizeToFit={allowShrink}
-                                minimumFontScale={allowShrink ? minScale : undefined}
+                                ellipsizeMode="clip"
+                                allowFontScaling={true}
                             >
                                 {title}
                             </Text>
@@ -143,12 +196,22 @@ const styles = StyleSheet.create({
     titleBlock: {
         flex: 1,
         justifyContent: 'center',
+        minWidth: 0,
+        position: 'relative',
+        overflow: 'visible',
     },
     headerTitle: {
-        fontSize: 24,
+        fontSize: HEADER_TITLE_SIZE,
         fontWeight: "800",
         color: "#1E293B",
         letterSpacing: -0.5,
+    },
+    measureText: {
+        position: 'absolute',
+        opacity: 0,
+        left: -10000,
+        top: -10000,
+        zIndex: -1,
     },
     headerSubtitle: {
         fontSize: 15,

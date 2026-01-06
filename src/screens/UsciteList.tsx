@@ -205,7 +205,7 @@ const RideListItem = React.memo(function RideListItem({
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
               <Ionicons name="person-outline" size={16} color="#64748B" />
-              <Text style={styles.infoText}>Guide: {guideLabel}</Text>
+              <Text style={styles.infoText}>{kind === "trip" ? "Organizzatore" : "Guide"}: {guideLabel}</Text>
             </View>
           </View>
         ) : null}

@@ -80,10 +80,11 @@ export default function SocialDetailScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<any>();
   const eventId = route.params?.eventId as string | undefined;
+  const userId = auth.currentUser?.uid ?? null;
   const canEdit = isAdmin || isOwner;
   const [event, setEvent] = useState<SocialEvent | null>(null);
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
-  const [profilesIndex, setProfilesIndex] = useState<Record<string, any>>({});
+  const [phoneByUid, setPhoneByUid] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [joinSaving, setJoinSaving] = useState(false);
   const [isSavingJoinLeave, setIsSavingJoinLeave] = useState(false);
@@ -154,42 +155,55 @@ export default function SocialDetailScreen() {
     };
   }, [eventId]);
 
-  // FETCH PROFILES (for phone numbers)
+  // FETCH PHONE NUMBERS (per uid)
   useEffect(() => {
-    // Only if admin/owner
+    if (!isAdminOrOwner || !userId) return;
+    const profilePhone = (profile as any)?.phoneNumber ?? null;
+    setPhoneByUid((prev) => {
+      if (prev[userId] === profilePhone) return prev;
+      return { ...prev, [userId]: profilePhone };
+    });
+    console.log("[SocialDetail] phone resolved", userId, profilePhone);
+  }, [isAdminOrOwner, userId, profile?.phoneNumber]);
+
+  useEffect(() => {
     if (!isAdminOrOwner) return;
     if (participants.length === 0) return;
 
     const missing = participants
-      .filter((p) => p.uid && p.uid !== auth.currentUser?.uid && !profilesIndex[p.uid])
-      .map((p) => p.uid!);
+      .map((p) => p.uid)
+      .filter((uid): uid is string => !!uid)
+      .filter((uid) => !Object.prototype.hasOwnProperty.call(phoneByUid, uid));
 
     if (missing.length === 0) return;
 
-    const fetchPrivate = async () => {
-      const newEntries: Record<string, any> = {};
+    let cancelled = false;
+
+    const fetchPhones = async () => {
+      const newEntries: Record<string, string | null> = {};
       await Promise.all(
         missing.map(async (uid) => {
+          let phoneNumber: string | null = null;
           try {
-            // Assuming "users" is the collection for private data
             const snap = await getDoc(doc(db, "users", uid));
             if (snap.exists()) {
-              newEntries[uid] = snap.data();
-            } else {
-              newEntries[uid] = { notFound: true };
+              phoneNumber = (snap.data() as any)?.phoneNumber ?? null;
             }
-          } catch {
-            newEntries[uid] = { error: true };
-          }
+          } catch { }
+          newEntries[uid] = phoneNumber;
+          console.log("[SocialDetail] phone resolved", uid, phoneNumber);
         })
       );
-      setProfilesIndex((prev) => ({ ...prev, ...newEntries }));
+      if (cancelled || Object.keys(newEntries).length === 0) return;
+      setPhoneByUid((prev) => ({ ...prev, ...newEntries }));
     };
 
-    fetchPrivate();
-  }, [participants, isAdminOrOwner, profilesIndex]);
+    fetchPhones();
+    return () => {
+      cancelled = true;
+    };
+  }, [participants, isAdminOrOwner, phoneByUid]);
 
-  const userId = auth.currentUser?.uid ?? null;
   const userParticipant = useMemo(
     () => participants.find((p) => p.uid === userId),
     [participants, userId]
@@ -643,7 +657,7 @@ export default function SocialDetailScreen() {
 
   };
 
-  const handleContactParticipant = (phoneNumber: string) => {
+  const handleContactParticipant = (phoneNumber: string | null) => {
     if (!phoneNumber) return;
     const cleanPhone = phoneNumber.replace(/\s+/g, "");
     const options = ["Apri WhatsApp", "Chiama", "Annulla"];
@@ -681,9 +695,9 @@ export default function SocialDetailScreen() {
       <ScreenHeader
         title={event?.title ?? "Evento"}
         disableUppercase={true}
-        titleNumberOfLines={2}
+        titleNumberOfLines={3}
         titleAllowShrink={true}
-        titleMinScale={0.7}
+        titleMinScale={0.5}
         subtitle={
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
@@ -871,24 +885,19 @@ export default function SocialDetailScreen() {
               <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
             ) : (
               orderedParticipants.map((p, idx) => {
-                // Resolve private info
-                let privateData = null;
-                if (p.uid === userId && profile) {
-                  privateData = profile;
-                } else if (p.uid && profilesIndex[p.uid]) {
-                  privateData = profilesIndex[p.uid];
-                }
-                const phoneNumber = (privateData as any)?.phoneNumber;
-                const showPhone = isAdminOrOwner && !!phoneNumber;
+                const participantUid = p.uid || null;
+                const phoneNumber = participantUid ? (phoneByUid[participantUid] ?? null) : null;
+                const showPhone = isAdminOrOwner && !!phoneNumber && phoneNumber.startsWith("+");
                 const showEdit = canEdit && canModifyParticipation;
                 const showRemove = canEdit || p.uid === userId;
                 const showActionsRow = showPhone || showEdit || showRemove;
                 const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
                 const editActionStyle = showRemove ? { marginBottom: 6 } : null;
+                console.log("[SocialDetail] render participant", participantUid, showPhone, phoneNumber);
 
                 return (
                   <View
-                    key={p.id}
+                    key={p.uid || p.id}
                     style={[styles.participantCard, idx === orderedParticipants.length - 1 && styles.participantCardLast]}
                   >
                     <View style={styles.participantRow}>

@@ -100,6 +100,21 @@ function buildPublicName(profile?: PublicUserDoc | null): string {
   return "";
 }
 
+function buildManualParticipantId(entry: any): string {
+  if (entry && typeof entry === "object") {
+    const manualId = (entry as any).manualId ?? (entry as any).id;
+    if (manualId) return String(manualId);
+    const createdAtMs = (entry as any).createdAt?.toMillis?.();
+    if (typeof createdAtMs === "number" && Number.isFinite(createdAtMs)) {
+      return `manual_${createdAtMs}`;
+    }
+    const label = safeText((entry as any).name ?? (entry as any).note ?? (entry as any).addedBy);
+    if (label) return `manual_${label}`;
+  }
+  const legacy = safeText(entry);
+  return `manual_${legacy || "legacy"}`;
+}
+
 // URL Regex for description links
 const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
 
@@ -176,6 +191,7 @@ export default function RideDetails() {
   const healedParticipantsRef = useRef<Set<string>>(new Set());
 
   const [publicIndex, setPublicIndex] = useState<Record<string, PublicUserDoc | null>>({}); // Local cache for names
+  const [phoneByUid, setPhoneByUid] = useState<Record<string, string | null>>({});
 
   // 1. Native Header Removal
   React.useLayoutEffect(() => {
@@ -259,28 +275,10 @@ export default function RideDetails() {
       .filter((p) => p.id && !p.id.startsWith("manual_") && !Object.prototype.hasOwnProperty.call(publicIndex, p.id))
       .map((p) => ({ docId: p.id, uid: p.uid || p.id }));
 
-    const phonesMissing = isAdminOrOwner
-      ? participants
-        .filter((p) => p.id && !p.id.startsWith("manual_"))
-        .map((p) => ({ docId: p.id, uid: p.uid || p.id }))
-        .filter((p) => p.uid && !publicIndex[p.docId]?.phoneNumber)
-      : [];
-
-    if (missing.length === 0 && phonesMissing.length === 0) return;
+    if (missing.length === 0) return;
 
     const fetchProfiles = async () => {
       const newEntries: Record<string, PublicUserDoc | null> = {};
-
-      // Helper to try fetching private user doc (only works if admin/owner)
-      const tryFetchPrivate = async (uid: string) => {
-        try {
-          const userSnap = await getDoc(doc(db, "users", uid));
-          if (userSnap.exists()) {
-            return userSnap.data();
-          }
-        } catch { }
-        return null;
-      };
 
       await Promise.all(
         missing.map(async (item) => {
@@ -299,19 +297,6 @@ export default function RideDetails() {
         })
       );
 
-      if (isAdminOrOwner && phonesMissing.length > 0) {
-        await Promise.all(
-          phonesMissing.map(async (item) => {
-            const { docId, uid } = item;
-            const privateData = await tryFetchPrivate(uid);
-            const phoneNumber = (privateData as any)?.phoneNumber;
-            if (phoneNumber) {
-              newEntries[docId] = { ...(newEntries[docId] || {}), phoneNumber };
-            }
-          })
-        );
-      }
-
       if (Object.keys(newEntries).length === 0) return;
 
       setPublicIndex((prev) => {
@@ -328,7 +313,55 @@ export default function RideDetails() {
     };
 
     fetchProfiles();
-  }, [participants, publicIndex, isAdminOrOwner]);
+  }, [participants, publicIndex]);
+
+  useEffect(() => {
+    if (!isAdminOrOwner || !userId) return;
+    const profilePhone = (profile as any)?.phoneNumber ?? null;
+    setPhoneByUid((prev) => {
+      if (prev[userId] === profilePhone) return prev;
+      return { ...prev, [userId]: profilePhone };
+    });
+    console.log("[RideDetails] phone resolved", userId, profilePhone);
+  }, [isAdminOrOwner, userId, profile?.phoneNumber]);
+
+  useEffect(() => {
+    if (!isAdminOrOwner) return;
+    if (participants.length === 0) return;
+
+    const missing = participants
+      .map((p) => p.uid || p.id)
+      .filter((uid): uid is string => !!uid)
+      .filter((uid) => !Object.prototype.hasOwnProperty.call(phoneByUid, uid));
+
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    const fetchPhones = async () => {
+      const newEntries: Record<string, string | null> = {};
+      await Promise.all(
+        missing.map(async (uid) => {
+          let phoneNumber: string | null = null;
+          try {
+            const userSnap = await getDoc(doc(db, "users", uid));
+            if (userSnap.exists()) {
+              phoneNumber = (userSnap.data() as any)?.phoneNumber ?? null;
+            }
+          } catch { }
+          newEntries[uid] = phoneNumber;
+          console.log("[RideDetails] phone resolved", uid, phoneNumber);
+        })
+      );
+      if (cancelled || Object.keys(newEntries).length === 0) return;
+      setPhoneByUid((prev) => ({ ...prev, ...newEntries }));
+    };
+
+    fetchPhones();
+    return () => {
+      cancelled = true;
+    };
+  }, [participants, isAdminOrOwner, phoneByUid]);
 
   // ----------------------------------------------------------------
   // COMPUTED
@@ -345,7 +378,7 @@ export default function RideDetails() {
     // 1. Registered users (from subcollection)
     const registered = participants.map((p) => {
       let resolved = publicIndex[p.id];
-      // Use local profile for "Me" to ensure we have private fields like phoneNumber
+      // Use local profile for "Me" to ensure we have private fields like displayName
       if (p.id === userId && profile) {
         resolved = { ...resolved, ...profile } as any;
       }
@@ -356,6 +389,7 @@ export default function RideDetails() {
       return {
         type: "user",
         id: p.id, // userId
+        uid: p.uid || p.id,
         displayName,
         photoURL,
         signedAt: p.signedAt ? p.signedAt.toDate() : (p.createdAt ? p.createdAt.toDate() : null),
@@ -363,7 +397,6 @@ export default function RideDetails() {
         role: p.role || "user",
         note: p.note || null,
         services: p.services || null,
-        phoneNumber: (resolved as any)?.phoneNumber || null,
       };
     }).sort((a: any, b: any) => {
       const timeA = a.signedAt ? a.signedAt.getTime() : 0;
@@ -372,10 +405,11 @@ export default function RideDetails() {
     });
 
     // 2. Manual participants (array of strings OR objects)
-    const manual = manualParticipants.map((entry: any, index: number) => {
+    const manual = manualParticipants.map((entry: any) => {
       let displayName = "Sconosciuto";
       let note = null;
       let services = null;
+      const manualId = buildManualParticipantId(entry);
 
       if (typeof entry === "string") {
         displayName = entry;
@@ -387,7 +421,8 @@ export default function RideDetails() {
 
       return ({
         type: "manual",
-        id: `manual_${index}`,
+        id: manualId,
+        uid: null,
         displayName,
         note, // ADDED
         services, // ADDED
@@ -413,7 +448,7 @@ export default function RideDetails() {
     });
 
     return [...registered, ...manual];
-  }, [participants, manualParticipants, userId]);
+  }, [participants, manualParticipants, userId, publicIndex, profile]);
 
   const userIsParticipant = participants.some((p) => p.id === userId);
   const selfParticipant = useMemo(() => participants.find((p) => p.id === userId) ?? null, [participants, userId]);
@@ -777,12 +812,15 @@ export default function RideDetails() {
       if (manualServices.dinner) cleanServices.dinner = manualServices.dinner;
       if (manualServices.overnight) cleanServices.overnight = manualServices.overnight;
 
+      const createdAt = Timestamp.now();
+      const manualId = `manual_${createdAt.toMillis()}_${Math.random().toString(36).slice(2, 8)}`;
       const newEntry = {
         name: manualName.trim(),
         note: manualNote.trim() || null,
         services: Object.keys(cleanServices).length > 0 ? cleanServices : null,
         addedBy: profile?.displayName || "Admin",
-        createdAt: Timestamp.now(),
+        manualId,
+        createdAt,
         type: "manual",
       };
 
@@ -894,7 +932,7 @@ export default function RideDetails() {
     }
   };
 
-  const handleContactParticipant = (phoneNumber: string) => {
+  const handleContactParticipant = (phoneNumber: string | null) => {
     if (!phoneNumber) return;
 
     // Ensure clean number for logic
@@ -988,6 +1026,7 @@ export default function RideDetails() {
   const bikeCategory = (!isTrek && !isTrip) ? getBikeCategoryLabel(ride) : "";
   const eventAccentColor = isTrek ? UI.colors.eventTrekking : isTrip ? UI.colors.eventTravel : UI.colors.eventCycling;
   const status = getRideStatus(ride); // active, cancelled, archived
+  const sectionIcon = isTrek ? "hiking" : isTrip ? "bag-checked" : "bike";
 
   return (
     <Screen useNativeHeader={true} scroll={false} backgroundColor="#FDFCF8">
@@ -997,13 +1036,9 @@ export default function RideDetails() {
         Right Action: IF Admin -> Edit Icon 
       */}
       <ScreenHeader
-        title={ride.title}
-        disableUppercase={true}
-        titleNumberOfLines={2}
-        titleAllowShrink={true}
-        titleMinScale={0.7}
+        title={ride?.title ?? "Dettaglio Uscita"}
         subtitle={
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
             <Text style={{ fontSize: 14, fontWeight: "500", color: "#64748B" }}>
               {dateLabel} • {timeLabel}
@@ -1011,6 +1046,12 @@ export default function RideDetails() {
           </View>
         }
         showBack={true}
+        backIconColor={eventAccentColor}
+        headerIcon={sectionIcon}
+        headerIconColor={eventAccentColor}
+        titleNumberOfLines={3}
+        titleAllowShrink={true}
+        titleMinScale={0.5}
         rightAction={
           (isAdmin || isGuide) && (
             <TouchableOpacity onPress={() => navigation.navigate("CreateRide", { editMode: true, rideId, collectionName, kind })}>
@@ -1272,95 +1313,98 @@ export default function RideDetails() {
             <Text style={styles.emptyText}>Nessun partecipante ancora.</Text>
           ) : (
             allParticipants.map((p, idx) => {
-              const showPhone = isAdminOrOwner && !!p.phoneNumber;
+              const participantUid = p.uid || p.id;
+              const phoneNumber = participantUid ? (phoneByUid[participantUid] ?? null) : null;
+              const showPhone = isAdminOrOwner && !!phoneNumber && phoneNumber.startsWith("+");
               const showEdit = isAdmin && !isArchived && !isCancelled;
               const showRemove = isAdminOrOwner || p.isMe;
               const showActionsRow = showPhone || showEdit || showRemove;
               const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
               const editActionStyle = showRemove ? { marginBottom: 6 } : null;
+              console.log("[RideDetails] render participant", participantUid, showPhone, phoneNumber);
               return (
                 <View
-                  key={p.id}
+                  key={participantUid || p.id}
                   style={[styles.participantCard, idx === allParticipants.length - 1 && styles.participantCardLast]}
                 >
-                <View style={styles.participantRow}>
-                  <View style={styles.participantAvatar}>
-                    {p.photoURL ? (
-                      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ddd', overflow: 'hidden' }}>
-                        {/* Image component would go here */}
-                        <Text style={{ textAlign: 'center', lineHeight: 32 }}>Img</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.avatarPlaceholder, p.type === "manual" && { backgroundColor: "#f1f5f9" }]}>
-                        <Ionicons name={p.type === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.participantInfo}>
-                    <Text style={styles.participantName}>
-                      {p.displayName} {p.isMe && "(Tu)"}
-                    </Text>
-                    {/* Show Note if present */}
-                    {p.note && (
-                      <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
-                        "{p.note}"
-                      </Text>
-                    )}
-                    {/* Show Services if present */}
-                    {p.services && (
-                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        {Object.keys(p.services).map(key => {
-                          const val = p.services[key]; // "yes" or "no"
-                          if (val !== "yes") return null;
-                          const label = SERVICE_LABELS[key as RideServiceKey] || key;
-                          return (
-                            <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                    {/* Show generic label if manual and nothing else */}
-                    {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
-                  </View>
-                  {showActionsRow && (
-                    <View style={styles.participantActions}>
-                      {/* Access to contact only if phoneNumber is present AND user is Admin/Owner */}
-                      {showPhone && (
-                        <TouchableOpacity
-                          onPress={() => handleContactParticipant(p.phoneNumber)}
-                          style={[{ padding: 4 }, phoneActionStyle]}
-                          hitSlop={8}
-                        >
-                          <Ionicons name="call-outline" size={20} color={UI.colors.action} />
-                        </TouchableOpacity>
-                      )}
-
-                      {showEdit && (
-                        <Pressable
-                          onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
-                          hitSlop={10}
-                          style={[styles.editIconBtn, editActionStyle]}
-                        >
-                          <Ionicons name="pencil" size={18} color={UI.colors.action} />
-                        </Pressable>
-                      )}
-                      {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
-                      {showRemove && (
-                        <TouchableOpacity
-                          onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
-                          style={{ padding: 4 }}
-                          disabled={isArchived || isCancelled}
-                        >
-                          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-                        </TouchableOpacity>
+                  <View style={styles.participantRow}>
+                    <View style={styles.participantAvatar}>
+                      {p.photoURL ? (
+                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ddd', overflow: 'hidden' }}>
+                          {/* Image component would go here */}
+                          <Text style={{ textAlign: 'center', lineHeight: 32 }}>Img</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.avatarPlaceholder, p.type === "manual" && { backgroundColor: "#f1f5f9" }]}>
+                          <Ionicons name={p.type === "manual" ? "person-add-outline" : "person"} size={14} color="#64748b" />
+                        </View>
                       )}
                     </View>
-                  )}
+                    <View style={styles.participantInfo}>
+                      <Text style={styles.participantName}>
+                        {p.displayName} {p.isMe && "(Tu)"}
+                      </Text>
+                      {/* Show Note if present */}
+                      {p.note && (
+                        <Text style={[styles.participantSub, { color: "#334155", fontStyle: "italic" }]}>
+                          "{p.note}"
+                        </Text>
+                      )}
+                      {/* Show Services if present */}
+                      {p.services && (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                          {Object.keys(p.services).map(key => {
+                            const val = p.services[key]; // "yes" or "no"
+                            if (val !== "yes") return null;
+                            const label = SERVICE_LABELS[key as RideServiceKey] || key;
+                            return (
+                              <View key={key} style={{ backgroundColor: "#dcfce7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 12, color: "#166534", fontWeight: "700" }}>{label}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                      {/* Show generic label if manual and nothing else */}
+                      {p.type === "manual" && !p.note && !p.services && <Text style={styles.participantSub}>Registrato manualmente</Text>}
+                    </View>
+                    {showActionsRow && (
+                      <View style={styles.participantActions}>
+                        {/* Access to contact only if phoneNumber is present AND user is Admin/Owner */}
+                        {showPhone && (
+                          <TouchableOpacity
+                            onPress={() => handleContactParticipant(phoneNumber)}
+                            style={[{ padding: 4 }, phoneActionStyle]}
+                            hitSlop={8}
+                          >
+                            <Ionicons name="call-outline" size={20} color={UI.colors.action} />
+                          </TouchableOpacity>
+                        )}
+
+                        {showEdit && (
+                          <Pressable
+                            onPress={() => openEditModal({ ...p, type: p.type === "manual" ? "manual" : "user" })}
+                            hitSlop={10}
+                            style={[styles.editIconBtn, editActionStyle]}
+                          >
+                            <Ionicons name="pencil" size={18} color={UI.colors.action} />
+                          </Pressable>
+                        )}
+                        {/* ONLY ADMIN/OWNER can remove others. Users can remove themselves (p.isMe). */}
+                        {showRemove && (
+                          <TouchableOpacity
+                            onPress={() => (p.isMe ? handleLeave() : handleRemoveParticipant(p))}
+                            style={{ padding: 4 }}
+                            disabled={isArchived || isCancelled}
+                          >
+                            <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
-            );
+              );
             })
           )}
         </View>

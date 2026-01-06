@@ -163,7 +163,9 @@ export default function SocialDetailScreen() {
       if (prev[userId] === profilePhone) return prev;
       return { ...prev, [userId]: profilePhone };
     });
-    console.log("[SocialDetail] phone resolved", userId, profilePhone);
+    if (__DEV__) {
+      console.log("[SocialDetail] phone resolved", userId, profilePhone);
+    }
   }, [isAdminOrOwner, userId, profile?.phoneNumber]);
 
   useEffect(() => {
@@ -191,7 +193,9 @@ export default function SocialDetailScreen() {
             }
           } catch { }
           newEntries[uid] = phoneNumber;
-          console.log("[SocialDetail] phone resolved", uid, phoneNumber);
+          if (__DEV__) {
+            console.log("[SocialDetail] phone resolved", uid, phoneNumber);
+          }
         })
       );
       if (cancelled || Object.keys(newEntries).length === 0) return;
@@ -893,7 +897,9 @@ export default function SocialDetailScreen() {
                 const showActionsRow = showPhone || showEdit || showRemove;
                 const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
                 const editActionStyle = showRemove ? { marginBottom: 6 } : null;
-                console.log("[SocialDetail] render participant", participantUid, showPhone, phoneNumber);
+                if (__DEV__) {
+                  console.log("[SocialDetail] render participant", participantUid, showPhone, phoneNumber);
+                }
 
                 return (
                   <View

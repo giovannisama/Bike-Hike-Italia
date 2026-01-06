@@ -322,7 +322,9 @@ export default function RideDetails() {
       if (prev[userId] === profilePhone) return prev;
       return { ...prev, [userId]: profilePhone };
     });
-    console.log("[RideDetails] phone resolved", userId, profilePhone);
+    if (__DEV__) {
+      console.log("[RideDetails] phone resolved", userId, profilePhone);
+    }
   }, [isAdminOrOwner, userId, profile?.phoneNumber]);
 
   useEffect(() => {
@@ -350,7 +352,9 @@ export default function RideDetails() {
             }
           } catch { }
           newEntries[uid] = phoneNumber;
-          console.log("[RideDetails] phone resolved", uid, phoneNumber);
+          if (__DEV__) {
+            console.log("[RideDetails] phone resolved", uid, phoneNumber);
+          }
         })
       );
       if (cancelled || Object.keys(newEntries).length === 0) return;
@@ -813,7 +817,7 @@ export default function RideDetails() {
       if (manualServices.overnight) cleanServices.overnight = manualServices.overnight;
 
       const createdAt = Timestamp.now();
-      const manualId = `manual_${createdAt.toMillis()}_${Math.random().toString(36).slice(2, 8)}`;
+      const manualId = `manual_${createdAt.toDate().getTime()}_${Math.random().toString(36).slice(2, 8)}`;
       const newEntry = {
         name: manualName.trim(),
         note: manualNote.trim() || null,
@@ -1321,7 +1325,9 @@ export default function RideDetails() {
               const showActionsRow = showPhone || showEdit || showRemove;
               const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
               const editActionStyle = showRemove ? { marginBottom: 6 } : null;
-              console.log("[RideDetails] render participant", participantUid, showPhone, phoneNumber);
+              if (__DEV__) {
+                console.log("[RideDetails] render participant", participantUid, showPhone, phoneNumber);
+              }
               return (
                 <View
                   key={participantUid || p.id}

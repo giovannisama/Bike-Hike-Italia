@@ -48,9 +48,9 @@ const normalizeForSearch = (value?: string) =>
 
 function ParticipantsBadge({ count }: { count?: number }) {
   const safeCount = typeof count === "number" && !Number.isNaN(count) ? count : 0;
-  // Social: Purple (#7C3AED) -> Bg Purple-100 (#F3E8FF)
+  // Social: Violet-600 (#7C3AED) -> Bg Violet-100 (#EDE9FE)
   return (
-    <View style={[styles.badge, { backgroundColor: "#F3E8FF" }]}>
+    <View style={[styles.badge, { backgroundColor: "#EDE9FE" }]}>
       <Text style={[styles.badgeIcon, { color: UI.colors.eventSocial }]}>👥</Text>
       <Text style={[styles.badgeText, { color: UI.colors.eventSocial }]}>{String(safeCount)}</Text>
     </View>

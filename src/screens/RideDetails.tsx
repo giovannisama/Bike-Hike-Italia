@@ -1008,7 +1008,7 @@ export default function RideDetails() {
 
 
   const dateLabel = ride.date
-    ? format(ride.date.toDate(), "EEEE d MMMM yyyy", { locale: it })
+    ? format(ride.date.toDate(), "EEE d MMM yyyy", { locale: it })
     : "Data da definire";
   const timeLabel = ride.dateTime
     ? format(ride.dateTime.toDate(), "HH:mm")
@@ -1045,7 +1045,7 @@ export default function RideDetails() {
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
             <Text style={{ fontSize: 14, fontWeight: "500", color: "#64748B" }}>
-              {dateLabel} • {timeLabel}
+              {dateLabel}: {timeLabel}
             </Text>
           </View>
         }
@@ -1765,7 +1765,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderLeftWidth: 6,
+    borderLeftWidth: 4,
     borderLeftColor: UI.colors.action, // Default green
     padding: 16,
   },

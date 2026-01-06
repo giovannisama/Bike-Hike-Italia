@@ -105,8 +105,8 @@ function ParticipantsBadge({ count, max, kind }: { count?: number; max?: number 
     color = UI.colors.eventTrekking;
     bg = "#FFE4E6";
   } else if (isTrip) {
-    color = UI.colors.eventTravel || "#7c3aed"; // Fallback purple
-    bg = "#F3E8FF"; // Purple-100
+    color = UI.colors.eventTravel || "#0ea5e9";
+    bg = "#E0F2FE"; // Sky-100
   }
 
   return (

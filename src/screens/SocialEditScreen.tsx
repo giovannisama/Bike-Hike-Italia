@@ -431,7 +431,9 @@ export default function SocialEditScreen() {
       <View style={styles.root}>
         <ScreenHeader
           title={titleScreen}
-
+          headerIcon="account-group-outline"
+          headerIconColor={UI.colors.eventSocial}
+          backIconColor={UI.colors.eventSocial}
         />
         {loading ? (
           <View style={styles.center}>

@@ -278,7 +278,7 @@ export default function SocialDetailScreen() {
     return format(dateObj, "EEE d MMM • HH:mm", { locale: it });
   };
   const dateObj = event?.startAt?.toDate?.();
-  const dateLabel = dateObj ? format(dateObj, "EEE d MMMM yyyy", { locale: it }) : "";
+  const dateLabel = dateObj ? format(dateObj, "EEE d MMM yyyy", { locale: it }) : "";
   const timeLabel = dateObj ? format(dateObj, "HH:mm") : "";
 
   const openJoinModal = useCallback(() => {
@@ -706,11 +706,14 @@ export default function SocialDetailScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
             <Ionicons name="calendar-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
             <Text style={{ fontSize: 14, fontWeight: "500", color: "#64748B" }}>
-              {dateLabel} • {timeLabel}
+              {dateLabel}: {timeLabel}
             </Text>
           </View>
         }
         showBack={true}
+        backIconColor={eventAccentColor}
+        headerIcon="account-group-outline"
+        headerIconColor={eventAccentColor}
         rightAction={
           canEdit && eventId ? (
             <TouchableOpacity onPress={() => navigation.navigate("SocialEdit", { mode: "edit", eventId })}>
@@ -1330,7 +1333,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderLeftWidth: 6,
+    borderLeftWidth: 4,
     borderLeftColor: UI.colors.eventSocial,
     padding: 16,
   },

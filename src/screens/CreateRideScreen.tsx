@@ -630,6 +630,15 @@ export default function CreateRideScreen() {
     }
   };
 
+  const isTrek = kind === "trek";
+  const isTrip = kind === "trip";
+  const sectionIcon = isTrek ? "hiking" : isTrip ? "bag-checked" : "bike";
+  const eventAccentColor = isTrek
+    ? UI.colors.eventTrekking
+    : isTrip
+      ? UI.colors.eventTravel
+      : UI.colors.eventCycling;
+
   return (
     <Screen
       title={titleScreen}
@@ -639,7 +648,12 @@ export default function CreateRideScreen() {
       disableHero={true}
     >
       <View style={styles.root}>
-        <ScreenHeader title={titleScreen} />
+        <ScreenHeader
+          title={titleScreen}
+          headerIcon={sectionIcon}
+          headerIconColor={eventAccentColor}
+          backIconColor={eventAccentColor}
+        />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1 }}

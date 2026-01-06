@@ -49,8 +49,8 @@ import {
   type CreateRideForm,
   type ExtraServiceState,
   type FieldErrors,
-} from "./rides/createRideValidation";
-import { mapCreateRideToFirestore } from "./rides/createRideMapper";
+} from "../domain/rides";
+import { mapCreateRideToFirestore } from "../data/rides";
 
 // --- CONSTANTS ---
 

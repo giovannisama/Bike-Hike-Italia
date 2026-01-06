@@ -18,7 +18,7 @@ import type { MainTabParamList } from "../navigation/types";
 import { EVENT_CATEGORY_SUBTITLES } from "../constants/eventCategorySubtitles";
 import { EventGridCard, EventSection } from "../components/EventGridCard";
 
-const logo = require("../../assets/images/logo.png");
+const logo = require("../../assets/images/logo.jpg");
 
 type BoardPreviewItem = {
   id: string;

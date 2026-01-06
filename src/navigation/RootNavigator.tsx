@@ -43,7 +43,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const COLOR_PRIMARY = "#0B3D2E";
 const COLOR_TEXT = "#102A43";
 const COLOR_MUTED = "#5B6B7F";
-const loginLogo = require("../../assets/images/logo.png");
+const loginLogo = require("../../assets/images/logo.jpg");
 
 // ------------------------------------------------------------------
 // AUTH HELPERS & CONSTANTS

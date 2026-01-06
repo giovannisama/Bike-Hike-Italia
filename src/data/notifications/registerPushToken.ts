@@ -1,4 +1,4 @@
-// src/notifications/registerPushToken.ts
+// src/data/notifications/registerPushToken.ts
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
@@ -7,10 +7,10 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-import { auth, db } from "../firebase";
+import { auth, db } from "../../firebase";
 import { Platform, PermissionsAndroid } from "react-native";
-import { info, warn, error } from "../utils/logger";
-import { captureExceptionSafe } from "../utils/observability";
+import { info, warn, error } from "../../utils/logger";
+import { captureExceptionSafe } from "../../utils/observability";
 
 /**
  * Richiede permessi, configura il canale (Android),

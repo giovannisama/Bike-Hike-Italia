@@ -1,0 +1,1 @@
+export { mapCreateRideToFirestore } from "./createRideMapper";

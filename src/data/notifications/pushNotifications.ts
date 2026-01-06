@@ -1,12 +1,12 @@
-// src/services/pushNotifications.ts
+// src/data/notifications/pushNotifications.ts
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-import { auth, db } from "../firebase";
+import { auth, db } from "../../firebase";
 import Constants from "expo-constants";
-import { info, warn, error as logError } from "../utils/logger";
-import { captureExceptionSafe } from "../utils/observability";
+import { info, warn, error as logError } from "../../utils/logger";
+import { captureExceptionSafe } from "../../utils/observability";
 
 // 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
 const FALLBACK_EXPO_PROJECT_ID = "e74521c0-d040-4137-a8d1-0d535e353f2d";
@@ -42,7 +42,7 @@ function resolveExpoProjectId(): string | null {
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   // NOTE: usata da NotificationSettingsScreen; salva i token con arrayUnion (non limita il numero).
-  // Il flusso alternativo in notifications/registerPushToken.ts deduplica e limita i token.
+  // Il flusso alternativo in data/notifications/registerPushToken.ts deduplica e limita i token.
   if (!Device.isDevice) {
     info("Push notifications require a physical device");
     return null;

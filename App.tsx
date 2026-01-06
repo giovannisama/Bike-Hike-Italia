@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View, InteractionManager } from "react-native";
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from "@react-navigation/native";
-import { registerPushToken } from "./src/notifications/registerPushToken";
+import { registerPushToken } from "./src/data/notifications";
 import * as Sentry from "sentry-expo";
 import Constants from "expo-constants";
 import { addBreadcrumbSafe } from "./src/utils/observability";

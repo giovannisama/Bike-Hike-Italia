@@ -1,6 +1,6 @@
 import { serverTimestamp, Timestamp } from "firebase/firestore";
 import { splitGuideInput } from "../../utils/guideHelpers";
-import type { CreateRideForm, ExtraServiceState } from "./createRideValidation";
+import type { CreateRideForm, ExtraServiceState } from "../../domain/rides/types";
 
 type MapperContext = {
   uid: string;

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, Switch, StyleSheet, Alert, ActivityIndicator, Platform, Pressable, ScrollView } from "react-native";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../services/pushNotifications";
+import { registerForPushNotificationsAsync, setNotificationsDisabled } from "../data/notifications";
 import { Screen, UI } from "../components/Screen";
 import { ScreenHeader } from "../components/ScreenHeader";
 

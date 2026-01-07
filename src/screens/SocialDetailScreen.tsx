@@ -74,6 +74,12 @@ const SERVICE_LABELS: Record<(typeof EXTRA_KEYS)[number], string> = {
 };
 const emptySelection = () => ({ lunch: null as Choice, dinner: null as Choice });
 
+function getServiceTitleAndNote(serviceName: unknown, noteRaw?: unknown) {
+  const name = typeof serviceName === "string" ? serviceName : "";
+  const note = typeof noteRaw === "string" ? noteRaw.trim() : "";
+  return { name, note };
+}
+
 export default function SocialDetailScreen() {
   const { isAdmin, isOwner, displayName, profile } = useCurrentProfile();
   const isAdminOrOwner = !!isAdmin || !!isOwner;
@@ -795,10 +801,17 @@ export default function SocialDetailScreen() {
                 {EXTRA_KEYS.map((key) => {
                   if (!extrasEnabled[key]) return null;
                   const stat = stats[key];
-                  const displayLabel = SERVICE_LABELS[key];
+                  const { name, note } = getServiceTitleAndNote(
+                    SERVICE_LABELS[key],
+                    event?.extraServices?.[key]?.label
+                  );
+                  if (!name) return null;
                   return (
                     <View key={key} style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>{displayLabel}</Text>
+                      <View style={styles.summaryLabelBlock}>
+                        <Text style={styles.summaryLabel}>{name}</Text>
+                        {!!note && <Text style={styles.summaryNote}>{note}</Text>}
+                      </View>
                       <View style={styles.summaryBadges}>
                         <View style={[styles.summaryBadge, { backgroundColor: "#dcfce7" }]}>
                           <Text style={[styles.summaryBadgeText, { color: "#166534" }]}>SI: {stat.yes}</Text>
@@ -1048,7 +1061,11 @@ export default function SocialDetailScreen() {
               />
               {EXTRA_KEYS.map((key) => {
                 if (!extrasEnabled[key]) return null;
-                const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                const { name, note } = getServiceTitleAndNote(
+                  SERVICE_LABELS[key],
+                  event?.extraServices?.[key]?.label
+                );
+                if (!name) return null;
                 const isOn = joinServices[key] === "yes";
                 return (
                   <View key={key} style={styles.toggleRow}>
@@ -1057,7 +1074,10 @@ export default function SocialDetailScreen() {
                       hitSlop={10}
                       style={styles.toggleLabelPress}
                     >
-                      <Text style={styles.toggleLabel}>{label}</Text>
+                      <View>
+                        <Text style={styles.toggleLabel}>{name}</Text>
+                        {!!note && <Text style={styles.toggleNote}>{note}</Text>}
+                      </View>
                     </Pressable>
                     <View style={styles.toggleSwitchWrap}>
                       <Switch
@@ -1124,7 +1144,11 @@ export default function SocialDetailScreen() {
               />
               {EXTRA_KEYS.map((key) => {
                 if (!extrasEnabled[key]) return null;
-                const label = event?.extraServices?.[key]?.label || SERVICE_LABELS[key];
+                const { name, note } = getServiceTitleAndNote(
+                  SERVICE_LABELS[key],
+                  event?.extraServices?.[key]?.label
+                );
+                if (!name) return null;
                 const isOn = manualServices[key] === "yes";
                 return (
                   <View key={key} style={styles.toggleRow}>
@@ -1133,7 +1157,10 @@ export default function SocialDetailScreen() {
                       hitSlop={10}
                       style={styles.toggleLabelPress}
                     >
-                      <Text style={styles.toggleLabel}>{label}</Text>
+                      <View>
+                        <Text style={styles.toggleLabel}>{name}</Text>
+                        {!!note && <Text style={styles.toggleNote}>{note}</Text>}
+                      </View>
                     </Pressable>
                     <View style={styles.toggleSwitchWrap}>
                       <Switch
@@ -1318,12 +1345,15 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#f8fafc", padding: 12, borderRadius: 12, marginTop: 10 },
   toggleLabelPress: { flex: 1 },
   toggleLabel: { fontSize: 14, fontWeight: "600", color: "#334155" },
+  toggleNote: { fontSize: 12, color: "#64748b" },
   toggleSwitchWrap: { width: 52, alignItems: "flex-end" },
 
   // Summary
   summaryCard: { backgroundColor: "#fff", borderRadius: 16, padding: 16, marginTop: 12, borderWidth: 1, borderColor: "#e2e8f0" },
   summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
   summaryLabel: { fontSize: 15, fontWeight: "600", color: "#334155" },
+  summaryLabelBlock: { flex: 1, paddingRight: 12 },
+  summaryNote: { fontSize: 13, color: "#64748b" },
   summaryBadges: { flexDirection: "row", gap: 8 },
   summaryBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   summaryBadgeText: { fontSize: 12, fontWeight: "700" },

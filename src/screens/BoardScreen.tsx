@@ -188,16 +188,9 @@ export default function BoardScreen({ navigation, route }: any) {
       orderBy("createdAt", "desc"),
     ];
     const q = query(...constraints);
-    console.log(
-      `[Board][boardPosts] subscribe filter=${filter} archived=${filter} pinned desc createdAt desc`
-    );
     const unsub = onSnapshot(
       q,
       (snapshot) => {
-        console.log("[Board][boardPosts] snap.size =", snapshot.size);
-        console.log("[Board][boardPosts] first ids =", snapshot.docs.slice(0, 5).map((d) => d.id));
-        const nonArchived = snapshot.docs.filter((d) => d.data().archived !== true).length;
-        console.log("[Board][boardPosts] nonArchived =", nonArchived);
         const list: BoardItem[] = [];
         snapshot.forEach((docSnap) => {
           const d = docSnap.data();
@@ -221,8 +214,7 @@ export default function BoardScreen({ navigation, route }: any) {
         setItems(list);
         setLoading(false);
       },
-      (err) => {
-        console.error("[Board][boardPosts] error", err);
+      () => {
         setLoading(false);
       }
     );

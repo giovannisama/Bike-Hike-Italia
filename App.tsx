@@ -59,9 +59,6 @@ export default function App() {
   // 1) Ascolta lo stato di autenticazione
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (__DEV__) {
-        console.log("[auth] onAuthStateChanged", firebaseUser?.uid ?? null);
-      }
       const isAnonymous = !!firebaseUser?.isAnonymous;
       const hasNoProviders = (firebaseUser?.providerData?.length ?? 0) === 0;
       const isNotPasswordProvider =
@@ -89,9 +86,6 @@ export default function App() {
   useEffect(() => {
     if (!user?.uid) return;
     return scheduleNonCriticalWork(() => {
-      if (__DEV__) {
-        console.log("[App] registering push token for user", user.uid);
-      }
       void registerPushToken();
     });
   }, [user?.uid]);

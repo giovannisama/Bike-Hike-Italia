@@ -20,10 +20,6 @@ const firebaseConfig = {
 
 // Inizializza Firebase
 const app = initializeApp(firebaseConfig);
-if (__DEV__) {
-  console.log("[firebase] projectId", app.options.projectId);
-  console.log("[firebase] appId", app.options.appId);
-}
 
 // Firestore (database)
 export const db = getFirestore(app);
@@ -32,9 +28,6 @@ export const db = getFirestore(app);
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage),
 });
-if (__DEV__) {
-  console.log('[firebase] auth initialized');
-}
 
 // Storage (file utente / tessere associative, ecc.)
 export const storage = getStorage(app);

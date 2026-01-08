@@ -91,10 +91,7 @@ type UserProfile = UserDoc;
 // ------------------------------------------------------------------
 // SCREENS (Moved from App.tsx)
 // ------------------------------------------------------------------
-const PERF = __DEV__;
-const t = (label: string) => {
-    if (PERF) console.log(`[perf] ${label} ${Date.now()}`);
-};
+const t = (_label: string) => { };
 
 function LoginScreen({
     navigation,
@@ -716,11 +713,7 @@ export default function RootNavigator({
     const [forceLogin, setForceLogin] = useState(true);
     const loggedInitialRef = useRef(false);
     const lastStackRef = useRef<"auth" | "main" | "pending" | null>(null);
-    const log = (message: string) => {
-        if (__DEV__) {
-            console.log(`[RootNavigator] ${message}`);
-        }
-    };
+    const log = (_message: string) => { };
 
     useEffect(() => {
         if (!loggedInitialRef.current) {

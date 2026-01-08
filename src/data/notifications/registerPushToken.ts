@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { Platform, PermissionsAndroid } from "react-native";
-import { info, warn, error } from "../../utils/logger";
+import { warn, error } from "../../utils/logger";
 import { captureExceptionSafe } from "../../utils/observability";
 
 /**
@@ -37,7 +37,6 @@ async function ensureAndroidNotificationPermission(): Promise<boolean> {
       }
     );
 
-    info("POST_NOTIFICATIONS permission result", { granted });
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
     warn("POST_NOTIFICATIONS permission error");
@@ -60,7 +59,6 @@ async function ensureAndroidNotificationChannel() {
       enableVibrate: true,
       showBadge: true,
     });
-    info("Android notification channel configured", { channel: "default" });
   } catch (err) {
     warn("Android notification channel setup error");
   }
@@ -69,27 +67,21 @@ async function ensureAndroidNotificationChannel() {
 export async function registerPushToken() {
   try {
     if (!Device.isDevice) {
-      info("Push notifications require a physical device");
       return;
     }
 
     if (Platform.OS === "android" && Constants.appOwnership === "expo") {
-      if (__DEV__) {
-        info("Expo Go Android: remote push disabled in Expo Go SDK>=53. Use a development build.");
-      }
       return;
     }
 
     // 1) Permessi Android 13+
     const androidOk = await ensureAndroidNotificationPermission();
     if (!androidOk) {
-    info("Android notification permission not granted");
-    return;
-  }
+      return;
+    }
 
     // 2) Permessi generali Expo
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    info("Expo notification permission status", { status: existingStatus });
 
     let finalStatus = existingStatus;
     if (existingStatus !== "granted") {
@@ -97,7 +89,6 @@ export async function registerPushToken() {
       finalStatus = status;
     }
     if (finalStatus !== "granted") {
-      info("Expo notification permission not granted");
       return;
     }
 
@@ -111,8 +102,6 @@ export async function registerPushToken() {
       (Constants?.expoConfig as any)?.extra?.projectId ||
       (Constants?.manifest2 as any)?.extra?.eas?.projectId ||
       (Constants?.manifest as any)?.extra?.eas?.projectId;
-
-    info("Expo projectId resolved", { hasProjectId: !!projectId });
 
     // 5) Ottieni il token push da Expo
     let tokenData: Notifications.ExpoPushToken;
@@ -130,12 +119,10 @@ export async function registerPushToken() {
     }
 
     const expoPushToken = tokenData.data; // es. "ExponentPushToken[xxxxxxxxxxxxxx]"
-    info("Expo push token obtained");
 
     // 6) Salva nel profilo utente (deduplicato e limitato)
     const user = auth.currentUser;
     if (!user) {
-      info("No authenticated user; skip saving push token");
       return;
     }
 
@@ -171,7 +158,6 @@ export async function registerPushToken() {
       { merge: true }
     );
 
-    info("Expo push token saved", { tokenCount: normalized.length });
   } catch (e) {
     error("registerPushToken failed");
     if (!__DEV__) {

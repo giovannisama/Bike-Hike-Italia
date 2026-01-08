@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "rea
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
-import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -120,44 +120,6 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
     }
     setLoading(true);
 
-    if (__DEV__) {
-      void (async () => {
-        try {
-          const rawSnap = await getDocs(query(collection(db, "boardPosts"), limit(5)));
-          console.log("[Home][boardPosts] getDocs.size =", rawSnap.size);
-          const snapFalse = await getDocs(
-            query(
-              collection(db, "boardPosts"),
-              where("archived", "==", false),
-              limit(20)
-            )
-          );
-          console.log("[Home][boardPosts] where archived==false size =", snapFalse.size);
-
-          const snapTrue = await getDocs(
-            query(
-              collection(db, "boardPosts"),
-              where("archived", "==", true),
-              limit(20)
-            )
-          );
-          console.log("[Home][boardPosts] where archived==true size =", snapTrue.size);
-
-          const raw = await getDocs(query(collection(db, "boardPosts"), limit(10)));
-          console.log(
-            "[Home][boardPosts] archived types sample =",
-            raw.docs.map((d) => ({
-              id: d.id,
-              archived: d.data().archived,
-              type: typeof d.data().archived,
-            }))
-          );
-        } catch (err) {
-          console.error("[Home][boardPosts] getDocs error:", err);
-        }
-      })();
-    }
-
     const q = query(
       collection(db, "boardPosts"),
       where("archived", "==", false),
@@ -165,14 +127,9 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
       orderBy("createdAt", "desc"),
       limit(50)
     );
-    console.log("[Home][boardPosts] subscribe archived=false pinned desc createdAt desc limit 50");
     const unsub = onSnapshot(
       q,
       (snap) => {
-        console.log("[Home][boardPosts] snap.size =", snap.size);
-        console.log("[Home][boardPosts] first ids =", snap.docs.slice(0, 5).map((d) => d.id));
-        const nonArchived = snap.docs.filter((d) => d.data().archived !== true).length;
-        console.log("[Home][boardPosts] nonArchived =", nonArchived);
         const next: BoardPreviewItem[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
@@ -203,7 +160,6 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
         if (isPermissionError) {
           setPermissionDenied(true);
         }
-        console.error("[Home][boardPosts] error", err);
         setLoading(false);
       }
     );

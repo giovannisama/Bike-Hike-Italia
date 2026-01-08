@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import Constants from "expo-constants";
-import { info, warn, error as logError } from "../../utils/logger";
+import { warn, error as logError } from "../../utils/logger";
 import { captureExceptionSafe } from "../../utils/observability";
 
 // 🔐 ID del progetto Expo / EAS (lo hai già in app.json -> extra.eas.projectId)
@@ -44,20 +44,14 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   // NOTE: usata da NotificationSettingsScreen; salva i token con arrayUnion (non limita il numero).
   // Il flusso alternativo in data/notifications/registerPushToken.ts deduplica e limita i token.
   if (!Device.isDevice) {
-    info("Push notifications require a physical device");
     return null;
   }
 
   const appOwnership = Constants.appOwnership;
   if (appOwnership === "expo") {
     // Evita di salvare token di Expo Go → niente notifiche duplicate in dev
-    if (__DEV__) {
-      info("Expo Go detected; skip push token registration");
-    }
     return null;
   }
-
-  info("Push registration context", { platform: Platform.OS, ownership: appOwnership });
 
   // Permessi
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -69,7 +63,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   if (finalStatus !== "granted") {
-    info("Push permission not granted");
     return null;
   }
 
@@ -79,8 +72,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     warn("No valid projectId; cannot request push token");
     return null;
   }
-
-  info("Using Expo projectId", { hasProjectId: true });
 
   // Ottieni token Expo
   let tokenResponse: Notifications.ExpoPushToken;
@@ -95,7 +86,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   }
 
   const token = tokenResponse.data;
-  info("Expo push token obtained");
 
   // Solo Android: canale di default
   if (Platform.OS === "android") {
@@ -106,7 +96,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#FF231F7C",
       });
-      info("Android notification channel configured", { channel: "default" });
     } catch (err) {
       warn("Android notification channel setup error");
     }
@@ -120,7 +109,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       await updateDoc(userRef, {
         expoPushTokens: arrayUnion(token),
       });
-      info("Push token saved for current user");
     } catch (err) {
       logError("Failed to save push token to Firestore");
       if (!__DEV__) {
@@ -152,7 +140,6 @@ export async function setNotificationsDisabled(disabled: boolean): Promise<void>
   };
   try {
     await updateDoc(userRef, payload);
-    info("notificationsDisabled updated", { disabled });
   } catch (err) {
     logError("Failed to update notificationsDisabled");
     if (!__DEV__) {

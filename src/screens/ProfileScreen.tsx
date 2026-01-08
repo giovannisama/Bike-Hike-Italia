@@ -41,6 +41,7 @@ import { MedicalCertificateSection } from "./profile/MedicalCertificateSection";
 import useMedicalCertificate from "../hooks/useMedicalCertificate";
 import { getCertificateStatus } from "../utils/medicalCertificate";
 import { saveImageToDevice } from "../utils/saveImageToDevice";
+import { formatDisplayName } from "../utils/formatDisplayName";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
@@ -433,7 +434,7 @@ export default function ProfileScreen() {
       const cleanNick = nickname.trim();
       const rawPhone = phoneLocal.trim();
       const normalizedPhone = normalizePhoneDigits(rawPhone);
-      const displayName = `${cleanLast}${cleanLast && cleanFirst ? ", " : ""}${cleanFirst}`.trim();
+      const displayName = formatDisplayName(cleanFirst, cleanLast);
       let phoneNumberToSave: string | null = null;
 
       if (rawPhone) {

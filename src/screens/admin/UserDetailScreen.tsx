@@ -16,6 +16,7 @@ import { Screen, UI } from "../../components/Screen";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { mergeUsersPublic, deleteUsersPublic } from "../../utils/usersPublicSync";
 import { getUserStatus } from "../../utils/userStatus";
+import { formatDisplayName } from "../../utils/formatDisplayName";
 import {
   DEFAULT_ENABLED_SECTIONS,
   normalizeEnabledSections,
@@ -534,6 +535,10 @@ export default function UserDetailScreen() {
       nickname: fNickname.trim() || null,
       phoneNumber: phoneNumberPatch,
     };
+    if (!patch.displayName && (patch.firstName || patch.lastName)) {
+      const derived = formatDisplayName(patch.firstName, patch.lastName);
+      patch.displayName = derived || null;
+    }
     try {
       setActionLoading("edit");
       await updateDoc(doc(db, "users", user.uid), patch);

@@ -45,6 +45,7 @@ import {
     hasSavedCredentials,
     saveCredentials,
 } from "../utils/biometricHelpers";
+import { formatDisplayName } from "../utils/formatDisplayName";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const COLOR_PRIMARY = "#0B3D2E";
@@ -502,13 +503,13 @@ function SignupScreen({
         try {
             setBusy(true);
             const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-            const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
-            await fbUpdateProfile(cred.user, { displayName: fullName });
+            const displayName = formatDisplayName(firstName, lastName);
+            await fbUpdateProfile(cred.user, { displayName });
 
             await setDoc(doc(db, "users", cred.user.uid), {
                 uid: cred.user.uid,
                 email: cred.user.email || "",
-                displayName: fullName,
+                displayName,
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
                 nickname: nickname.trim(),

@@ -1,0 +1,905 @@
+[
+  {
+    "uid": "0ZuxWJPKjCMC3UHWVe4sbrtEjWh2",
+    "oldDisplayName": "Monari, Carolina",
+    "newDisplayName": "Monari, Carolina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "0vxP7XAJcAVEulmrnUblIpSRCy22",
+    "oldDisplayName": "Dalla Torre, Stefano",
+    "newDisplayName": "Dalla Torre, Stefano",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "2Nffgi9mzjYVFNUJ4OHuwGxsCpD2",
+    "oldDisplayName": "Cinelli, Davide",
+    "newDisplayName": "Cinelli, Davide",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "2w1XWS0FpCPmClxtKkW6YfJNGih1",
+    "oldDisplayName": "Amorello, Lorena",
+    "newDisplayName": "Amorello, Lorena",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "3EqexjFUgtSapNhnEG3ucDPNlmE2",
+    "oldDisplayName": "Iori, Federico",
+    "newDisplayName": "Iori, Federico",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "4AVsgHYmy6ddw996gM37v3vrrwq1",
+    "oldDisplayName": "Favale, Alessandro",
+    "newDisplayName": "Favale, Alessandro",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "54zJHzrNV1QzFRoZAXLQTIsWM412",
+    "oldDisplayName": "Staffieri, Emanuele",
+    "newDisplayName": "Staffieri, Emanuele",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "5McL4Zcha9gbrwZ8s9sSnGCoVfp2",
+    "oldDisplayName": "Di Girolami, Fabio",
+    "newDisplayName": "Di Girolami, Fabio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "6oUyvnIHrqOdv9IJQLDCP8EMGYf2",
+    "oldDisplayName": "Cerboni, Daniela",
+    "newDisplayName": "Cerboni, Daniela",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "6owLBFnAQBUBSHLSbr3LQJwl2Uo1",
+    "oldDisplayName": "Silva Pereira, Sirlei",
+    "newDisplayName": "Silva Pereira, Sirlei",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "7QGetI1XMXYXX0zkiIqbDcZhSLD2",
+    "oldDisplayName": "Capaldo, Margherita",
+    "newDisplayName": "Capaldo, Margherita",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "7XmsocbiLad4arSUzlJMXJtfyhG2",
+    "oldDisplayName": "Della Sala, Romano",
+    "newDisplayName": "Della Sala, Romano",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "7Z3SjEKsO0Y4fWEGWPoOe4C5cfa2",
+    "oldDisplayName": "Paesani, Luca",
+    "newDisplayName": "Paesani, Luca",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ACpvCmPSf3gElzSQ6ehVvES12UZ2",
+    "oldDisplayName": "Rossi, Paolo",
+    "newDisplayName": "Rossi, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "AFdx53c0J2TpByK3BzAexW4aNhQ2",
+    "oldDisplayName": "Frenk, Frenk",
+    "newDisplayName": "Frenk, Frenk",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "AtHxU1W58xXYT9u5ycsBtT0w6IY2",
+    "oldDisplayName": "Galluzzi, Franco",
+    "newDisplayName": "Galluzzi, Franco",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "BSp3qMXMy6X4UCMnunEWbA2AfMg1",
+    "oldDisplayName": "Samele, Angelo",
+    "newDisplayName": "Samele, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "BrihEKGgwugyuBzijm8EUuGEHSD2",
+    "oldDisplayName": "Mezzetti, Daniele",
+    "newDisplayName": "Mezzetti, Daniele",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Btkip90jbPOkRu2zH47mODMMrKG2",
+    "oldDisplayName": "Mazza, Roberto",
+    "newDisplayName": "Mazza, Roberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "D4PYeuTOmENNK9ReiIFjp6Fnqb53",
+    "oldDisplayName": "Di Biasio, Antonio",
+    "newDisplayName": "Di Biasio, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "DC19EFWEvVYdUww9Jlm8oDCEOip2",
+    "oldDisplayName": "Favale, Irene",
+    "newDisplayName": "Favale, Irene",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "DTlGwzUgSuWNoDZUoPokXHPoBag2",
+    "oldDisplayName": "Paolucci, Angelo",
+    "newDisplayName": "Paolucci, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "EaeS30Te0EcgPgMvskcDxSszzav1",
+    "oldDisplayName": "De Iorio, Roberto",
+    "newDisplayName": "De Iorio, Roberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "EyNbdhL5GgfkNBPwAefoLg0InMw2",
+    "oldDisplayName": "Pigliacelli, Angelo",
+    "newDisplayName": "Pigliacelli, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "FpcjlYwVg9hHSUMoFoJ9Z53nAAm2",
+    "oldDisplayName": "Cardini, Andrea",
+    "newDisplayName": "Cardini, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "FsBCW67bgyUHJzGVCmppfw6Jf132",
+    "oldDisplayName": "CASTELLI, Silvia",
+    "newDisplayName": "CASTELLI, Silvia",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "G1pDR4elAPQhZ04twwElVWW1t872",
+    "oldDisplayName": "Salvatore, Enrica",
+    "newDisplayName": "Salvatore, Enrica",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "GXJcd6mi0MSp45KTc0HMw3NokFA2",
+    "oldDisplayName": "Ceselli, Alessandro",
+    "newDisplayName": "Ceselli, Alessandro",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Gcrt5HgLGjOVZQ0e6sJsgeor1452",
+    "oldDisplayName": "Minicozzi, Daniele",
+    "newDisplayName": "Minicozzi, Daniele",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Ge2vYPoujqYRDiFO7a12F55cNFs1",
+    "oldDisplayName": "D Annibale, Antonio",
+    "newDisplayName": "D Annibale, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "HPIeEIAR8IeqlwS3LRFJCeSK0P82",
+    "oldDisplayName": "RANDÒ, Antonio",
+    "newDisplayName": "RANDÒ, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "HUrL4CYxqrZS0QDau1fvsYSvVmi2",
+    "oldDisplayName": "Peddi, Gian Piero",
+    "newDisplayName": "Peddi, Gian Piero",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "IQp63KczruWzMGElQZ1382yOr0k2",
+    "oldDisplayName": "Barbona, Barbara",
+    "newDisplayName": "Barbona, Barbara",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Il2Pd2vFzNZ6YqyKmLmvtOvFusp1",
+    "oldDisplayName": "Lucidi, Giulio",
+    "newDisplayName": "Lucidi, Giulio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "JdH11k4MQUULrjqbXzdc3Nq4S032",
+    "oldDisplayName": "Martini, Enrico",
+    "newDisplayName": "Martini, Enrico",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "KdvKh9Y7X0TX630kKD6sXmqbQFK2",
+    "oldDisplayName": "Di Giuseppe, Alessandro",
+    "newDisplayName": "Di Giuseppe, Alessandro",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "KjhO8JoscNSRU1vbCOz1aDGPsFl1",
+    "oldDisplayName": "Angotti, Alessandra",
+    "newDisplayName": "Angotti, Alessandra",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Kyydy25p3rTDAfGzOoGvTFGAVYp1",
+    "oldDisplayName": "Cappellacci, Erica",
+    "newDisplayName": "Cappellacci, Erica",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "L2fvN2dXUVSAxB9TNIh5X9hloj42",
+    "oldDisplayName": "Beltrami, Simona",
+    "newDisplayName": "Beltrami, Simona",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "L9XvIem0knY8u8PtKBoKlr1mXV53",
+    "oldDisplayName": "Savina, Angelo",
+    "newDisplayName": "Savina, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "LvnOL8FXKsXkY0TLeYt7jjECrx43",
+    "oldDisplayName": "Monfreda, Franca",
+    "newDisplayName": "Monfreda, Franca",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "LyfQUEQ7ZAh7gx7NR04top8Q8993",
+    "oldDisplayName": "Ercolani, Carolina",
+    "newDisplayName": "Ercolani, Carolina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "M2D74Jo0WWgUqXWil5dTlw53pak1",
+    "oldDisplayName": "Paolucci, Angelo",
+    "newDisplayName": "Paolucci, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "M2iav0EDLLcDsqfiuHAN5FVmp3m1",
+    "oldDisplayName": "Ambrogi, Andrea",
+    "newDisplayName": "Ambrogi, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ME0p5uiZbEXV0BbHvobNqRzmali1",
+    "oldDisplayName": "Sorrenti, Domenico",
+    "newDisplayName": "Sorrenti, Domenico",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "NCqpZvre5gcA6bFV9PQJP3j1qlt2",
+    "oldDisplayName": "Zanzucchi, Pier Francesco",
+    "newDisplayName": "Zanzucchi, Pier Francesco",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "NFXwY508oUfMZPJK9pDDGiRbXHn1",
+    "oldDisplayName": "D'Auria, Luigi",
+    "newDisplayName": "D'Auria, Luigi",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "NvnCqfq7H1R9xDfh07ugUmYgqZK2",
+    "oldDisplayName": "Palermo, Giovanni",
+    "newDisplayName": "Palermo, Giovanni",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "NyGs1tC92nXuHxqM94qDdg7h7tT2",
+    "oldDisplayName": "Vicenzetto, Deborah",
+    "newDisplayName": "Vicenzetto, Deborah",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "PA3kz0A1VCYLQczGPpMRRBooqYB3",
+    "oldDisplayName": "Cardiello, Giuseppina",
+    "newDisplayName": "Cardiello, Giuseppina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "PUWwfVH4o1h5w6tw7ZVGbGtD5EH2",
+    "oldDisplayName": "Ciaschini, Andrea",
+    "newDisplayName": "Ciaschini, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "Pt8VeXe9ytNSrm8DuZjq34Ol0682",
+    "oldDisplayName": "Pentimone, Filippo",
+    "newDisplayName": "Pentimone, Filippo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "RQ5IFqTbTeSbZgw9v3XxKgZ4cC72",
+    "oldDisplayName": "Bucciarelli, Antonio",
+    "newDisplayName": "Bucciarelli, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "S1MpfoN5yTWGvnvBI8Oj0UJnTDp1",
+    "oldDisplayName": "Sobota, Davide",
+    "newDisplayName": "Sobota, Davide",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "TUrSpCDLwUcyOetqG4iXdPhbEOk2",
+    "oldDisplayName": "Doldo, Vincenzo",
+    "newDisplayName": "Doldo, Vincenzo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "UZWN6DLtWcbIQ5TGGT9qN7ZNZqn1",
+    "oldDisplayName": "Bernassola, Francesca",
+    "newDisplayName": "Bernassola, Francesca",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "UZxiABoBr3MVuOK0q4P5rNSEqlx1",
+    "oldDisplayName": "Raucci, Tiziano",
+    "newDisplayName": "Raucci, Tiziano",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "UaLRpwerGgflbjH9MUpxK7BAFNt2",
+    "oldDisplayName": "Vergari, Fabrizio",
+    "newDisplayName": "Vergari, Fabrizio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "UmKB9SkNJacek0IJcvg4ZfVViNO2",
+    "oldDisplayName": "Mastrofini, Sergio",
+    "newDisplayName": "Mastrofini, Sergio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "VK9tnb2IszP7TAHHSOjSE45TD9h2",
+    "oldDisplayName": "Antonelli, Ignazio",
+    "newDisplayName": "Antonelli, Ignazio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "W12aKpC1UcYRpTrM6bhTkWD3Vnu2",
+    "oldDisplayName": "Test Surname, Test Name",
+    "newDisplayName": "Test Surname, Test Name",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "WXYoKfCqiLcObdg6FPd8VX6GVn92",
+    "oldDisplayName": "Romano, Marco",
+    "newDisplayName": "Romano, Marco",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "WYdzzM183BNUfZt94AI8Ggm9veo1",
+    "oldDisplayName": "Miron, Cosmina",
+    "newDisplayName": "Miron, Cosmina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "WzmcbWbQ8nczjNITymFSn24GBg53",
+    "oldDisplayName": "Palmisano, Anna Rita",
+    "newDisplayName": "Palmisano, Anna Rita",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "XFlF69YvvVdnKm7280uhZhPzqwN2",
+    "oldDisplayName": "Lolli, Paolo",
+    "newDisplayName": "Lolli, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "XHd2Ej7H2wYrBW97PqvXzobyt5v2",
+    "oldDisplayName": "Giovinazzi, Norma",
+    "newDisplayName": "Giovinazzi, Norma",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "XN74Z6qxPWgkJRLij0gyfjuMKNi2",
+    "oldDisplayName": "Cento, Livia",
+    "newDisplayName": "Cento, Livia",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "XxL1c1OIECWOCNDDjmL7eTbqaE02",
+    "oldDisplayName": "Parente, Davide",
+    "newDisplayName": "Parente, Davide",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "YINsVkkSTYWCy782AgrPEEfNRa53",
+    "oldDisplayName": "Coppola, Alessandro",
+    "newDisplayName": "Coppola, Alessandro",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "YNKImo2lHBTsrddg92TU9f0GI312",
+    "oldDisplayName": "IAIA, ROBERTA",
+    "newDisplayName": "IAIA, ROBERTA",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ZA9r1F2T0yWCKurQuj7Ww5lt0lZ2",
+    "oldDisplayName": "Monacchi, Paolo",
+    "newDisplayName": "Monacchi, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ZG99q96mPsSWmMrtnjPhtP9VNnC3",
+    "oldDisplayName": "Mucciarella, Marina",
+    "newDisplayName": "Mucciarella, Marina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ZH1hVCkyM0dBsw7YCjOBfG43QH33",
+    "oldDisplayName": "Tumbiolo, Sabrina",
+    "newDisplayName": "Tumbiolo, Sabrina",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "b6lx4wodcvSCI6nOQ01OXeywgpo2",
+    "oldDisplayName": "Conti, Paolo",
+    "newDisplayName": "Conti, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "cY691GpJi4h928oECCeVN4UHqa63",
+    "oldDisplayName": "Mineo, Silvia",
+    "newDisplayName": "Mineo, Silvia",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "dZFnQMKbMOONQdSN365wI55iNic2",
+    "oldDisplayName": "Bossi, Francesca",
+    "newDisplayName": "Bossi, Francesca",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "e4ZMutPXMJNEzecvtDgxDRqIqm72",
+    "oldDisplayName": "Francesconi, Elga",
+    "newDisplayName": "Francesconi, Elga",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "e6NAPpPVTXQebg30wklRK9nUEt32",
+    "oldDisplayName": "ERNESTI, Fabio",
+    "newDisplayName": "ERNESTI, Fabio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "eDX8eYKMtAPvSaKINocJMwCC0eJ2",
+    "oldDisplayName": "Meloni, Marco",
+    "newDisplayName": "Meloni, Marco",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "ekWnGa8piZQXzL5tJ6sZuqTFbM53",
+    "oldDisplayName": "Altobelli, Sergio",
+    "newDisplayName": "Altobelli, Sergio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "fvb71nbuKoNMU85wTs2So5t6tvy2",
+    "oldDisplayName": "Fiorentino, Roberto",
+    "newDisplayName": "Fiorentino, Roberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "h68DtSvJqEQXP0ep9khLGjz8JRS2",
+    "oldDisplayName": "India, Cecilia",
+    "newDisplayName": "India, Cecilia",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "h96SaEfhWsbLWhsqmHyyL2Z1azW2",
+    "oldDisplayName": "Rotatori, Paolo",
+    "newDisplayName": "Rotatori, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "hKUrFWtH5YWXT5aqU4rDSPbqtsy1",
+    "oldDisplayName": "Guerrieri, Katia",
+    "newDisplayName": "Guerrieri, Katia",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "hddLCsbICwNd03owas6fUCAY4Ot1",
+    "oldDisplayName": "Di Pinto, Matteo",
+    "newDisplayName": "Di Pinto, Matteo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "hlLPm1rd7hdCCJzyJLtHFjqmco02",
+    "oldDisplayName": "Veronesi, Emanuele",
+    "newDisplayName": "Veronesi, Emanuele",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "i976byxgRCcneoXSDbi4bjmLYcl1",
+    "oldDisplayName": "Balasco, Antonio",
+    "newDisplayName": "Balasco, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "iaa1Mm4UnNRndHeEgmBXArL6Fhw1",
+    "oldDisplayName": "Cesaroni, Andrea",
+    "newDisplayName": "Cesaroni, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "jn0RXOIOo6Nyqf06g59ZwkMHszh2",
+    "oldDisplayName": "Malassisi, Andrea",
+    "newDisplayName": "Malassisi, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "kFct1QMj0bRORrDGQxFIs94a4SP2",
+    "oldDisplayName": "De Rossi, Alessandra",
+    "newDisplayName": "De Rossi, Alessandra",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "l4H5ODzvQiMi3bjjtLqDIwveQIx1",
+    "oldDisplayName": "Ríos López, Rogger",
+    "newDisplayName": "Ríos López, Rogger",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "lPpD8qqR5GPE0O4kyCQyqoYSEx52",
+    "oldDisplayName": "Musella, Paolo",
+    "newDisplayName": "Musella, Paolo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "lilIPrEOy8RHgBcBzNFDsmqS4FU2",
+    "oldDisplayName": "Lorusso, Angelo",
+    "newDisplayName": "Lorusso, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "lzypPRWkmeOgrYl5r4gSjnQ2pUi2",
+    "oldDisplayName": "Laruccia, Simona",
+    "newDisplayName": "Laruccia, Simona",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mAM4xzJMnXQbEFsGIh218VMsikC3",
+    "oldDisplayName": "Delle Fratte, Miriana",
+    "newDisplayName": "Delle Fratte, Miriana",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mHAaKiBypeeTD6gg0RPQhwi95c33",
+    "oldDisplayName": "Tagliaventi, Marco",
+    "newDisplayName": "Tagliaventi, Marco",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mLcIes53dROYbAFs3NfPXkahNH93",
+    "oldDisplayName": "Mirabilia, Leonardo",
+    "newDisplayName": "Mirabilia, Leonardo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mMfEafaeFWagpcvO3px1VQO6gmJ2",
+    "oldDisplayName": "Cattaneo, Marianna",
+    "newDisplayName": "Cattaneo, Marianna",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mQdEKSoDnKeZA4fM8A519xIhKfM2",
+    "oldDisplayName": "Eusebio, Paola",
+    "newDisplayName": "Eusebio, Paola",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mYds3a1RLIQU1detiEVEH0z4vRf2",
+    "oldDisplayName": "Tomassini, Manuela",
+    "newDisplayName": "Tomassini, Manuela",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "mokiY9mpntcPk0g8buo4WM04SOV2",
+    "oldDisplayName": "Paoli, Cristian",
+    "newDisplayName": "Paoli, Cristian",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "n5gci47s8fhtUIhZrzIiBFxGcTJ3",
+    "oldDisplayName": "Moretti, Massimo",
+    "newDisplayName": "Moretti, Massimo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "nEt4zZx0hVZ8KDCKLzXxmZMNBS12",
+    "oldDisplayName": "Cuscuná, Giordana",
+    "newDisplayName": "Cuscuná, Giordana",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "nFIpDJIaZLcl2F5y5wto53J8Ecu2",
+    "oldDisplayName": "Samà, Giovanni",
+    "newDisplayName": "Samà, Giovanni",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "nHd5n3F6AhO0JJ7uueE8keXNZpH2",
+    "oldDisplayName": "Ghirardi, Alessandra",
+    "newDisplayName": "Ghirardi, Alessandra",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "nlJrrlWtB3YlF406tSUhyhS1AlN2",
+    "oldDisplayName": "Frasca Caccia, Angelo",
+    "newDisplayName": "Frasca Caccia, Angelo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "nqUeVusHenXi5DwQwmfmDDC5ux52",
+    "oldDisplayName": "Capobianco, Federico",
+    "newDisplayName": "Capobianco, Federico",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "o2uRycNEjTUCUnaPXoeRpzz9bjW2",
+    "oldDisplayName": "COSCIA, Vincenzo",
+    "newDisplayName": "COSCIA, Vincenzo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "oK0YcjD0XRRBWJj0mqhvgQ0E5ch1",
+    "oldDisplayName": "Musacchio, Angelica",
+    "newDisplayName": "Musacchio, Angelica",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "oO76jvTRSMUFf6lufUZcr5G4Spi1",
+    "oldDisplayName": "Serratore, Maurizio",
+    "newDisplayName": "Serratore, Maurizio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "oVQns8L0ogcPKg2mdK537L5xT093",
+    "oldDisplayName": "Lippi, Maria Enrichetta",
+    "newDisplayName": "Lippi, Maria Enrichetta",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "oVf6UzeRoQc45Onj44VaPCBPhQ12",
+    "oldDisplayName": "Lisa, Marilena",
+    "newDisplayName": "Lisa, Marilena",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "okN5n76UnyLuXYReQuI0bQFDflX2",
+    "oldDisplayName": "Amanati, Barbara",
+    "newDisplayName": "Amanati, Barbara",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "patx4sOOcYS3ugQt1eIhTir5HpH3",
+    "oldDisplayName": "Romano, Fabio Valerio",
+    "newDisplayName": "Romano, Fabio Valerio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "pmc3lynjlwXNwPV9JHLh4e3OKz52",
+    "oldDisplayName": "Priori, Umberto",
+    "newDisplayName": "Priori, Umberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "qAaabaPUk1SjRKtBuEkq8PeUCZt1",
+    "oldDisplayName": "Palombi, Giorgio",
+    "newDisplayName": "Palombi, Giorgio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "qKJNsRqMGLcGiv1rJUrweyfRPAe2",
+    "oldDisplayName": "Marciano, Roberto",
+    "newDisplayName": "Marciano, Roberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "qx70NIKdoTZwEzDxoxe03wFvEli1",
+    "oldDisplayName": "Giuliani, Roberto",
+    "newDisplayName": "Giuliani, Roberto",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "rPuyFX2L7iOHdtxdYX6Ib9utjs92",
+    "oldDisplayName": "Di Biasio, Antonio",
+    "newDisplayName": "Di Biasio, Antonio",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "rmoA6X8CyvgsEffhwbAcvfDG1CA3",
+    "oldDisplayName": "Natalucci, Alessandro",
+    "newDisplayName": "Natalucci, Alessandro",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "u44penT3lDRYzIk6jSKTRtknRKj1",
+    "oldDisplayName": "Marruccelli, Piero",
+    "newDisplayName": "Marruccelli, Piero",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "uwKr0DNVJHbmVpzj1zPKkdeBg5v2",
+    "oldDisplayName": "Casale, Carlo",
+    "newDisplayName": "Casale, Carlo",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "vHtMRTYuEbNX6W50IaRscs1hQzV2",
+    "oldDisplayName": "Cardillo, Andrea",
+    "newDisplayName": "Cardillo, Andrea",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "vb2lJW8xjEMlDh8nRiMPYVMCNBi2",
+    "oldDisplayName": "Treglia, Gianni",
+    "newDisplayName": "Treglia, Gianni",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "vfXXd9emvGT2tSSBi12mxyuCfq12",
+    "oldDisplayName": "Affinita, Chiara",
+    "newDisplayName": "Affinita, Chiara",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "xlif7r50XahXpz8HTyhL7MVNsfH3",
+    "oldDisplayName": "Farulla, Laura",
+    "newDisplayName": "Farulla, Laura",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "xnMAF13X59alCBliLvjncvXUiKS2",
+    "oldDisplayName": "Giancarli, Eleonora",
+    "newDisplayName": "Giancarli, Eleonora",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "xrsaNxLNSGaX7z5WkBuTtNyGkNn2",
+    "oldDisplayName": "La Russa, Daniela",
+    "newDisplayName": "La Russa, Daniela",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  },
+  {
+    "uid": "zerw3mD7aeXaSraxQTa9zlhZAEm2",
+    "oldDisplayName": "Moscato, Rosario",
+    "newDisplayName": "Moscato, Rosario",
+    "action": "SKIP",
+    "reason": "already-canonical"
+  }
+]

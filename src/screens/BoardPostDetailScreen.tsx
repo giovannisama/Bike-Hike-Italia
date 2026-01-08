@@ -314,6 +314,9 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                                         disabled={pinUpdating}
                                         style={({ pressed }) => [styles.pinRow, pressed && { opacity: 0.7 }, pinUpdating && { opacity: 0.6 }]}
                                     >
+                                        <View style={[styles.actionIconBox, { backgroundColor: "#F3E8FF" }]}>
+                                            <Ionicons name="pin" size={22} color="#7E22CE" />
+                                        </View>
                                         <Text style={styles.pinLabel}>Fissa in alto</Text>
                                         <View style={styles.pinSwitchWrap} pointerEvents="none">
                                             <Switch value={!!data.pinned} />
@@ -501,6 +504,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         paddingVertical: 12,
         borderRadius: 12,
+        gap: 16,
     },
     pinLabel: {
         flex: 1,

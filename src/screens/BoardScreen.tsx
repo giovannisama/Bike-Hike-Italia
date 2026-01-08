@@ -177,17 +177,17 @@ export default function BoardScreen({ navigation, route }: any) {
   // Real-time subscription
   useEffect(() => {
     setLoading(true);
-    const constraints = [
-      collection(db, "boardPosts"),
-      ...(filter === "active"
-        ? [where("archived", "==", false)]
-        : filter === "archived"
-          ? [where("archived", "==", true)]
-          : []),
+    const baseRef = collection(db, "boardPosts");
+    const additionalConstraints: any[] = [
       orderBy("pinned", "desc"),
       orderBy("createdAt", "desc"),
     ];
-    const q = query(...constraints);
+    if (filter === "active") {
+      additionalConstraints.push(where("archived", "==", false));
+    } else if (filter === "archived") {
+      additionalConstraints.push(where("archived", "==", true));
+    }
+    const q = query(baseRef, ...additionalConstraints);
     const unsub = onSnapshot(
       q,
       (snapshot) => {
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   emptyBox: { padding: 40, alignItems: "center", justifyContent: "center" },
 
   // CARD
-  card: { backgroundColor: "#fff", borderRadius: 16, marginBottom: 16, shadowColor: "#475569", shadowOpacity: 0.08, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: "#F1F5F9", overflow: "hidden" },
+  card: { backgroundColor: "#fff", borderRadius: 16, marginBottom: 16, shadowColor: "#1E293B", shadowOpacity: 0.12, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 4, borderWidth: 1, borderColor: "#E2E8F0", overflow: "hidden" },
   cardInner: { flexDirection: "row", padding: 12 },
   dateColumn: { width: 60, alignItems: "center", marginRight: 12 },
   dateTopLine: { fontSize: 13, fontWeight: "800", color: "#334155", textTransform: "uppercase" },

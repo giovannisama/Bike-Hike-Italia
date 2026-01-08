@@ -170,7 +170,6 @@ export default function SocialDetailScreen() {
       return { ...prev, [userId]: profilePhone };
     });
     if (__DEV__) {
-      console.log("[SocialDetail] phone resolved", userId, profilePhone);
     }
   }, [isAdminOrOwner, userId, profile?.phoneNumber]);
 
@@ -200,7 +199,6 @@ export default function SocialDetailScreen() {
           } catch { }
           newEntries[uid] = phoneNumber;
           if (__DEV__) {
-            console.log("[SocialDetail] phone resolved", uid, phoneNumber);
           }
         })
       );
@@ -896,7 +894,6 @@ export default function SocialDetailScreen() {
                 const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
                 const editActionStyle = showRemove ? { marginBottom: 6 } : null;
                 if (__DEV__) {
-                  console.log("[SocialDetail] render participant", participantUid, showPhone, phoneNumber);
                 }
 
                 return (

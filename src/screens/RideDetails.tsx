@@ -329,7 +329,6 @@ export default function RideDetails() {
       return { ...prev, [userId]: profilePhone };
     });
     if (__DEV__) {
-      console.log("[RideDetails] phone resolved", userId, profilePhone);
     }
   }, [isAdminOrOwner, userId, profile?.phoneNumber]);
 
@@ -359,7 +358,6 @@ export default function RideDetails() {
           } catch { }
           newEntries[uid] = phoneNumber;
           if (__DEV__) {
-            console.log("[RideDetails] phone resolved", uid, phoneNumber);
           }
         })
       );
@@ -1327,7 +1325,6 @@ export default function RideDetails() {
               const phoneActionStyle = showEdit || showRemove ? { marginBottom: 6 } : null;
               const editActionStyle = showRemove ? { marginBottom: 6 } : null;
               if (__DEV__) {
-                console.log("[RideDetails] render participant", participantUid, showPhone, phoneNumber);
               }
               return (
                 <View

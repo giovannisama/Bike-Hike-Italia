@@ -1,5 +1,5 @@
 import { warn } from "./logger";
-import * as Sentry from "sentry-expo";
+import * as Sentry from "@sentry/react-native";
 
 export function addBreadcrumbSafe(breadcrumb: unknown) {
   const fn = (Sentry as any)?.addBreadcrumb;

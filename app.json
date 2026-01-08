@@ -46,7 +46,9 @@
         {
           "calendarPermission": "L'app ha bisogno di accedere al calendario per salvare gli eventi."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "extra": {
       "eas": {

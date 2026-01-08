@@ -1,10 +1,8 @@
 diff --git a/node_modules/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp b/node_modules/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
-index cde94f9..11d6e22 100644
+index 0b72b72..094e142 100644
 --- a/node_modules/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
 +++ b/node_modules/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
-@@ -10,7 +10,9 @@
- #include <cxxreact/MessageQueueThread.h>
- #include <cxxreact/TraceSection.h>
+@@ -12,6 +12,8 @@
  #include <hermes/hermes.h>
  #include <jsi/decorator.h>
  #include <jsinspector-modern/InspectorFlags.h>
@@ -12,3 +10,4 @@ index cde94f9..11d6e22 100644
 +#include <thread>
  
  #include <hermes/inspector-modern/chrome/HermesRuntimeTargetDelegate.h>
+ #include <hermes/inspector-modern/chrome/Registration.h>

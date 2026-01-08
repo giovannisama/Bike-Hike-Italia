@@ -28,7 +28,7 @@ export const getBikeCategoryLabel = (ride: Ride): string | null => {
 
   if (hasType("Enduro") && isStrictlyEnduro) return "Enduro";
   if (typeList.length === 1 && hasType("BDC")) return "Bici da Corsa";
-  if (hasType("MTB") || hasType("Gravel")) return "MTB/Gravel";
+  if (hasType("MTB") || hasType("Gravel") || hasType("Ebike")) return "MTB/Gravel";
 
   return "Altro";
 };

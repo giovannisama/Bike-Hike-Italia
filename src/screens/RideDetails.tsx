@@ -240,7 +240,7 @@ export default function RideDetails() {
       if (snap.exists()) {
         setRide({ id: snap.id, ...snap.data() });
       } else {
-        console.log("Uscita non trovata o eliminata (RideDetails)");
+
         // Avoid alert to prevent double feedback during deletion
         navigation.goBack();
       }

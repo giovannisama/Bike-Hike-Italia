@@ -21,16 +21,16 @@ import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
 import {
   Timestamp,
+  collection,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
-  updateDoc,
-  onSnapshot,
-  setDoc,
-  collection,
-  query,
   limit,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import DateTimePicker, {
   DateTimePickerAndroid,

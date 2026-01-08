@@ -38,6 +38,13 @@ import AdminScreen from "../screens/AdminScreen";
 import useCurrentProfile from "../hooks/useCurrentProfile";
 import AdminGate from "./guards/AdminGate";
 import { UI } from "../components/Screen";
+import {
+    deviceSupportsBiometrics,
+    getBiometricEnabled,
+    getSavedCredentials,
+    hasSavedCredentials,
+    saveCredentials,
+} from "../utils/biometricHelpers";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const COLOR_PRIMARY = "#0B3D2E";
@@ -48,34 +55,9 @@ const loginLogo = require("../../assets/images/logo.jpg");
 // ------------------------------------------------------------------
 // AUTH HELPERS & CONSTANTS
 // ------------------------------------------------------------------
-const BIOMETRIC_EMAIL_KEY = "bh_email";
-const BIOMETRIC_PASS_KEY = "bh_pass";
 const REMEMBER_EMAIL_KEY = "bh_remember_email";
 const REMEMBER_PASS_KEY = "bh_remember_pass";
 
-async function deviceSupportsBiometrics() {
-    try {
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const enrolled = await LocalAuthentication.isEnrolledAsync();
-        return hasHardware && enrolled;
-    } catch {
-        return false;
-    }
-}
-async function saveCredsSecurely(email: string, password: string) {
-    await SecureStore.setItemAsync(BIOMETRIC_EMAIL_KEY, email, {
-        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-    });
-    await SecureStore.setItemAsync(BIOMETRIC_PASS_KEY, password, {
-        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
-    });
-}
-async function loadCredsSecurely() {
-    const email = await SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY);
-    const pass = await SecureStore.getItemAsync(BIOMETRIC_PASS_KEY);
-    if (email && pass) return { email, password: pass };
-    return null;
-}
 async function loadRememberCreds() {
     const email = await SecureStore.getItemAsync(REMEMBER_EMAIL_KEY);
     const pass = await SecureStore.getItemAsync(REMEMBER_PASS_KEY);
@@ -176,11 +158,12 @@ function LoginScreen({
             try {
                 const [ok, storedBio, remembered] = await Promise.all([
                     deviceSupportsBiometrics(),
-                    loadCredsSecurely(),
+                    hasSavedCredentials(),
                     loadRememberCreds(),
                 ]);
+                const biometricEnabled = storedBio ? await getBiometricEnabled() : false;
                 if (cancelled) return;
-                const bioEnabled = ok && !!storedBio;
+                const bioEnabled = ok && biometricEnabled && storedBio;
                 setBioReady(bioEnabled);
 
                 if (remembered) {
@@ -229,6 +212,18 @@ function LoginScreen({
         };
     }, []);
 
+    const promptBiometricSave = () =>
+        new Promise<boolean>((resolve) => {
+            Alert.alert(
+                "Salva credenziali",
+                "Vuoi salvare le credenziali per accedere più velocemente con Face ID / Touch ID?",
+                [
+                    { text: "No", style: "cancel", onPress: () => resolve(false) },
+                    { text: "Sì", onPress: () => resolve(true) },
+                ]
+            );
+        });
+
     const doLogin = async (reason: "manual") => {
         if (!email || !password) {
             Alert.alert("Attenzione", "Inserisci email e password.");
@@ -257,10 +252,24 @@ function LoginScreen({
                     }
                 })();
             }
-            // Biometric prompt logic is simpler if we just do it on success
-            const ok = await deviceSupportsBiometrics();
-            if (ok) {
-                // Here we could ask to save creds if not saved
+            if (Platform.OS === "android") {
+                const ok = await deviceSupportsBiometrics();
+                if (ok) {
+                    const storedBio = await hasSavedCredentials();
+                    if (!storedBio) {
+                        const shouldSave = await promptBiometricSave();
+                        if (shouldSave) {
+                            try {
+                                await saveCredentials(email.trim(), password);
+                                // Aggiorna subito lo stato UI: il bottone biometrico può comparire senza attendere un remount
+                                const enabled = await getBiometricEnabled();
+                                setBioReady(ok && enabled);
+                            } catch {
+                                // Silent best-effort
+                            }
+                        }
+                    }
+                }
             }
             setLoginSucceeded(true);
             t(`${reason}Login success`);
@@ -291,7 +300,7 @@ function LoginScreen({
     const loginWithBiometrics = async () => {
         try {
             t("biometricLogin start");
-            const saved = await loadCredsSecurely();
+            const saved = await getSavedCredentials();
             if (!saved) return;
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: "Accedi con Face ID/Touch ID",
@@ -762,10 +771,10 @@ export default function RootNavigator({
         }
         return (
             <Stack.Navigator screenOptions={{ headerTitleAlign: "center" }}>
-                <Stack.Screen name="Login" options={{ title: "Accedi" }}>
+                <Stack.Screen name="Login" options={{ headerShown: false }}>
                     {(props) => <LoginScreen {...props} onLoginSuccess={handleLoginSuccess} />}
                 </Stack.Screen>
-                <Stack.Screen name="Signup" options={{ title: "Registrati" }}>
+                <Stack.Screen name="Signup" options={{ headerShown: false }}>
                     {(props) => <SignupScreen {...props} onLoginSuccess={handleLoginSuccess} />}
                 </Stack.Screen>
             </Stack.Navigator>
@@ -1101,10 +1110,13 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         flexWrap: "wrap",
+        paddingHorizontal: 12,
     },
     loginFooterText: {
         fontSize: 14,
         color: UI.colors.muted,
+        flexShrink: 1,
+        minWidth: 0,
     },
     loginFooterLink: {
         marginLeft: 4,

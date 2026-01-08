@@ -31,8 +31,10 @@ import { ZoomableImageModal } from "../components/ZoomableImageModal";
 import { Ionicons } from "@expo/vector-icons";
 import {
   deviceSupportsBiometrics,
-  loadCredsSecurely,
-  clearCredsSecurely,
+  clearCredentials,
+  getBiometricEnabled,
+  hasSavedCredentials,
+  setBiometricEnabled,
 } from "../utils/biometricHelpers";
 import { mergeUsersPublic, deleteUsersPublic } from "../utils/usersPublicSync";
 import { MedicalCertificateSection } from "./profile/MedicalCertificateSection";
@@ -204,20 +206,27 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     (async () => {
-      const ok = await deviceSupportsBiometrics();
-      const stored = await loadCredsSecurely();
+      const [ok, enabled, stored] = await Promise.all([
+        deviceSupportsBiometrics(),
+        getBiometricEnabled(),
+        hasSavedCredentials(),
+      ]);
       setBioAvailable(ok);
-      setBioEnabled(!!stored);
+      setBioEnabled(ok && enabled && stored);
     })();
   }, []);
   // TODO: logica Face ID / Touch ID potrebbe diventare hook condiviso (riutilizzabile anche nella LoginScreen).
   const onToggleBiometrics = async (next: boolean) => {
-    if (!bioAvailable) {
+    const ready = await deviceSupportsBiometrics();
+    if (!ready) {
+      setBioAvailable(false);
+      setBioEnabled(false);
       Alert.alert("Non supportato", "Questo dispositivo non supporta Face ID / Touch ID.");
       return;
     }
+    setBioAvailable(true);
     if (next) {
-      const stored = await loadCredsSecurely();
+      const stored = await hasSavedCredentials();
       if (!stored) {
         setBioEnabled(false);
         Alert.alert(
@@ -226,10 +235,11 @@ export default function ProfileScreen() {
         );
         return;
       }
+      await setBiometricEnabled(true);
       setBioEnabled(true);
       Alert.alert("Attivato", "Accesso rapido abilitato.");
     } else {
-      await clearCredsSecurely();
+      await clearCredentials();
       setBioEnabled(false);
       Alert.alert("Disattivato", "Accesso rapido disabilitato.");
     }
@@ -620,7 +630,7 @@ export default function ProfileScreen() {
                   "ProfileScreen.deleteAccountFallback"
                 );
               }
-              await clearCredsSecurely();
+              await clearCredentials();
 
               try {
                 await deleteUser(user);

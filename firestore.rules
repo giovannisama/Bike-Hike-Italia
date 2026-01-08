@@ -574,6 +574,7 @@ service cloud.firestore {
       function boardAllowedKeys() {
         return [
           'title','description','createdAt','createdBy','archived','archivedAt',
+          'pinned','pinnedAt',
           'imageUrl','imageStoragePath','imageBase64',
           'updatedAt','updatedBy'
         ];
@@ -609,6 +610,8 @@ service cloud.firestore {
           && (!data.keys().hasAny(['updatedBy']) || stringOrNull(data.updatedBy, 200))
           && (!data.keys().hasAny(['archived']) || data.archived is bool)
           && (!data.keys().hasAny(['archivedAt']) || timestampOrServer(data.archivedAt))
+          && (!data.keys().hasAny(['pinned']) || data.pinned is bool)
+          && (!data.keys().hasAny(['pinnedAt']) || data.pinnedAt == null || timestampOrServer(data.pinnedAt))
           && (!data.keys().hasAny(['imageUrl']) || data.imageUrl == null || (data.imageUrl is string && data.imageUrl.size() > 0 && data.imageUrl.size() <= 2048))
           && (!data.keys().hasAny(['imageStoragePath']) || data.imageStoragePath == null || (data.imageStoragePath is string && data.imageStoragePath.size() > 0 && data.imageStoragePath.size() <= 1024))
           && (!data.keys().hasAny(['imageBase64']) || data.imageBase64 == null
@@ -629,10 +632,35 @@ service cloud.firestore {
         return validBoardPayload(request.resource.data);
       }
 
+      function validBoardUpdatePartial() {
+        let diff = request.resource.data.diff(resource.data);
+        let changed = diff.changedKeys();
+        let added = diff.addedKeys();
+        let removed = diff.removedKeys();
+        let touched = changed.union(added).union(removed);
+
+        return touched.hasOnly(boardAllowedKeys())
+          && (!(changed.hasAny(['title']) || added.hasAny(['title'])) || nonEmptyString(request.resource.data.title, 160))
+          && (!(changed.hasAny(['description']) || added.hasAny(['description'])) || nonEmptyString(request.resource.data.description, 3000))
+          && (!(changed.hasAny(['createdAt']) || added.hasAny(['createdAt'])) || timestampOrServer(request.resource.data.createdAt))
+          && (!(changed.hasAny(['createdBy']) || added.hasAny(['createdBy'])) || stringOrNull(request.resource.data.createdBy, 200))
+          && (!(changed.hasAny(['updatedAt']) || added.hasAny(['updatedAt'])) || timestampOrServer(request.resource.data.updatedAt))
+          && (!(changed.hasAny(['updatedBy']) || added.hasAny(['updatedBy'])) || stringOrNull(request.resource.data.updatedBy, 200))
+          && (!(changed.hasAny(['archived']) || added.hasAny(['archived'])) || request.resource.data.archived is bool)
+          && (!(changed.hasAny(['archivedAt']) || added.hasAny(['archivedAt'])) || timestampOrServer(request.resource.data.archivedAt))
+          && (!(changed.hasAny(['pinned']) || added.hasAny(['pinned'])) || request.resource.data.pinned is bool)
+          && (!(changed.hasAny(['pinnedAt']) || added.hasAny(['pinnedAt'])) || request.resource.data.pinnedAt == null || timestampOrServer(request.resource.data.pinnedAt))
+          && (!(changed.hasAny(['imageUrl']) || added.hasAny(['imageUrl'])) || request.resource.data.imageUrl == null || (request.resource.data.imageUrl is string && request.resource.data.imageUrl.size() > 0 && request.resource.data.imageUrl.size() <= 2048))
+          && (!(changed.hasAny(['imageStoragePath']) || added.hasAny(['imageStoragePath'])) || request.resource.data.imageStoragePath == null || (request.resource.data.imageStoragePath is string && request.resource.data.imageStoragePath.size() > 0 && request.resource.data.imageStoragePath.size() <= 1024))
+          && (!(changed.hasAny(['imageBase64']) || added.hasAny(['imageBase64'])) || request.resource.data.imageBase64 == null
+            || (request.resource.data.imageBase64 is string && request.resource.data.imageBase64.size() > 0 && request.resource.data.imageBase64.size() <= 1048576))
+          && (!touched.hasAny(['title','description','imageUrl','imageBase64']) || boardHasAnyContent(request.resource.data));
+      }
+
       allow read: if canReadRides();
 
       allow create: if (isAdmin() || isOwner()) && validBoardCreate();
-      allow update: if (isAdmin() || isOwner()) && validBoardUpdate();
+      allow update: if (isAdmin() || isOwner()) && (validBoardUpdate() || validBoardUpdatePartial());
       allow delete: if isAdmin() || isOwner();
     }
 

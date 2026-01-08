@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, Modal, TouchableWithoutFeedback, Linking, Platform, TextInput } from "react-native";
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, Modal, TouchableWithoutFeedback, Linking, Platform, TextInput, Switch } from "react-native";
 import { deleteDoc, doc, getDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { db, storage } from "../firebase";
@@ -68,6 +68,7 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
     const [loading, setLoading] = useState(true);
     const [zoomVisible, setZoomVisible] = useState(false);
     const [actionSheetVisible, setActionSheetVisible] = useState(false);
+    const [pinUpdating, setPinUpdating] = useState(false);
 
     const { isAdmin, isOwner } = useCurrentProfile();
     const canEdit = isAdmin || isOwner;
@@ -82,7 +83,8 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
             try {
                 const snap = await getDoc(doc(db, "boardPosts", postId));
                 if (snap.exists()) {
-                    setData({ id: snap.id, ...snap.data() });
+                    const snapData = snap.data();
+                    setData({ ...snapData, id: snap.id });
                 }
             } catch (err) {
                 console.warn("Error fetching post", err);
@@ -136,6 +138,32 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                 },
             ]
         );
+    };
+
+    const handleTogglePinned = async () => {
+        if (!data || pinUpdating || !data.id) return;
+        const nextPinned = !data.pinned;
+        try {
+            setPinUpdating(true);
+            await updateDoc(doc(db, "boardPosts", data.id), {
+                pinned: nextPinned,
+                pinnedAt: nextPinned ? serverTimestamp() : null,
+            });
+            setData((prev: any) =>
+                prev
+                    ? {
+                        ...prev,
+                        pinned: nextPinned,
+                        pinnedAt: nextPinned ? (prev.pinnedAt ?? null) : null,
+                    }
+                    : prev
+            );
+        } catch (err) {
+            console.error("Errore aggiornamento pin", err);
+            Alert.alert("Errore", "Impossibile aggiornare il pin.");
+        } finally {
+            setPinUpdating(false);
+        }
     };
 
     const confirmDelete = async () => {
@@ -278,6 +306,20 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                             <View style={[styles.actionSheet, { paddingBottom: insets.bottom + 16 }]}>
                                 <View style={styles.actionSheetHandle} />
                                 <Text style={styles.actionSheetTitle}>Gestisci News</Text>
+
+                                {canEdit && (
+                                    <Pressable
+                                        onPress={handleTogglePinned}
+                                        hitSlop={{ top: 6, bottom: 6 }}
+                                        disabled={pinUpdating}
+                                        style={({ pressed }) => [styles.pinRow, pressed && { opacity: 0.7 }, pinUpdating && { opacity: 0.6 }]}
+                                    >
+                                        <Text style={styles.pinLabel}>Fissa in alto</Text>
+                                        <View style={styles.pinSwitchWrap} pointerEvents="none">
+                                            <Switch value={!!data.pinned} />
+                                        </View>
+                                    </Pressable>
+                                )}
 
                                 <Pressable style={styles.actionOption} onPress={() => handleAction("edit")}>
                                     <View style={[styles.actionIconBox, { backgroundColor: "#DBEAFE" }]}>
@@ -459,6 +501,22 @@ const styles = StyleSheet.create({
         color: "#1E293B",
         marginBottom: 16,
         textAlign: "center",
+    },
+    pinRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+    pinLabel: {
+        flex: 1,
+        fontSize: 17,
+        fontWeight: "600",
+        color: "#334155",
+    },
+    pinSwitchWrap: {
+        width: 52,
+        alignItems: "flex-end",
     },
     actionOption: {
         flexDirection: "row",

@@ -10,6 +10,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -28,6 +29,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { Screen, UI } from "../components/Screen";
@@ -51,6 +53,8 @@ type BoardItem = {
   imageStoragePath?: string | null;
   createdAt: Date | null;
   archived: boolean;
+  pinned?: boolean;
+  pinnedAt?: Date | null;
   createdBy?: string | null;
   hasTitle: boolean;
   hasImage: boolean;
@@ -70,6 +74,8 @@ type EditorState = {
   includeTitle: boolean;
   includeImage: boolean;
   includeDescription: boolean;
+  pinned: boolean;
+  pinnedAt: Date | null;
 };
 
 const createEmptyEditorState = (): EditorState => ({
@@ -80,6 +86,8 @@ const createEmptyEditorState = (): EditorState => ({
   includeTitle: true,
   includeImage: true,
   includeDescription: true,
+  pinned: false,
+  pinnedAt: null,
 });
 
 const normalize = (value: string) =>
@@ -168,34 +176,58 @@ export default function BoardScreen({ navigation, route }: any) {
 
   // Real-time subscription
   useEffect(() => {
-    const q = query(
+    setLoading(true);
+    const constraints = [
       collection(db, "boardPosts"),
-      orderBy("createdAt", "desc")
+      ...(filter === "active"
+        ? [where("archived", "==", false)]
+        : filter === "archived"
+          ? [where("archived", "==", true)]
+          : []),
+      orderBy("pinned", "desc"),
+      orderBy("createdAt", "desc"),
+    ];
+    const q = query(...constraints);
+    console.log(
+      `[Board][boardPosts] subscribe filter=${filter} archived=${filter} pinned desc createdAt desc`
     );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list: BoardItem[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        list.push({
-          id: docSnap.id,
-          title: d.title || null,
-          description: d.description || null,
-          imageBase64: d.imageBase64 || null,
-          imageUrl: d.imageUrl || null,
-          imageStoragePath: d.imageStoragePath || null,
-          createdAt: d.createdAt ? d.createdAt.toDate() : null,
-          archived: !!d.archived,
-          createdBy: d.createdBy || null,
-          hasTitle: !!d.title,
-          hasImage: !!(d.imageBase64 || d.imageUrl),
-          hasDescription: !!d.description,
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        console.log("[Board][boardPosts] snap.size =", snapshot.size);
+        console.log("[Board][boardPosts] first ids =", snapshot.docs.slice(0, 5).map((d) => d.id));
+        const nonArchived = snapshot.docs.filter((d) => d.data().archived !== true).length;
+        console.log("[Board][boardPosts] nonArchived =", nonArchived);
+        const list: BoardItem[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            title: d.title || null,
+            description: d.description || null,
+            imageBase64: d.imageBase64 || null,
+            imageUrl: d.imageUrl || null,
+            imageStoragePath: d.imageStoragePath || null,
+            createdAt: d.createdAt ? d.createdAt.toDate() : null,
+            archived: !!d.archived,
+            pinned: !!d.pinned,
+            pinnedAt: d.pinnedAt ? d.pinnedAt.toDate() : null,
+            createdBy: d.createdBy || null,
+            hasTitle: !!d.title,
+            hasImage: !!(d.imageBase64 || d.imageUrl),
+            hasDescription: !!d.description,
+          });
         });
-      });
-      setItems(list);
-      setLoading(false);
-    });
+        setItems(list);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("[Board][boardPosts] error", err);
+        setLoading(false);
+      }
+    );
     return () => unsub();
-  }, []);
+  }, [filter]);
 
   // Filter Logic
   const filteredItems = useMemo(() => {
@@ -228,6 +260,8 @@ export default function BoardScreen({ navigation, route }: any) {
       includeTitle: !!item.title,
       includeImage: !!(item.imageBase64 || item.imageUrl),
       includeDescription: !!item.description,
+      pinned: !!item.pinned,
+      pinnedAt: item.pinnedAt ?? null,
     });
     setComposeOpen(true);
   }, []);
@@ -306,6 +340,16 @@ export default function BoardScreen({ navigation, route }: any) {
         docData.imageUrl = deleteField();
         docData.imageStoragePath = deleteField();
         docData.imageBase64 = deleteField();
+      }
+
+      if (editor.pinned) {
+        docData.pinned = true;
+        if (!editor.pinnedAt) {
+          docData.pinnedAt = serverTimestamp();
+        }
+      } else {
+        docData.pinned = false;
+        docData.pinnedAt = null;
       }
 
       if (editor.id) {
@@ -400,6 +444,25 @@ export default function BoardScreen({ navigation, route }: any) {
               </Pressable>
             </View>
           </View>
+          <Pressable
+            onPress={() =>
+              setEditor((prev) => {
+                const nextPinned = !prev.pinned;
+                return {
+                  ...prev,
+                  pinned: nextPinned,
+                  pinnedAt: nextPinned ? (prev.pinned ? prev.pinnedAt : null) : null,
+                };
+              })
+            }
+            hitSlop={{ top: 6, bottom: 6 }}
+            style={({ pressed }) => [styles.composePinRow, pressed && styles.composePinRowPressed]}
+          >
+            <Text style={styles.composePinLabel}>Fissa in alto</Text>
+            <View style={styles.composePinSwitchWrap} pointerEvents="none">
+              <Switch value={editor.pinned} />
+            </View>
+          </Pressable>
 
           {editor.includeTitle && (
             <TextInput style={styles.composeInput} placeholder="Titolo" value={editor.title} onChangeText={(v) => setEditor((p) => ({ ...p, title: v }))} placeholderTextColor="#9ca3af" />
@@ -548,6 +611,10 @@ const styles = StyleSheet.create({
   composeToggleInactive: { backgroundColor: "#fff", borderColor: "#cbd5f5" },
   composeToggleText: { fontWeight: "700", color: "#475569" },
   composeToggleTextActive: { color: UI.colors.primary },
+  composePinRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "#cbd5f5", borderRadius: UI.radius.md, backgroundColor: "#fff", marginBottom: UI.spacing.sm },
+  composePinRowPressed: { opacity: 0.8 },
+  composePinLabel: { flex: 1, fontSize: 14, fontWeight: "700", color: UI.colors.text },
+  composePinSwitchWrap: { width: 52, alignItems: "flex-end" },
   composeInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 12, fontSize: 16, color: "#1e293b", fontWeight: "600" },
   composeDescriptionInput: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 12, fontSize: 15, color: "#334155", minHeight: 120 },
   imagePicker: { height: 160, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#cbd5e1", borderStyle: "dashed", alignItems: "center", justifyContent: "center", overflow: "hidden" },

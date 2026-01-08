@@ -20,6 +20,10 @@ const firebaseConfig = {
 
 // Inizializza Firebase
 const app = initializeApp(firebaseConfig);
+if (__DEV__) {
+  console.log("[firebase] projectId", app.options.projectId);
+  console.log("[firebase] appId", app.options.appId);
+}
 
 // Firestore (database)
 export const db = getFirestore(app);

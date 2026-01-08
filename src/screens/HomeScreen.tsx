@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Image, ActivityIndicator } from "rea
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -120,10 +120,59 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
     }
     setLoading(true);
 
-    const q = query(collection(db, "boardPosts"), orderBy("createdAt", "desc"), limit(50));
+    if (__DEV__) {
+      void (async () => {
+        try {
+          const rawSnap = await getDocs(query(collection(db, "boardPosts"), limit(5)));
+          console.log("[Home][boardPosts] getDocs.size =", rawSnap.size);
+          const snapFalse = await getDocs(
+            query(
+              collection(db, "boardPosts"),
+              where("archived", "==", false),
+              limit(20)
+            )
+          );
+          console.log("[Home][boardPosts] where archived==false size =", snapFalse.size);
+
+          const snapTrue = await getDocs(
+            query(
+              collection(db, "boardPosts"),
+              where("archived", "==", true),
+              limit(20)
+            )
+          );
+          console.log("[Home][boardPosts] where archived==true size =", snapTrue.size);
+
+          const raw = await getDocs(query(collection(db, "boardPosts"), limit(10)));
+          console.log(
+            "[Home][boardPosts] archived types sample =",
+            raw.docs.map((d) => ({
+              id: d.id,
+              archived: d.data().archived,
+              type: typeof d.data().archived,
+            }))
+          );
+        } catch (err) {
+          console.error("[Home][boardPosts] getDocs error:", err);
+        }
+      })();
+    }
+
+    const q = query(
+      collection(db, "boardPosts"),
+      where("archived", "==", false),
+      orderBy("pinned", "desc"),
+      orderBy("createdAt", "desc"),
+      limit(50)
+    );
+    console.log("[Home][boardPosts] subscribe archived=false pinned desc createdAt desc limit 50");
     const unsub = onSnapshot(
       q,
       (snap) => {
+        console.log("[Home][boardPosts] snap.size =", snap.size);
+        console.log("[Home][boardPosts] first ids =", snap.docs.slice(0, 5).map((d) => d.id));
+        const nonArchived = snap.docs.filter((d) => d.data().archived !== true).length;
+        console.log("[Home][boardPosts] nonArchived =", nonArchived);
         const next: BoardPreviewItem[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
@@ -153,12 +202,9 @@ function useBoardPreview(lastSeen: Date | null, enabled: boolean) {
         const isPermissionError = (err?.code as string | undefined)?.toLowerCase() === "permission-denied";
         if (isPermissionError) {
           setPermissionDenied(true);
-        } else if (__DEV__) {
-          console.warn("[Home] board preview error:", err);
         }
-        setItems([]);
+        console.error("[Home][boardPosts] error", err);
         setLoading(false);
-        setUnread(0);
       }
     );
     return () => {
@@ -457,9 +503,15 @@ export default function HomeScreen({ navigation }: any) {
             onPress={() => navigation.navigate("TabBacheca")}
             style={({ pressed }) => [styles.sectionHeaderRow, pressed && { opacity: 0.7 }]}
           >
-            <Text style={styles.sectionTitle}>Bacheca</Text>
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{unreadCount}</Text>
+            <View style={styles.sectionHeaderText}>
+              <Text style={styles.sectionTitle}>Bacheca</Text>
+              <Text style={styles.sectionSubtitle}>
+                {unreadCount === 0
+                  ? "Nessuna news da leggere"
+                  : unreadCount === 1
+                    ? "1 news da leggere"
+                    : `${unreadCount} news da leggere`}
+              </Text>
             </View>
             <View style={{ flex: 1 }} />
             <Ionicons name="chevron-forward" size={18} color={UI.colors.text} />
@@ -644,22 +696,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 4,
   },
+  sectionHeaderText: {
+    flexShrink: 1,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
     color: "#334155", // Slate-700
   },
-  headerBadge: {
-    marginLeft: 8,
-    backgroundColor: "#E0F2FE",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 99,
-  },
-  headerBadgeText: {
-    color: "#0369A1",
-    fontSize: 12,
-    fontWeight: "700",
+  sectionSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    color: UI.colors.muted,
   },
 
   // UNIFIED CARD CONTAINER

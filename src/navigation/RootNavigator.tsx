@@ -713,7 +713,11 @@ export default function RootNavigator({
     const [forceLogin, setForceLogin] = useState(true);
     const loggedInitialRef = useRef(false);
     const lastStackRef = useRef<"auth" | "main" | "pending" | null>(null);
-    const log = (_message: string) => { };
+    const log = (message: string) => {
+        if (__DEV__) {
+            console.log(`[RootNavigator] ${message}`);
+        }
+    };
 
     useEffect(() => {
         if (!loggedInitialRef.current) {

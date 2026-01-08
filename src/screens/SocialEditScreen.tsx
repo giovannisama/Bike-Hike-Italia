@@ -423,6 +423,28 @@ export default function SocialEditScreen() {
     setStatus(next);
   };
 
+  const handleDeleteEvent = async () => {
+    if (!eventId || !canEdit) return;
+    Alert.alert("Elimina Definitive", "Questa azione è irreversibile!", [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: "Elimina",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "social_events", eventId));
+            // Navigate explicitly to the list (pop 2 might change based on stack, but usually Detail -> Edit)
+            // If we are in Edit Modal from Detail, Pop 2 is correct (Detail -> List).
+            navigation.pop(2);
+          } catch (e) {
+            console.error("[social_events] delete failed", e);
+            Alert.alert("Errore", "Impossibile eliminare l'evento. Controlla i permessi.");
+          }
+        },
+      },
+    ]);
+  };
+
   const displayDateValue = useMemo(() => formatDisplayDateLabel(date), [date]);
   const titleScreen = isEdit ? "Modifica Evento" : "Crea Evento";
 
@@ -485,6 +507,15 @@ export default function SocialEditScreen() {
                     }
 
                   </Text>
+                  <View style={{ height: 1, backgroundColor: "#E2E8F0", marginVertical: 12 }} />
+
+                  <TouchableOpacity
+                    onPress={handleDeleteEvent}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, gap: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#EF4444" }}>Elimina definitivamente l'evento</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 

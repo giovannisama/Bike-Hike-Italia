@@ -613,6 +613,25 @@ export default function CreateRideScreen() {
     }
   };
 
+  const handleDeleteRide = async () => {
+    if (!isEdit || !rideId || !isAdmin) return;
+    Alert.alert("Elimina Definitivamente", "Questa azione è irreversibile!", [
+      { text: "Annulla", style: "cancel" },
+      {
+        text: "Elimina",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, collectionName, rideId));
+            navigation.pop(2);
+          } catch (e: any) {
+            Alert.alert("Errore", e?.message ?? "Impossibile eliminare.");
+          }
+        },
+      },
+    ]);
+  };
+
   // ---------- UI ----------
   const titleScreen = isEdit
     ? (kind === "trip" ? "Modifica Viaggio" : "Modifica Uscita")
@@ -719,6 +738,18 @@ export default function CreateRideScreen() {
                         : "ATTIVA"
                   }
                 </Text>
+
+                <View style={{ height: 1, backgroundColor: "#E2E8F0", marginVertical: 12 }} />
+
+                <TouchableOpacity
+                  onPress={handleDeleteRide}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, gap: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: "#EF4444" }}>
+                    {kind === "trip" || collectionName === "trips" ? "Elimina definitivamente Viaggio" : "Elimina definitivamente Uscita"}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
 

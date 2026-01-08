@@ -602,25 +602,7 @@ export default function SocialDetailScreen() {
     );
   };
 
-  const handleDeleteEvent = async () => {
-    if (!eventId || !canEdit) return;
-    Alert.alert("Elimina Definitive", "Questa azione è irreversibile!", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Elimina",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, "social_events", eventId));
-            navigation.goBack();
-          } catch (e) {
-            console.error("[social_events] delete failed", e);
-            Alert.alert("Errore", "Impossibile eliminare l'evento. Controlla i permessi.");
-          }
-        },
-      },
-    ]);
-  };
+
 
   const handleShare = async () => {
     try {
@@ -1002,30 +984,6 @@ export default function SocialDetailScreen() {
               <Text style={styles.actionTileText}>Salva in Calendario</Text>
             </TouchableOpacity>
           </View>
-
-          {canEdit && (
-            <View style={styles.adminZone}>
-              <Text style={styles.adminTitle}>Gestione Amministratore</Text>
-              {status === "cancelled" && (
-                <Pressable style={styles.adminRow} onPress={handleRestoreEvent}>
-                  <Ionicons name="refresh-circle" size={20} color="#f59e0b" />
-                  <Text style={[styles.adminRowText, { color: "#f59e0b" }]}>Riapri Evento</Text>
-                </Pressable>
-              )}
-              {status === "archived" && (
-                <Pressable style={styles.adminRow} onPress={handleRestoreArchive}>
-                  <Ionicons name="refresh-circle" size={20} color="#f59e0b" />
-                  <Text style={[styles.adminRowText, { color: "#f59e0b" }]}>Ripristina Evento</Text>
-                </Pressable>
-              )}
-              {canEdit && (
-                <Pressable style={styles.adminRow} onPress={handleDeleteEvent}>
-                  <Ionicons name="trash" size={20} color="#991b1b" />
-                  <Text style={[styles.adminRowText, { color: "#991b1b" }]}>Elimina Definitivamente</Text>
-                </Pressable>
-              )}
-            </View>
-          )}
         </ScrollView>
       )}
 

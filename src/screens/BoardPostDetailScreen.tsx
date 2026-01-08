@@ -235,9 +235,9 @@ export default function BoardPostDetailScreen({ navigation, route }: any) {
                     canEdit ? (
                         <Pressable
                             onPress={() => setActionSheetVisible(true)}
-                            style={({ pressed }) => [styles.manageBtn, pressed && { opacity: 0.7 }]}
+                            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
                         >
-                            <Text style={styles.manageBtnText}>Gestisci</Text>
+                            <Ionicons name="pencil" size={20} color="#1E293B" />
                         </Pressable>
                     ) : undefined
                 }
@@ -396,17 +396,11 @@ const styles = StyleSheet.create({
         color: "#1E293B",
         letterSpacing: -0.5,
     },
-    // MANAGE BUTTON
     manageBtn: {
-        backgroundColor: "rgba(255,255,255,0.6)",
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8,
+        // Removed
     },
     manageBtnText: {
-        fontWeight: "700",
-        fontSize: 14,
-        color: "#0F172A",
+        // Removed
     },
     // BODY
     container: {

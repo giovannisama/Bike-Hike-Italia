@@ -869,19 +869,7 @@ export default function RideDetails() {
     Alert.alert("Uscita Ripristinata");
   };
 
-  const handleDeleteRide = async () => {
-    Alert.alert("Elimina Definitive", "Questa azione è irreversibile!", [
-      { text: "Annulla", style: "cancel" },
-      {
-        text: "Elimina",
-        style: "destructive",
-        onPress: async () => {
-          await deleteDoc(doc(db, collectionName, rideId));
-          navigation.goBack();
-        },
-      },
-    ]);
-  };
+
 
   // Notification helper
   const sendCancellationNotification = async () => {
@@ -1607,23 +1595,7 @@ export default function RideDetails() {
         </View>
 
         {/* ADMIN DANGER ZONE */}
-        {(isAdmin || isGuide) && (
-          <View style={styles.adminZone}>
-            <Text style={styles.adminTitle}>Gestione Amministratore</Text>
-            {status === "cancelled" && (
-              <TouchableOpacity style={styles.adminRow} onPress={handleRestoreRide}>
-                <Ionicons name="refresh-circle" size={20} color="#f59e0b" />
-                <Text style={[styles.adminRowText, { color: "#f59e0b" }]}>Ripristina Uscita</Text>
-              </TouchableOpacity>
-            )}
-            {isAdmin && (
-              <TouchableOpacity style={styles.adminRow} onPress={handleDeleteRide}>
-                <Ionicons name="trash" size={20} color="#991b1b" />
-                <Text style={[styles.adminRowText, { color: "#991b1b" }]}>Elimina Definitivamente</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+
 
       </ScrollView>
     </Screen>

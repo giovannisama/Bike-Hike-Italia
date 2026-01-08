@@ -21,6 +21,7 @@ import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { auth, db } from "../firebase";
 import {
   Timestamp,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,

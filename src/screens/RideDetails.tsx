@@ -44,6 +44,12 @@ import { ScreenHeader } from "../components/ScreenHeader"; // Unified Header
 import { StatusBadge } from "./calendar/StatusBadge";
 import { DifficultyBadge } from "./calendar/DifficultyBadge";
 import { getBikeCategoryLabel } from "./calendar/bikeType";
+import { buildShareMessage } from "../utils/eventShareMessage";
+import {
+  checkCalendarEventExists,
+  getStoredCalendarEventId,
+  setStoredCalendarEventId,
+} from "../utils/calendarDedup";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Calendar from "expo-calendar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -195,6 +201,7 @@ export default function RideDetails() {
 
   // Track heald IDs to avoid loops
   const healedParticipantsRef = useRef<Set<string>>(new Set());
+  const calendarSaveInFlightRef = useRef(false);
 
   const [publicIndex, setPublicIndex] = useState<Record<string, PublicUserDoc | null>>({}); // Local cache for names
   const [phoneByUid, setPhoneByUid] = useState<Record<string, string | null>>({});
@@ -893,30 +900,52 @@ export default function RideDetails() {
   const handleShare = async () => {
     try {
       const dateStr = ride.date ? format(ride.date.toDate(), "dd/MM/yyyy") : "";
-      const msg = `🚴 Uscita BHI: ${ride.title}\n📅 ${dateStr}\n📍 ${ride.meetingPoint}\n\nPartecipa sull'app!`;
+      const shareKind = ride?.kind ?? kind;
+      const shareType =
+        shareKind === "trek" ? "trekking" : shareKind === "trip" ? "viaggi" : "ciclismo";
+      const msg = buildShareMessage({
+        type: shareType,
+        title: ride.title,
+        dateText: dateStr,
+        placeText: ride.meetingPoint,
+      });
       await Share.share({ message: msg });
     } catch (error) {
       // ignore
     }
   };
 
-  const handleAddToCalendar = async () => {
+  const runAddToCalendar = async () => {
+    if (calendarSaveInFlightRef.current) return;
+    calendarSaveInFlightRef.current = true;
     try {
       const { status } = await Calendar.requestCalendarPermissionsAsync();
       if (status === "granted") {
+        const storedId = await getStoredCalendarEventId(rideId);
+        if (storedId) {
+          const exists = await checkCalendarEventExists(storedId);
+          if (exists) {
+            Alert.alert("Già salvato", "Questo evento è già presente nel calendario del telefono.");
+            return;
+          }
+        }
+
         const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
         const defaultCalendar =
           calendars.find((cal) => cal.isPrimary) || calendars[0];
         if (defaultCalendar) {
           const startDate = ride.dateTime ? ride.dateTime.toDate() : ride.date.toDate();
           const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h
-          await Calendar.createEventAsync(defaultCalendar.id, {
+          const calendarEventId = await Calendar.createEventAsync(defaultCalendar.id, {
             title: `🚴 ${ride.title}`,
             startDate,
             endDate,
             location: ride.meetingPoint,
             notes: ride.description || "",
           });
+          if (calendarEventId) {
+            await setStoredCalendarEventId(rideId, calendarEventId);
+          }
           Alert.alert("Successo", "Evento aggiunto al calendario!");
         } else {
           Alert.alert("Errore", "Nessun calendario trovato.");
@@ -926,7 +955,16 @@ export default function RideDetails() {
       }
     } catch (e) {
       Alert.alert("Errore", "Impossibile aggiungere evento.");
+    } finally {
+      calendarSaveInFlightRef.current = false;
     }
+  };
+
+  const handleAddToCalendar = () => {
+    Alert.alert("", "Vuoi salvare l’evento nel calendario del telefono?", [
+      { text: "Annulla", style: "cancel" },
+      { text: "Salva evento", onPress: () => void runAddToCalendar() },
+    ]);
   };
 
   const handleContactParticipant = (phoneNumber: string | null) => {

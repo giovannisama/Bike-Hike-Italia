@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -41,6 +41,12 @@ import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { StatusBadge } from "./calendar/StatusBadge";
 import * as Calendar from "expo-calendar";
+import { buildShareMessage } from "../utils/eventShareMessage";
+import {
+  checkCalendarEventExists,
+  getStoredCalendarEventId,
+  setStoredCalendarEventId,
+} from "../utils/calendarDedup";
 
 type SocialEvent = {
   title?: string;
@@ -103,6 +109,7 @@ export default function SocialDetailScreen() {
   const [manualSaving, setManualSaving] = useState(false);
   const [joinServices, setJoinServices] = useState<Record<"lunch" | "dinner", Choice>>(() => emptySelection());
   const [manualServices, setManualServices] = useState<Record<"lunch" | "dinner", Choice>>(() => emptySelection());
+  const calendarSaveInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!eventId) return;
@@ -606,18 +613,35 @@ export default function SocialDetailScreen() {
     try {
       const dateStr = formatDate(event?.startAt);
       const place = event?.meetingPlaceText || "";
-      const mapUrl = event?.meetingMapUrl ? `\n🗺️ ${event.meetingMapUrl}` : "";
-      const msg = `🎉 Evento BHI: ${event?.title ?? ""}\n📅 ${dateStr}\n📍 ${place}${mapUrl}\n\nPartecipa sull'app!`;
+      const mapUrl = event?.meetingMapUrl ? `🗺️ ${event.meetingMapUrl}` : "";
+      const msg = buildShareMessage({
+        type: "social",
+        title: event?.title ?? "",
+        dateText: dateStr,
+        placeText: place,
+        extraLines: mapUrl,
+      });
       await Share.share({ message: msg });
     } catch (error) {
       // ignore
     }
   };
 
-  const handleAddToCalendar = async () => {
+  const runAddToCalendar = async () => {
+    if (calendarSaveInFlightRef.current) return;
+    calendarSaveInFlightRef.current = true;
     try {
       const { status: permissionStatus } = await Calendar.requestCalendarPermissionsAsync();
       if (permissionStatus === "granted") {
+        const storedId = await getStoredCalendarEventId(eventId ?? "");
+        if (storedId) {
+          const exists = await checkCalendarEventExists(storedId);
+          if (exists) {
+            Alert.alert("Già salvato", "Questo evento è già presente nel calendario del telefono.");
+            return;
+          }
+        }
+
         const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
         const defaultCalendar = calendars.find((cal) => cal.isPrimary) || calendars[0];
         if (defaultCalendar) {
@@ -627,13 +651,16 @@ export default function SocialDetailScreen() {
             return;
           }
           const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
-          await Calendar.createEventAsync(defaultCalendar.id, {
+          const calendarEventId = await Calendar.createEventAsync(defaultCalendar.id, {
             title: `🎉 ${event?.title ?? "Evento"}`,
             startDate,
             endDate,
             location: event?.meetingPlaceText || "",
             notes: event?.description || "",
           });
+          if (calendarEventId) {
+            await setStoredCalendarEventId(eventId ?? "", calendarEventId);
+          }
           Alert.alert("Successo", "Evento aggiunto al calendario!");
         } else {
           Alert.alert("Errore", "Nessun calendario trovato.");
@@ -643,8 +670,16 @@ export default function SocialDetailScreen() {
       }
     } catch (e) {
       Alert.alert("Errore", "Impossibile aggiungere evento.");
+    } finally {
+      calendarSaveInFlightRef.current = false;
     }
+  };
 
+  const handleAddToCalendar = () => {
+    Alert.alert("", "Vuoi salvare l’evento nel calendario del telefono?", [
+      { text: "Annulla", style: "cancel" },
+      { text: "Salva evento", onPress: () => void runAddToCalendar() },
+    ]);
   };
 
   const handleContactParticipant = (phoneNumber: string | null) => {

@@ -127,6 +127,16 @@ function buildManualParticipantId(entry: any): string {
   return `manual_${legacy || "legacy"}`;
 }
 
+function findManualParticipantIndex(entries: any[], manualId: string): number {
+  return entries.findIndex((entry) => {
+    const direct = (entry as any)?.manualId;
+    if (direct !== null && direct !== undefined && String(direct)) {
+      return String(direct) === manualId;
+    }
+    return buildManualParticipantId(entry) === manualId;
+  });
+}
+
 // URL Regex for description links
 const URL_REGEX_GLOBAL = /(https?:\/\/[^\s]+)/g;
 
@@ -425,7 +435,7 @@ export default function RideDetails() {
       let displayName = "Sconosciuto";
       let note = null;
       let services = null;
-      const manualId = buildManualParticipantId(entry);
+      const manualId = String((entry as any)?.manualId ?? buildManualParticipantId(entry));
 
       if (typeof entry === "string") {
         displayName = entry;
@@ -590,8 +600,8 @@ export default function RideDetails() {
         if (val) cleanServices[key] = val;
       });
       if (editTarget.type === "manual") {
-        const index = Number(editTarget.id.replace("manual_", ""));
-        if (!Number.isFinite(index) || index < 0 || index >= manualParticipants.length) return;
+        const index = findManualParticipantIndex(manualParticipants, editTarget.id);
+        if (index < 0 || index >= manualParticipants.length) return;
         const current = manualParticipants[index];
         const base =
           typeof current === "string"
@@ -771,8 +781,8 @@ export default function RideDetails() {
           onPress: async () => {
             try {
               if (p.type === "manual") {
-                const index = Number(String(p.id).replace("manual_", ""));
-                if (!Number.isFinite(index) || index < 0 || index >= manualParticipants.length) {
+                const index = findManualParticipantIndex(manualParticipants, String(p.id));
+                if (index < 0 || index >= manualParticipants.length) {
                   Alert.alert("Errore", "Partecipante manuale non trovato.");
                   return;
                 }
